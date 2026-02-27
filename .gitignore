@@ -3,10 +3,3 @@ node_modules/
 
 # Chaves de API e Segredos (CRÍTICO)
 .env
-
-# Artefatos gerados pelo próprio toolkit
-_AI_CONTEXT_*.md
-_BLUEPRINT__*.md
-_BUNDLER__*.txt
-_SELECTIVE__*.txt
-_VIBE_RESPONSE.md

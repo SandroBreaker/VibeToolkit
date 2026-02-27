@@ -32,29 +32,29 @@ PERFORMANCE ENFORCEMENT:
 
 # AI PROJECT CONTEXT BRIEFING
 ### 1. SYSTEM_IDENTITY
-VibeToolkit é uma aplicação fullstack com baixa entropia, utilizando o SDK do Groq para processamento de dados e o dotenv para gerenciamento de variáveis de ambiente, com foco em minimizar a variação de saída.
+VibeToolkit é uma aplicação fullstack com baixa entropia, utilizando o Groq SDK para integrações de dados e TypeScript para tipagem rigorosa, com foco em minimizar a variação de saída.
 
 ### 2. TECH_STACK_&_INTEGRATIONS
 - Dependências core: dotenv, groq-sdk
 - Dependências de desenvolvimento: @types/node, tsx, typescript
-- Integrações externas: Groq (via SDK)
+- Integrações externas: Groq (via groq-sdk)
 
 ### 3. ARCHITECTURAL_PATTERNS
-- Utilização de tipos e interfaces rigorosas via TypeScript
-- Gerenciamento de variáveis de ambiente com dotenv
-- Integração com o SDK do Groq para processamento de dados
+- Utilização de TypeScript para tipagem estática e rigorosa
+- Possível utilização de padrões de injeção de dependência via dotenv
+- Estrutura de projeto modular, com separação de concerns em arquivos distintos (ex: groq-agent.ts, package.json, tsconfig.json)
 
 ### 4. CORE_MECHANICS_&_DOMAIN
-- Processamento de dados com o Groq SDK
-- Gerenciamento de variáveis de ambiente
-- Desenvolvimento com TypeScript e TSX
+- Integração com o Groq SDK para operações de dados
+- Utilização de variáveis de ambiente via dotenv
+- Desenvolvimento com TypeScript e tsx para garantir tipagem e compatibilidade
 
 ### 5. AI_HARD_GUARDRAILS
-- Manter compatibilidade com o SDK do Groq
-- Preservar o uso de dotenv para gerenciamento de variáveis de ambiente
-- Não remover ou alterar significativamente as configurações de TypeScript e TSX
-- Manter a estrutura de pastas e arquivos existente
-- Não introduzir dependências que aumentem a entropia do sistema ou comprometam a minimização da variação de saída.
+- Manter a compatibilidade com o Groq SDK e suas dependências
+- Preservar a estrutura de projeto e organização de arquivos
+- Utilizar TypeScript e tipagem estática para garantir a integridade do código
+- Não remover ou alterar as dependências core (dotenv, groq-sdk) sem justificativa explícita
+- Manter a configuração do tsconfig.json para garantir a compatibilidade com o projeto
 
 ---
 

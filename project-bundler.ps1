@@ -20,24 +20,23 @@ Clear-Host
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "          VIBE AI TOOLKIT - $ProjectName          " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "Escolha o modo de extração de contexto:"
-Write-Host ""
-Write-Host "[ 1 ] BUNDLER   (Código Completo - Todos os arquivos mapeados)" -ForegroundColor Yellow
-Write-Host "[ 2 ] BLUEPRINT (Apenas Arquitetura e Assinaturas TypeScript)" -ForegroundColor Green
-Write-Host "[ 3 ] SELECTIVE (Escolha manual de arquivos específicos)" -ForegroundColor Magenta
+Write-Host "Selecione o modo de extração de contexto:`n"
+Write-Host " [ 1 ] BUNDLER   (Código Completo - Todos os arquivos)" -ForegroundColor Yellow
+Write-Host " [ 2 ] BLUEPRINT (Arquitetura e Assinaturas TypeScript)" -ForegroundColor Green
+Write-Host " [ 3 ] SELECTIVE (Escolha manual de arquivos específicos)" -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$Choice = Read-Host "Digite 1, 2 ou 3"
+$Choice = Read-Host "Opção (1, 2 ou 3)"
 
 if ($Choice -notmatch '^[123]$') {
-    Write-Warning "Opção inválida. Saindo..."
+    Write-Warning "Opção inválida. Operação abortada."
     Start-Sleep -Seconds 2
     exit
 }
 
 # ==========================================
-# 2. CONFIGURAÇÕES & REGRAS (WHITELIST/BLACKLIST)
+# 2. CONFIGURAÇÕES & REGRAS
 # ==========================================
 $AllowedExtensions = @(".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md")
 $SignatureExtensions = @(".tsx", ".ts", ".js", ".jsx", ".prisma")
@@ -54,7 +53,6 @@ $IgnoredFiles = @(
     "capacitor.plugins.json", "cordova.js", "cordova_plugins.js"
 )
 
-# Instrução base mantida para o artefato bruto, caso você decida lê-lo diretamente
 $SystemInstruction = @"
 <system_instruction>
 ROLE: SENIOR_FULLSTACK_ARCHITECT_EXECUTOR
@@ -67,7 +65,7 @@ OUTPUT_VARIANCE: MINIMIZED
 # ==========================================
 # 3. MOTOR DE TRAVESSIA (Coleta de Arquivos)
 # ==========================================
-Write-Host "`nMapeando arquivos do projeto..." -ForegroundColor Gray
+Write-Host "`n[+] Mapeando arquivos da árvore do projeto..." -ForegroundColor DarkGray
 
 function Get-RelevantFiles {
     param([string]$CurrentPath)
@@ -95,28 +93,28 @@ function Get-RelevantFiles {
 $FoundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path)
 
 if ($FoundFiles.Count -eq 0) {
-    Write-Warning "Nenhum arquivo relevante encontrado!"
+    Write-Warning "Nenhum arquivo válido encontrado no diretório."
     Pause
     exit
 }
 
 # ==========================================
-# 4. SELEÇÃO DE ARQUIVOS (APENAS MODO 3)
+# 4. SELEÇÃO DE ARQUIVOS (MODO 3)
 # ==========================================
 $FilesToProcess = $FoundFiles
 
 if ($Choice -eq '3') {
     Write-Host "`n==================================================" -ForegroundColor Magenta
-    Write-Host "          SELEÇÃO MANUAL DE ARQUIVOS              " -ForegroundColor Magenta
+    Write-Host "              SELEÇÃO MANUAL DE ARQUIVOS          " -ForegroundColor Magenta
     Write-Host "==================================================" -ForegroundColor Magenta
     
     for ($i = 0; $i -lt $FoundFiles.Count; $i++) {
         $RelPath = Resolve-Path -Path $FoundFiles[$i].FullName -Relative
-        Write-Host ("[{0,3}] {1}" -f $i, $RelPath)
+        Write-Host (" [{0,3}] {1}" -f $i, $RelPath)
     }
     
     Write-Host "==================================================" -ForegroundColor Magenta
-    $SelectionStr = Read-Host "`nDigite os NÚMEROS dos arquivos que deseja (ex: 0, 2, 5 ou 0 2 5)"
+    $SelectionStr = Read-Host "`nÍndices dos arquivos (ex: 0, 2, 5 ou 0 2 5)"
     
     $SelectedIndices = $SelectionStr -split '[, ]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
     
@@ -130,43 +128,58 @@ if ($Choice -eq '3') {
     }
     
     if ($FilesToProcess.Count -eq 0) {
-        Write-Warning "`nNenhum arquivo válido selecionado. Cancelando operação..."
+        Write-Warning "`nNenhum arquivo selecionado. Abortando."
         Pause
         exit
     }
 }
 
 # ==========================================
-# 5. PROCESSAMENTO BASEADO NA ESCOLHA
+# 5. PROCESSAMENTO E GERAÇÃO DE MARKDOWN
 # ==========================================
 $FinalContent = ""
 
 if ($Choice -eq '1' -or $Choice -eq '3') {
     if ($Choice -eq '1') {
-        $OutputFile = "_BUNDLER__${ProjectName}.txt"
-        Write-Host "Modo BUNDLER ativado. Consolidando código fonte..." -ForegroundColor Yellow
+        $OutputFile = "_BUNDLER__${ProjectName}.md"
+        Write-Host "`n[>] Executando BUNDLER: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Yellow
+        $HeaderTitle = "PROJECT BUNDLER"
     } else {
-        $OutputFile = "_SELECTIVE__${ProjectName}.txt"
-        Write-Host "Modo SELECTIVE ativado. Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Magenta
+        $OutputFile = "_SELECTIVE__${ProjectName}.md"
+        Write-Host "`n[>] Executando SELECTIVE: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Magenta
+        $HeaderTitle = "PROJECT BUNDLER (SELECTIVE)"
     }
     
     $FinalContent += $SystemInstruction
-    $FinalContent += "<project_structure>`n"
+    $FinalContent += "# ${HeaderTitle}: $ProjectName`n`n"
+    
+    $FinalContent += "## 1. PROJECT STRUCTURE`n```text`n"
     foreach ($File in $FilesToProcess) { $FinalContent += (Resolve-Path -Path $File.FullName -Relative) + "`n" }
-    $FinalContent += "</project_structure>`n"
+    $FinalContent += "````n`n"
 
+    $FinalContent += "## 2. SOURCE FILES`n`n"
     foreach ($File in $FilesToProcess) {
         $RelPath = Resolve-Path -Path $File.FullName -Relative
         $Content = Get-Content $File.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        
         if ($Content) {
             $Content = $Content -replace "(`r?`n){3,}", "`r`n`r`n"
-            $FinalContent += "`n<file path=""$RelPath"">`n$Content`n</file>`n"
+            $Ext = $File.Extension.TrimStart('.')
+            
+            # Normalização de extensão para syntax highlight no MD
+            if ($Ext -match "^(tsx?)$") { $Ext = "typescript" }
+            elseif ($Ext -match "^(jsx?)$") { $Ext = "javascript" }
+            
+            $FinalContent += "### File: `$RelPath``n"
+            $FinalContent += "```$Ext`n"
+            $FinalContent += $Content.TrimEnd() + "`n"
+            $FinalContent += "````n`n"
         }
     }
 
 } else {
     $OutputFile = "_BLUEPRINT__${ProjectName}.md"
-    Write-Host "Modo BLUEPRINT ativado. Extraindo contratos de arquitetura..." -ForegroundColor Green
+    Write-Host "`n[>] Executando BLUEPRINT: Extraindo contratos de arquitetura..." -ForegroundColor Green
     
     $FinalContent += $SystemInstruction
     $FinalContent += "# PROJECT BLUEPRINT: $ProjectName`n`n"
@@ -192,7 +205,7 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
             
             $Matches = [regex]::Matches($ContentRaw, 'export\s+(interface|type|enum|const|function|class)\s+([A-Za-z0-9_]+)')
             if ($Matches.Count -gt 0) {
-                $FinalContent += "### File: $RelPath`n```typescript`n"
+                $FinalContent += "### File: `$RelPath``n```typescript`n"
                 $Lines = Get-Content $File.FullName -Encoding UTF8
                 for ($i = 0; $i -lt $Lines.Count; $i++) {
                     $Line = $Lines[$i].Trim()
@@ -219,7 +232,7 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
 }
 
 # ==========================================
-# 6. SALVAMENTO (UTF-8 PURO) E ÁREA DE TRANSFERÊNCIA
+# 6. SALVAMENTO E ÁREA DE TRANSFERÊNCIA
 # ==========================================
 $OutputFullPath = Join-Path (Get-Location) $OutputFile
 
@@ -236,37 +249,37 @@ try {
 }
 
 Write-Host "`n==================================================" -ForegroundColor Green
-Write-Host "ARTEFATO BRUTO CONSOLIDADO!"
+Write-Host " [✓] ARTEFATO CONSOLIDADO COM SUCESSO" -ForegroundColor Green
+Write-Host "==================================================" -ForegroundColor Green
 
 if ($Choice -eq '1') { $ModoNome = "BUNDLER" }
 elseif ($Choice -eq '2') { $ModoNome = "BLUEPRINT" }
 else { $ModoNome = "SELECTIVE" }
 
-Write-Host "Modo     : $ModoNome"
-Write-Host "Arquivo  : $OutputFile"
-Write-Host "Tokens   : ~$TokenEstimate (Estimativa bruta)"
-if ($Copied) { Write-Host "Status   : Copiado para a área de transferência." }
-else { Write-Host "Status   : Arquivo salvo localmente." -ForegroundColor Yellow }
-Write-Host "==================================================" -ForegroundColor Green
+Write-Host " 📌 Modo     : $ModoNome"
+Write-Host " 📄 Arquivo  : $OutputFile"
+Write-Host " 📦 Tokens   : ~$TokenEstimate (Estimativa bruta)"
+if ($Copied) { Write-Host " 📋 Status   : Copiado para a área de transferência." -ForegroundColor Cyan }
+else { Write-Host " 💾 Status   : Arquivo salvo localmente." -ForegroundColor Yellow }
+Write-Host "==================================================`n" -ForegroundColor Green
 
 # ==========================================
 # 7. GERAÇÃO DE CONTEXTO COM IA (GROQ)
 # ==========================================
-Write-Host "`nDeseja que a IA analise este artefato e gere um AI Context Document otimizado? (S/N)" -ForegroundColor Cyan
-$SendToAI = Read-Host
+$SendToAI = Read-Host "Deseja que a IA gere o 'AI Context Document' agora? (S/N)"
 if ($SendToAI -match '^[Ss]$') {
-    Write-Host "`nAnalisando arquitetura e gerando documentação. Aguarde..." -ForegroundColor Yellow
+    Write-Host "`n[~] Processando contexto no Groq via SDK. Aguarde..." -ForegroundColor Yellow
     
     $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
     
     if (Test-Path $AgentScript) {
         cmd.exe /c npx tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`"
-        Write-Host "`nFinalizado. Verifique o arquivo _AI_CONTEXT_$ProjectName.md na pasta do projeto." -ForegroundColor Green
+        Write-Host "`n[✓] Execução finalizada. Verifique: _AI_CONTEXT_$ProjectName.md" -ForegroundColor Green
     } else {
-        Write-Warning "Arquivo groq-agent.ts não encontrado em: $ToolkitDir"
+        Write-Warning "Falha: Script groq-agent.ts não localizado em: $ToolkitDir"
     }
 } else {
-    Write-Host "Operação concluída. IA não acionada." -ForegroundColor Gray
+    Write-Host "`nOperação concluída. Fluxo de IA ignorado." -ForegroundColor DarkGray
 }
 
 Write-Host ""

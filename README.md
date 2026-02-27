@@ -1,20 +1,20 @@
 # ⚡ VibeToolkit - AI Context Synthesizer & Bundler
 
-O **VibeToolkit** é uma ferramenta de linha de comando (CLI) construída com PowerShell e Node.js que atua como um engenheiro reverso para seus projetos de software. 
+O **VibeToolkit** é uma ferramenta de linha de comando (CLI) construída com **PowerShell** e **Node.js** que atua como um engenheiro reverso para seus projetos de software. 
 
 Ele varre seu repositório, extrai contratos, tipagens e arquitetura, e utiliza a API da **Groq (Llama 3.3 70B)** para gerar um "Super Prompt" de altíssima densidade. O resultado é um documento otimizado que você envia para qualquer LLM (ChatGPT, Claude, Gemini) para que a IA codifique no seu projeto com precisão milimétrica, zero alucinação e consumindo o mínimo de tokens possível.
 
 ## 🚨 O Problema que Resolvemos
 Trabalhar com LLMs em projetos grandes envolve um gargalo terrível de contexto:
-1. Copiar e colar dezenas de arquivos manualmente é lento e sujeito a erros.
-2. Enviar o código-fonte inteiro consome milhares de tokens e confunde a IA.
-3. Sem os contratos exatos (interfaces, types), a IA alucina propriedades e quebra a sua aplicação.
+1. **Caos Manual:** Copiar e colar dezenas de arquivos é lento e gera erros.
+2. **Desperdício de Tokens:** Enviar o código inteiro é caro e "dilui" a atenção da IA.
+3. **Alucinação Arquitetural:** Sem interfaces claras, a IA inventa propriedades e quebra o build.
 
 ## 🛠️ A Solução (Vibe Workflow)
-O VibeToolkit automatiza a extração de contexto e cria um **AI Context Document** consolidado que contém:
-1. **A Persona Executora:** Instruções estritas forçando a IA a não alterar o que não foi pedido e devolver o código completo.
-2. **AI Briefing (Zero Fluff):** Um resumo arquitetural gerado pelo Groq Llama 3 focado apenas em *Tech Stack*, *Design Patterns*, *Domínios* e *Guardrails*.
-3. **Project Blueprint:** As assinaturas de funções, classes e interfaces estritas para a IA saber exatamente como o seu código se comunica.
+O VibeToolkit automatiza a extração e cria um **AI Context Document** (`.md`) consolidado contendo:
+* **Persona Executora:** Instruções estritas (Low Entropy) para garantir entregas de código completas.
+* **AI Briefing (Zero Fluff):** Resumo estratégico gerado pelo Llama 3 focado em Tech Stack e Guardrails.
+* **Project Blueprint:** Mapeamento de assinaturas, tipos e estruturas de arquivos para referência técnica.
 
 ---
 
@@ -26,53 +26,53 @@ O VibeToolkit automatiza a extração de contexto e cria um **AI Context Documen
 * Chave de API gratuita da [Groq Console](https://console.groq.com/)
 
 ### Passo a Passo
-1. Clone este repositório para a sua máquina.
-2. Instale as dependências do Node.js:
+1. Clone este repositório.
+2. Instale as dependências:
    ```bash
    npm install
    ```
-
-3. Crie um arquivo `.env` na raiz do projeto (use o `.env.example` como base) e insira sua chave da Groq:
+3. Configure sua chave no arquivo `.env` (use o `.env.example` como base):
    ```env
    GROQ_API_KEY=gsk_sua_chave_aqui
    ```
+
+### 🖱️ Atalho no Botão Direito (Windows)
+Para integrar o toolkit ao menu do Windows e usá-lo em qualquer pasta:
+1. Execute o script `setup-menu.ps1` como **Administrador**.
+2. O script detectará o caminho da instalação e aplicará o registro automaticamente.
+3. Clique com o botão direito em qualquer pasta de projeto e selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
 
 ---
 
 ## 💻 Como Usar
 
-Abra o terminal na pasta do projeto que você deseja analisar e execute o script apontando para o VibeToolkit.
-*(Dica: Você pode adicionar o caminho do VibeToolkit nas suas variáveis de ambiente para rodar de qualquer lugar).*
+### Via Terminal
+Execute o script apontando para o arquivo principal de dentro da pasta do projeto que deseja analisar:
 
 ```powershell
-# Exemplo executando de dentro da pasta do seu projeto alvo:
-D:\repositorio\VibeToolkit\project-bundler.ps1
+D:\caminho\para\VibeToolkit\project-bundler.ps1
 ```
 
-### O Menu Interativo
+### Modos de Extração
+* **[ 1 ] BUNDLER:** Código-fonte completo (ideal para arquivos específicos ou projetos pequenos).
+* **[ 2 ] BLUEPRINT:** Apenas a "casca" técnica (interfaces, tipos e assinaturas). Ideal para projetos grandes.
+* **[ 3 ] SELECTIVE:** Escolha manual via terminal de quais arquivos devem entrar no contexto.
 
-O script apresentará 3 modos de extração:
-
-* **[ 1 ] BUNDLER:** Empacota o código-fonte completo de todos os arquivos relevantes mapeados. Ideal para projetos pequenos.
-* **[ 2 ] BLUEPRINT:** Extrai **apenas** a arquitetura, imports e assinaturas (interfaces, types, consts exportadas). Ideal para gerar o contexto de projetos médios e grandes.
-* **[ 3 ] SELECTIVE:** Permite escolher manualmente via terminal quais arquivos você quer consolidar.
-
-Após a extração, o script perguntará se você deseja processar o artefato com a IA. Ao confirmar, o Node.js assume, envia o dump para o Llama 3.3 70B e devolve o seu arquivo mestre: `_AI_CONTEXT_NomeDoProjeto.md`.
+Ao final, confirme a análise da IA para gerar o arquivo `_AI_CONTEXT_NomeDoProjeto.md`.
 
 ---
 
-## 🧠 Como usar o arquivo gerado com outras IAs?
+## 🧠 Como interagir com o resultado
 
-Para iniciar uma sessão de pair-programming com IA (Claude, ChatGPT, etc) com nível Sênior:
+Para um pair-programming de elite com Claude, ChatGPT ou Gemini:
 
-1. Faça o upload do arquivo `_AI_CONTEXT_NomeDoProjeto.md`.
-2. Faça o upload do arquivo específico que você quer editar (ex: `AuthService.ts`).
-3. Digite sua instrução (ex: *"Refatore a função login para usar try/catch e adicione logs"*).
+1. Faça o upload do arquivo `_AI_CONTEXT_...md`.
+2. Faça o upload do arquivo que você quer modificar (ex: `UserService.ts`).
+3. Dê sua ordem: *"Refatore este serviço para implementar o novo padrão de erro definido no blueprint"*.
 
-A IA terá a visão global da arquitetura e as restrições exatas do seu código, gerando um resultado de primeira (first-shot) muito superior.
+A IA agora possui consciência situacional total do seu projeto.
 
 ---
 
 ## 🛡️ Segurança e Privacidade
-
-O script ignora automaticamente pastas pesadas (`node_modules`, `dist`, `.git`) e arquivos sensíveis (`.env`, chaves de serviço). Todo o processamento de IA ocorre via API na nuvem da Groq de forma efêmera.
+O toolkit ignora automaticamente `node_modules`, `.git`, `dist`, `.env` e outros arquivos sensíveis via blacklist configurável. O processamento via Groq é efêmero e focado na extração de lógica.

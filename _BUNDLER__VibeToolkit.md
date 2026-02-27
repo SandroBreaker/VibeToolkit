@@ -3,14 +3,18 @@ ROLE: SENIOR_FULLSTACK_ARCHITECT_EXECUTOR
 DETERMINISM_MODE: LOW_ENTROPY
 OUTPUT_VARIANCE: MINIMIZED
 </system_instruction>
-<project_structure>
+# PROJECT BUNDLER: VibeToolkit
+
+## 1. PROJECT STRUCTURE
+`	ext
 .\groq-agent.ts
 .\package.json
 .\README.md
 .\tsconfig.json
-</project_structure>
+``n
+## 2. SOURCE FILES
 
-<file path=".\groq-agent.ts">
+### File: $RelPath`n`$Ext
 import Groq from "groq-sdk";
 import * as dotenv from "dotenv";
 import { promises as fs } from "fs";
@@ -187,9 +191,8 @@ ${sourceCodeDump}`;
 }
 
 main();
-</file>
-
-<file path=".\package.json">
+``n
+### File: $RelPath`n`$Ext
 {
   "name": "vibetoolkit",
   "version": "1.0.0",
@@ -212,10 +215,8 @@ main();
     "typescript": "^5.9.3"
   }
 }
-
-</file>
-
-<file path=".\README.md">
+``n
+### File: $RelPath`n`$Ext
 # ⚡ VibeToolkit - AI Context Synthesizer & Bundler
 
 O **VibeToolkit** é uma ferramenta de linha de comando (CLI) construída com PowerShell e Node.js que atua como um engenheiro reverso para seus projetos de software. 
@@ -294,9 +295,8 @@ A IA terá a visão global da arquitetura e as restrições exatas do seu códig
 ## 🛡️ Segurança e Privacidade
 
 O script ignora automaticamente pastas pesadas (`node_modules`, `dist`, `.git`) e arquivos sensíveis (`.env`, chaves de serviço). Todo o processamento de IA ocorre via API na nuvem da Groq de forma efêmera.
-</file>
-
-<file path=".\tsconfig.json">
+``n
+### File: $RelPath`n`$Ext
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -311,4 +311,4 @@ O script ignora automaticamente pastas pesadas (`node_modules`, `dist`, `.git`) 
   "include": ["**/*.ts"],
   "exclude": ["node_modules"]
 }
-</file>
+``n

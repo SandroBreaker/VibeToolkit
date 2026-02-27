@@ -30,3 +30,49 @@ O VibeToolkit automatiza a extração de contexto e cria um **AI Context Documen
 2. Instale as dependências do Node.js:
    ```bash
    npm install
+   ```
+
+3. Crie um arquivo `.env` na raiz do projeto (use o `.env.example` como base) e insira sua chave da Groq:
+   ```env
+   GROQ_API_KEY=gsk_sua_chave_aqui
+   ```
+
+---
+
+## 💻 Como Usar
+
+Abra o terminal na pasta do projeto que você deseja analisar e execute o script apontando para o VibeToolkit.
+*(Dica: Você pode adicionar o caminho do VibeToolkit nas suas variáveis de ambiente para rodar de qualquer lugar).*
+
+```powershell
+# Exemplo executando de dentro da pasta do seu projeto alvo:
+D:\repositorio\VibeToolkit\project-bundler.ps1
+```
+
+### O Menu Interativo
+
+O script apresentará 3 modos de extração:
+
+* **[ 1 ] BUNDLER:** Empacota o código-fonte completo de todos os arquivos relevantes mapeados. Ideal para projetos pequenos.
+* **[ 2 ] BLUEPRINT:** Extrai **apenas** a arquitetura, imports e assinaturas (interfaces, types, consts exportadas). Ideal para gerar o contexto de projetos médios e grandes.
+* **[ 3 ] SELECTIVE:** Permite escolher manualmente via terminal quais arquivos você quer consolidar.
+
+Após a extração, o script perguntará se você deseja processar o artefato com a IA. Ao confirmar, o Node.js assume, envia o dump para o Llama 3.3 70B e devolve o seu arquivo mestre: `_AI_CONTEXT_NomeDoProjeto.md`.
+
+---
+
+## 🧠 Como usar o arquivo gerado com outras IAs?
+
+Para iniciar uma sessão de pair-programming com IA (Claude, ChatGPT, etc) com nível Sênior:
+
+1. Faça o upload do arquivo `_AI_CONTEXT_NomeDoProjeto.md`.
+2. Faça o upload do arquivo específico que você quer editar (ex: `AuthService.ts`).
+3. Digite sua instrução (ex: *"Refatore a função login para usar try/catch e adicione logs"*).
+
+A IA terá a visão global da arquitetura e as restrições exatas do seu código, gerando um resultado de primeira (first-shot) muito superior.
+
+---
+
+## 🛡️ Segurança e Privacidade
+
+O script ignora automaticamente pastas pesadas (`node_modules`, `dist`, `.git`) e arquivos sensíveis (`.env`, chaves de serviço). Todo o processamento de IA ocorre via API na nuvem da Groq de forma efêmera.

@@ -38,19 +38,27 @@ if ($Choice -notmatch '^[123]$') {
 # ==========================================
 # 2. CONFIGURAÇÕES & REGRAS
 # ==========================================
-$AllowedExtensions = @(".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md")
-$SignatureExtensions = @(".tsx", ".ts", ".js", ".jsx", ".prisma")
+$AllowedExtensions = @(
+    ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
+    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1"
+)
+$SignatureExtensions = @(
+    ".tsx", ".ts", ".js", ".jsx", ".prisma", 
+    ".py", ".java", ".cs", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart"
+)
 
 $IgnoredDirs = @(
     "node_modules", ".git", "dist", "build", ".next", ".cache", "out",
-    "android", "ios", "coverage"
+    "android", "ios", "coverage", ".venv", "venv", "env", "__pycache__",
+    ".pytest_cache", ".tox", "bin", "obj", "target", "vendor"
 )
 
 $IgnoredFiles = @(
     "package-lock.json", "pnpm-lock.yaml", "yarn.lock", 
     ".DS_Store", "metadata.json", ".gitignore",
     "google-services.json", "capacitor.config.json", 
-    "capacitor.plugins.json", "cordova.js", "cordova_plugins.js"
+    "capacitor.plugins.json", "cordova.js", "cordova_plugins.js",
+    "poetry.lock", "Pipfile.lock", "Cargo.lock", "go.sum", "composer.lock"
 )
 
 $SystemInstruction = @"
@@ -169,6 +177,15 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
             # Normalização de extensão para syntax highlight no MD
             if ($Ext -match "^(tsx?)$") { $Ext = "typescript" }
             elseif ($Ext -match "^(jsx?)$") { $Ext = "javascript" }
+            elseif ($Ext -match "^(py)$") { $Ext = "python" }
+            elseif ($Ext -match "^(cs)$") { $Ext = "csharp" }
+            elseif ($Ext -match "^(rb)$") { $Ext = "ruby" }
+            elseif ($Ext -match "^(rs)$") { $Ext = "rust" }
+            elseif ($Ext -match "^(kt)$") { $Ext = "kotlin" }
+            elseif ($Ext -match "^(go)$") { $Ext = "go" }
+            elseif ($Ext -match "^(java)$") { $Ext = "java" }
+            elseif ($Ext -match "^(php)$") { $Ext = "php" }
+            elseif ($Ext -match "^(c|h|cpp|hpp)$") { $Ext = "cpp" }
             
             $FinalContent += "### File: `$RelPath``n"
             $FinalContent += "```$Ext`n"
@@ -203,28 +220,56 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
             $ContentRaw = Get-Content $File.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
             if (-not $ContentRaw) { continue }
             
-            $Matches = [regex]::Matches($ContentRaw, 'export\s+(interface|type|enum|const|function|class)\s+([A-Za-z0-9_]+)')
-            if ($Matches.Count -gt 0) {
-                $FinalContent += "### File: `$RelPath``n```typescript`n"
-                $Lines = Get-Content $File.FullName -Encoding UTF8
-                for ($i = 0; $i -lt $Lines.Count; $i++) {
-                    $Line = $Lines[$i].Trim()
-                    if ($Line -match '^export\s+(interface|type|enum)') {
-                        $FinalContent += "$Line`n"
-                        if ($Line -notmatch '\}' -and $Line -notmatch ' = ') {
-                            $j = $i + 1
-                            while ($j -lt $Lines.Count -and $Lines[$j] -notmatch '^\}') {
-                                $FinalContent += "$($Lines[$j])`n"
-                                $j++
-                            }
-                            if ($j -lt $Lines.Count) { $FinalContent += "$($Lines[$j])`n" }
-                            $i = $j
+            $Lines = Get-Content $File.FullName -Encoding UTF8
+            $Signatures = @()
+            for ($i = 0; $i -lt $Lines.Count; $i++) {
+                $Line = $Lines[$i].Trim()
+                if ($Line -match '^(?:export\s+)?(interface|type|enum)\s+[A-Za-z0-9_]+') {
+                    $Block = "$Line`n"
+                    if ($Line -notmatch '\}' -and $Line -notmatch ' = ' -and $Line -notmatch ';$') {
+                        $j = $i + 1
+                        while ($j -lt $Lines.Count -and $Lines[$j] -notmatch '^\}') {
+                            $Block += "$($Lines[$j])`n"
+                            $j++
                         }
-                    } elseif ($Line -match '^export\s+(const|function|class)') {
-                        $Signature = $Line -replace '\{.*$', '' -replace '\s*=>.*$', ''
-                        $FinalContent += "$Signature`n"
+                        if ($j -lt $Lines.Count) { $Block += "$($Lines[$j])`n" }
+                        $i = $j
                     }
+                    $Signatures += $Block
+                } elseif ($Line -match '^(?:export\s+)?(?:const|function|class)\s+[A-Za-z0-9_]+') {
+                    $Signature = ($Line -replace '\{.*$', '') -replace '\s*=>.*$', ''
+                    $Signatures += "$Signature`n"
+                } elseif ($Line -match '^(?:public|protected|private|internal)\s+(?:class|interface|record|struct|enum)\s+[A-Za-z0-9_]+') {
+                    $Signature = $Line -replace '\{.*$', ''
+                    $Signatures += "$Signature`n"
+                } elseif ($Line -match '^(?:def|class)\s+[A-Za-z0-9_]+') {
+                    $Signature = $Line -replace ':$', ''
+                    $Signatures += "$Signature`n"
+                } elseif ($Line -match '^func\s+[A-Za-z0-9_]+') {
+                    $Signature = $Line -replace '\{.*$', ''
+                    $Signatures += "$Signature`n"
+                } elseif ($Line -match '^(?:pub\s+)?(?:fn|struct|enum|trait)\s+[A-Za-z0-9_]+') {
+                    $Signature = $Line -replace '\{.*$', ''
+                    $Signatures += "$Signature`n"
                 }
+            }
+            
+            if ($Signatures.Count -gt 0) {
+                $Ext = $File.Extension.TrimStart('.')
+                if ($Ext -match "^(tsx?)$") { $Ext = "typescript" }
+                elseif ($Ext -match "^(jsx?)$") { $Ext = "javascript" }
+                elseif ($Ext -match "^(py)$") { $Ext = "python" }
+                elseif ($Ext -match "^(cs)$") { $Ext = "csharp" }
+                elseif ($Ext -match "^(rb)$") { $Ext = "ruby" }
+                elseif ($Ext -match "^(rs)$") { $Ext = "rust" }
+                elseif ($Ext -match "^(kt)$") { $Ext = "kotlin" }
+                elseif ($Ext -match "^(go)$") { $Ext = "go" }
+                elseif ($Ext -match "^(java)$") { $Ext = "java" }
+                elseif ($Ext -match "^(php)$") { $Ext = "php" }
+                elseif ($Ext -match "^(c|h|cpp|hpp)$") { $Ext = "cpp" }
+                
+                $FinalContent += "### File: `$RelPath``n```$Ext`n"
+                $FinalContent += ($Signatures -join '')
                 $FinalContent += "````n`n"
             }
         }

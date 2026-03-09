@@ -38,29 +38,28 @@ if ($Choice -notmatch '^[123]$') {
 # ==========================================
 # 2. CONFIGURAÇÕES & REGRAS
 # ==========================================
-$AllowedExtensions = @(".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md")
-$SignatureExtensions = @(".tsx", ".ts", ".js", ".jsx", ".prisma")
+$AllowedExtensions = @(
+    ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
+    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1"
+)
+$SignatureExtensions = @(
+    ".tsx", ".ts", ".js", ".jsx", ".prisma", 
+    ".py", ".java", ".cs", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart"
+)
 
 $IgnoredDirs = @(
     "node_modules", ".git", "dist", "build", ".next", ".cache", "out",
-    "android", "ios", "coverage"
+    "android", "ios", "coverage", ".venv", "venv", "env", "__pycache__",
+    ".pytest_cache", ".tox", "bin", "obj", "target", "vendor"
 )
 
 $IgnoredFiles = @(
     "package-lock.json", "pnpm-lock.yaml", "yarn.lock", 
     ".DS_Store", "metadata.json", ".gitignore",
     "google-services.json", "capacitor.config.json", 
-    "capacitor.plugins.json", "cordova.js", "cordova_plugins.js"
+    "capacitor.plugins.json", "cordova.js", "cordova_plugins.js",
+    "poetry.lock", "Pipfile.lock", "Cargo.lock", "go.sum", "composer.lock"
 )
-
-$SystemInstruction = @"
-<system_instruction>
-ROLE: SENIOR_FULLSTACK_ARCHITECT_EXECUTOR
-DETERMINISM_MODE: LOW_ENTROPY
-OUTPUT_VARIANCE: MINIMIZED
-</system_instruction>
-
-"@
 
 # ==========================================
 # 3. MOTOR DE TRAVESSIA (Coleta de Arquivos)
@@ -78,7 +77,6 @@ function Get-RelevantFiles {
                 $IsTarget = ($Item.Extension -in $AllowedExtensions) -and 
                             ($Item.Name -notin $IgnoredFiles) -and 
                             ($Item.Name -notmatch "-[a-zA-Z0-9]{8,}\.") -and
-                            ($Item.FullName -ne $ScriptFullPath) -and
                             ($Item.Name -notmatch "^_BUNDLER__") -and
                             ($Item.Name -notmatch "^_BLUEPRINT__") -and
                             ($Item.Name -notmatch "^_SELECTIVE__") -and
@@ -138,6 +136,7 @@ if ($Choice -eq '3') {
 # 5. PROCESSAMENTO E GERAÇÃO DE MARKDOWN
 # ==========================================
 $FinalContent = ""
+$BlueprintIssues = @()
 
 if ($Choice -eq '1' -or $Choice -eq '3') {
     if ($Choice -eq '1') {
@@ -150,12 +149,11 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
         $HeaderTitle = "PROJECT BUNDLER (SELECTIVE)"
     }
     
-    $FinalContent += $SystemInstruction
     $FinalContent += "# ${HeaderTitle}: $ProjectName`n`n"
     
-    $FinalContent += "## 1. PROJECT STRUCTURE`n```text`n"
+    $FinalContent += "## 1. PROJECT STRUCTURE`n" + '```text' + "`n"
     foreach ($File in $FilesToProcess) { $FinalContent += (Resolve-Path -Path $File.FullName -Relative) + "`n" }
-    $FinalContent += "````n`n"
+    $FinalContent += '```' + "`n`n"
 
     $FinalContent += "## 2. SOURCE FILES`n`n"
     foreach ($File in $FilesToProcess) {
@@ -169,11 +167,20 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
             # Normalização de extensão para syntax highlight no MD
             if ($Ext -match "^(tsx?)$") { $Ext = "typescript" }
             elseif ($Ext -match "^(jsx?)$") { $Ext = "javascript" }
+            elseif ($Ext -match "^(py)$") { $Ext = "python" }
+            elseif ($Ext -match "^(cs)$") { $Ext = "csharp" }
+            elseif ($Ext -match "^(rb)$") { $Ext = "ruby" }
+            elseif ($Ext -match "^(rs)$") { $Ext = "rust" }
+            elseif ($Ext -match "^(kt)$") { $Ext = "kotlin" }
+            elseif ($Ext -match "^(go)$") { $Ext = "go" }
+            elseif ($Ext -match "^(java)$") { $Ext = "java" }
+            elseif ($Ext -match "^(php)$") { $Ext = "php" }
+            elseif ($Ext -match "^(c|h|cpp|hpp)$") { $Ext = "cpp" }
             
-            $FinalContent += "### File: `$RelPath``n"
-            $FinalContent += "```$Ext`n"
+            $FinalContent += "### File: $RelPath`n"
+            $FinalContent += '```' + $Ext + "`n"
             $FinalContent += $Content.TrimEnd() + "`n"
-            $FinalContent += "````n`n"
+            $FinalContent += '```' + "`n`n"
         }
     }
 
@@ -181,7 +188,6 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
     $OutputFile = "_BLUEPRINT__${ProjectName}.md"
     Write-Host "`n[>] Executando BLUEPRINT: Extraindo contratos de arquitetura..." -ForegroundColor Green
     
-    $FinalContent += $SystemInstruction
     $FinalContent += "# PROJECT BLUEPRINT: $ProjectName`n`n"
     
     $FinalContent += "## 1. TECH STACK`n"
@@ -192,40 +198,77 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
     }
     $FinalContent += "`n"
 
-    $FinalContent += "## 2. PROJECT STRUCTURE`n```text`n"
+    $FinalContent += "## 2. PROJECT STRUCTURE`n" + '```text' + "`n"
     foreach ($File in $FilesToProcess) { $FinalContent += (Resolve-Path -Path $File.FullName -Relative) + "`n" }
-    $FinalContent += "````n`n"
+    $FinalContent += '```' + "`n`n"
 
     $FinalContent += "## 3. CORE DOMAINS & CONTRACTS`n"
+
+    $BlueprintIssues = @()
     foreach ($File in $FilesToProcess) {
         if ($SignatureExtensions -contains $File.Extension) {
             $RelPath = Resolve-Path -Path $File.FullName -Relative
             $ContentRaw = Get-Content $File.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
             if (-not $ContentRaw) { continue }
             
-            $Matches = [regex]::Matches($ContentRaw, 'export\s+(interface|type|enum|const|function|class)\s+([A-Za-z0-9_]+)')
-            if ($Matches.Count -gt 0) {
-                $FinalContent += "### File: `$RelPath``n```typescript`n"
-                $Lines = Get-Content $File.FullName -Encoding UTF8
+            try {
+                $Lines = @(Get-Content $File.FullName -Encoding UTF8)
+                $Signatures = @()
                 for ($i = 0; $i -lt $Lines.Count; $i++) {
-                    $Line = $Lines[$i].Trim()
-                    if ($Line -match '^export\s+(interface|type|enum)') {
-                        $FinalContent += "$Line`n"
-                        if ($Line -notmatch '\}' -and $Line -notmatch ' = ') {
+                    $RawLine = $Lines[$i]
+                    if ($null -eq $RawLine) { continue }
+                    $Line = $RawLine.Trim()
+                    if ($Line -match '^(?:export\s+)?(interface|type|enum)\s+[A-Za-z0-9_]+') {
+                        $Block = "$Line`n"
+                        if ($Line -notmatch '\}' -and $Line -notmatch ' = ' -and $Line -notmatch ';$') {
                             $j = $i + 1
                             while ($j -lt $Lines.Count -and $Lines[$j] -notmatch '^\}') {
-                                $FinalContent += "$($Lines[$j])`n"
+                                $Block += "$($Lines[$j])`n"
                                 $j++
                             }
-                            if ($j -lt $Lines.Count) { $FinalContent += "$($Lines[$j])`n" }
+                            if ($j -lt $Lines.Count) { $Block += "$($Lines[$j])`n" }
                             $i = $j
                         }
-                    } elseif ($Line -match '^export\s+(const|function|class)') {
-                        $Signature = $Line -replace '\{.*$', '' -replace '\s*=>.*$', ''
-                        $FinalContent += "$Signature`n"
+                        $Signatures += $Block
+                    } elseif ($Line -match '^(?:export\s+)?(?:const|function|class)\s+[A-Za-z0-9_]+') {
+                        $Signature = ($Line -replace '\{.*$', '') -replace '\s*=>.*$', ''
+                        $Signatures += "$Signature`n"
+                    } elseif ($Line -match '^(?:public|protected|private|internal)\s+(?:class|interface|record|struct|enum)\s+[A-Za-z0-9_]+') {
+                        $Signature = $Line -replace '\{.*$', ''
+                        $Signatures += "$Signature`n"
+                    } elseif ($Line -match '^(?:def|class)\s+[A-Za-z0-9_]+') {
+                        $Signature = $Line -replace ':$', ''
+                        $Signatures += "$Signature`n"
+                    } elseif ($Line -match '^func\s+[A-Za-z0-9_]+') {
+                        $Signature = $Line -replace '\{.*$', ''
+                        $Signatures += "$Signature`n"
+                    } elseif ($Line -match '^(?:pub\s+)?(?:fn|struct|enum|trait)\s+[A-Za-z0-9_]+') {
+                        $Signature = $Line -replace '\{.*$', ''
+                        $Signatures += "$Signature`n"
                     }
                 }
-                $FinalContent += "````n`n"
+            } catch {
+                $BlueprintIssues += "[$RelPath] $($_.Exception.Message)"
+                continue
+            }
+            
+            if ($Signatures.Count -gt 0) {
+                $Ext = $File.Extension.TrimStart('.')
+                if ($Ext -match "^(tsx?)$") { $Ext = "typescript" }
+                elseif ($Ext -match "^(jsx?)$") { $Ext = "javascript" }
+                elseif ($Ext -match "^(py)$") { $Ext = "python" }
+                elseif ($Ext -match "^(cs)$") { $Ext = "csharp" }
+                elseif ($Ext -match "^(rb)$") { $Ext = "ruby" }
+                elseif ($Ext -match "^(rs)$") { $Ext = "rust" }
+                elseif ($Ext -match "^(kt)$") { $Ext = "kotlin" }
+                elseif ($Ext -match "^(go)$") { $Ext = "go" }
+                elseif ($Ext -match "^(java)$") { $Ext = "java" }
+                elseif ($Ext -match "^(php)$") { $Ext = "php" }
+                elseif ($Ext -match "^(c|h|cpp|hpp)$") { $Ext = "cpp" }
+                
+                $FinalContent += "### File: $RelPath`n" + '```' + $Ext + "`n"
+                $FinalContent += ($Signatures -join '')
+                $FinalContent += '```' + "`n`n"
             }
         }
     }
@@ -248,19 +291,29 @@ try {
     $Copied = $false
 }
 
-Write-Host "`n==================================================" -ForegroundColor Green
-Write-Host " [✓] ARTEFATO CONSOLIDADO COM SUCESSO" -ForegroundColor Green
-Write-Host "==================================================" -ForegroundColor Green
+if ($BlueprintIssues -and $BlueprintIssues.Count -gt 0) {
+    Write-Host "`n==================================================" -ForegroundColor Yellow
+    Write-Host " [!] ARTEFATO GERADO COM AVISOS" -ForegroundColor Yellow
+    Write-Host "==================================================" -ForegroundColor Yellow
+    Write-Host " ⚠️  Ocorreram $($BlueprintIssues.Count) aviso(s) durante o BLUEPRINT:" -ForegroundColor Yellow
+    foreach ($Issue in ($BlueprintIssues | Select-Object -First 10)) {
+        Write-Host "   - $Issue" -ForegroundColor DarkYellow
+    }
+} else {
+    Write-Host "`n==================================================" -ForegroundColor Green
+    Write-Host " [✓] ARTEFATO CONSOLIDADO COM SUCESSO" -ForegroundColor Green
+    Write-Host "==================================================" -ForegroundColor Green
+}
 
 if ($Choice -eq '1') { $ModoNome = "BUNDLER" }
 elseif ($Choice -eq '2') { $ModoNome = "BLUEPRINT" }
 else { $ModoNome = "SELECTIVE" }
 
 Write-Host " 📌 Modo     : $ModoNome"
-Write-Host " 📄 Arquivo  : $OutputFile"
-Write-Host " 📦 Tokens   : ~$TokenEstimate (Estimativa bruta)"
-if ($Copied) { Write-Host " 📋 Status   : Copiado para a área de transferência." -ForegroundColor Cyan }
-else { Write-Host " 💾 Status   : Arquivo salvo localmente." -ForegroundColor Yellow }
+Write-Host " 📄 Arquivo   : $OutputFile"
+Write-Host " 📦 Tokens    : ~$TokenEstimate"
+if ($Copied) { Write-Host " 📋 Status    : Copiado para a área de transferência." -ForegroundColor Cyan }
+else { Write-Host " 💾 Status    : Arquivo salvo localmente." -ForegroundColor Yellow }
 Write-Host "==================================================`n" -ForegroundColor Green
 
 # ==========================================
@@ -273,14 +326,17 @@ if ($SendToAI -match '^[Ss]$') {
     $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
     
     if (Test-Path $AgentScript) {
-        cmd.exe /c npx tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`"
-        Write-Host "`n[✓] Execução finalizada. Verifique: _AI_CONTEXT_$ProjectName.md" -ForegroundColor Green
-    } else {
-        Write-Warning "Falha: Script groq-agent.ts não localizado em: $ToolkitDir"
-    }
-} else {
-    Write-Host "`nOperação concluída. Fluxo de IA ignorado." -ForegroundColor DarkGray
-}
+        # Define variável de ambiente para silenciar o dotenv (algumas versões respeitam)
+        $env:DOTENV_CONFIG_SILENT="true"
 
-Write-Host ""
+        # Executa o comando e filtra linhas que contenham "[dotenv]" ou mensagens de update do npm
+        cmd.exe /c npx --quiet tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`" 2>&1 | 
+            Where-Object { $_ -notmatch "\[dotenv@.*\]" -and $_ -notmatch "npx: installed" } | 
+            ForEach-Object { Write-Host "    $_.ToString()" -ForegroundColor Cyan }
+
+        Write-Host "`n[✓] Documento de Contexto gerado com sucesso!" -ForegroundColor Green
+    } else {
+        Write-Warning "Falha: Script groq-agent.ts não localizado."
+    }
+}
 Pause

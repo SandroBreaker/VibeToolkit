@@ -1,4 +1,140 @@
-﻿# =================================================================
+# PROJECT BUNDLER: VibeToolkit
+
+## 1. PROJECT STRUCTURE
+```text
+.\groq-agent.ts
+.\package.json
+.\project-bundler.ps1
+.\README.md
+.\setup-menu.ps1
+.\tsconfig.json
+```
+
+## 2. SOURCE FILES
+
+### File: .\groq-agent.ts
+```typescript
+import Groq from "groq-sdk";
+import * as dotenv from "dotenv";
+import { promises as fs } from "fs";
+import * as path from "path";
+
+dotenv.config({ path: path.resolve(__dirname, ".env") });
+
+interface GroqRequestParams {
+    model: string;
+    systemContent: string;
+    userPrompt: string;
+    temperature?: number;
+    maxTokens?: number;
+}
+
+const logger = {
+    info: (message: string) => {
+        console.log(`[AI] ${message}`);
+    },
+    error: (message: string, error?: any) => {
+        console.error(`[!] ERRO: ${message}`);
+        if (error) {
+            if (error.status === 401) console.error("    Detalhes: Chave de API inválida ou não encontrada.");
+            else if (error.status === 429) console.error("    Detalhes: Limite de requisições atingido.");
+            else console.error(`    Detalhes: ${error.message || error}`);
+        }
+    }
+};
+
+const SYSTEM_PROMPT = `
+ROLE: PRINCIPAL_SOFTWARE_ARCHITECT
+OBJECTIVE: Analisar o dump de um projeto e gerar um "AI Context Briefing" de ALTÍSSIMA DENSIDADE + um <system_instruction> EXECUTOR.
+
+ESTRUTURA OBRIGATÓRIA DA SAÍDA (MARKDOWN):
+1) <system_instruction> (O bloco executor baseado no projeto)
+2) # AI PROJECT CONTEXT BRIEFING (As 5 seções técnicas)
+`;
+
+class GroqService {
+    private client: Groq;
+    constructor() { 
+        this.client = new Groq({ apiKey: process.env.GROQ_API_KEY || "MISSING_KEY" }); 
+    }
+
+    public async generateContextDocument(params: GroqRequestParams): Promise<string | null> {
+        try {
+            const response = await this.client.chat.completions.create({
+                messages: [{ role: "system", content: params.systemContent }, { role: "user", content: params.userPrompt }],
+                model: params.model,
+                temperature: 0.1,
+            });
+            return response.choices[0]?.message?.content || null;
+        } catch (error) {
+            logger.error("Falha na API Groq", error);
+            return null;
+        }
+    }
+}
+
+async function main() {
+    // Validação imediata da API Key para ajudar o usuário
+    if (!process.env.GROQ_API_KEY) {
+        logger.error("GROQ_API_KEY não configurada no arquivo .env");
+        process.exit(1);
+    }
+
+    const [bundlePath, projectName] = process.argv.slice(2);
+    if (!bundlePath) process.exit(1);
+
+    const absolutePath = path.resolve(process.cwd(), bundlePath);
+    let sourceCodeDump = await fs.readFile(absolutePath, "utf-8");
+
+    sourceCodeDump = sourceCodeDump.replace(/<system_instruction>[\s\S]*?<\/system_instruction>/g, "").trim();
+
+    const groqService = new GroqService();
+    const result = await groqService.generateContextDocument({
+        model: "llama-3.3-70b-versatile",
+        systemContent: SYSTEM_PROMPT,
+        userPrompt: `Analise este projeto '${projectName}':\n\n${sourceCodeDump}`,
+    });
+
+    if (result) {
+        const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_${projectName}.md`);
+        const finalFile = `${result.trim()}\n\n---\n\n# PROJECT BLUEPRINT (TECHNICAL REFERENCE)\n${sourceCodeDump}`;
+        await fs.writeFile(outputPath, finalFile, "utf-8");
+        logger.info("Contexto unificado gerado sem duplicidade.");
+    }
+}
+
+main();
+```
+
+### File: .\package.json
+```json
+{
+  "name": "vibetoolkit",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "groq-sdk": "^0.37.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
+```
+
+### File: .\project-bundler.ps1
+```ps1
+# =================================================================
 # VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
 # =================================================================
 
@@ -340,3 +476,177 @@ if ($SendToAI -match '^[Ss]$') {
     }
 }
 Pause
+```
+
+### File: .\README.md
+```md
+# ⚡ VibeToolkit - AI Context Synthesizer & Bundler
+
+O **VibeToolkit** é uma ferramenta de linha de comando (CLI) construída com **PowerShell** e **Node.js** que atua como um engenheiro reverso para seus projetos de software.
+
+Ele varre seu repositório, extrai contratos, tipagens e arquitetura, e utiliza a API da **Groq (Llama 3.3 70B)** para gerar um "Super Prompt" de altíssima densidade. O resultado é um documento otimizado que você envia para qualquer LLM (ChatGPT, Claude, Gemini) para que a IA codifique no seu projeto com precisão milimétrica e zero alucinação.
+
+## 🚨 O Problema que Resolvemos
+
+Trabalhar com LLMs em projetos grandes envolve um gargalo terrível de contexto:
+
+1. **Caos Manual:** Copiar e colar dezenas de arquivos é lento e gera erros.
+2. **Desperdício de Tokens:** Enviar o código inteiro é caro e "dilui" a atenção da IA.
+3. **Alucinação Arquitetural:** Sem interfaces claras, a IA inventa propriedades e quebra o build.
+
+## 🛠️ A Solução (Vibe Workflow)
+
+O toolkit automatiza a extração e cria um **AI Context Document** (`.md`) consolidado contendo:
+
+* **Persona Executora:** Instruções estritas para garantir entregas de código completas.
+* **AI Briefing (Zero Fluff):** Resumo estratégico gerado pelo Llama 3 focado em Tech Stack e Guardrails.
+* **Project Blueprint:** Mapeamento de assinaturas, tipos e estruturas de arquivos para referência técnica.
+
+---
+
+## 🌟 Dica de Ouro: Como interagir com o resultado
+
+Para um pair-programming de elite com Claude, ChatGPT ou Gemini, não basta apenas enviar o arquivo. Use a **consciência situacional** a seu favor:
+
+1. Faça o upload do arquivo gerado (ex: `_AI_CONTEXT_MeuProjeto.md`).
+2. Faça o upload do arquivo específico que você quer modificar (ex: `UserService.ts`).
+3. **Dê a ordem mestre:** > *"Analise o arquivo `_AI_CONTEXT_` anexo para entender nossos padrões globais. Agora, refatore este `UserService.ts` para implementar o novo padrão de erro definido no Blueprint, garantindo que a tipagem respeite a interface `IAppError`."*
+
+---
+
+## 🚀 Como Instalar
+
+### Pré-requisitos
+
+* **Node.js** (v18+).
+* **PowerShell**.
+* Chave de API gratuita da [Groq Console](https://console.groq.com/).
+
+### Passo a Passo
+
+1. Clone este repositório.
+2. Instale as dependências:
+```bash
+npm install
+
+```
+
+3. Configure sua chave no arquivo `.env` (use o `.env.example` como base):
+```env
+GROQ_API_KEY=gsk_sua_chave_aqui
+
+```
+
+### 🖱️ Setup Automático (Windows)
+
+Para facilitar a vida, o toolkit vem com um script que configura as permissões do PowerShell e adiciona a ferramenta ao seu menu do botão direito:
+
+1. Execute o script `setup-menu.ps1` como **Administrador**.
+2. O script configurará a política de execução (`RemoteSigned`) e integrará o menu automaticamente.
+3. **Pronto!** Clique com o botão direito em qualquer pasta de projeto e selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
+
+---
+
+## 💻 Modos de Extração
+
+Ao rodar o toolkit, você terá três opções no menu interativo:
+
+| Modo | Descrição | Quando usar |
+| --- | --- | --- |
+| **[ 1 ] BUNDLER** | Consolida o código-fonte completo de todos os arquivos permitidos. | Projetos pequenos onde o código inteiro cabe no contexto da IA. |
+| **[ 2 ] BLUEPRINT** | Extrai apenas a "casca" técnica: interfaces, tipos, classes e assinaturas. | Projetos grandes onde você precisa que a IA entenda a arquitetura sem ler todo o código. |
+| **[ 3 ] SELECTIVE** | Permite escolher manualmente quais arquivos entrarão no contexto. | Quando você está trabalhando em uma feature específica que toca apenas 3 ou 4 arquivos. |
+
+---
+
+## 🛡️ Segurança e Privacidade
+
+O toolkit ignora automaticamente `node_modules`, `.git`, arquivos de lock e outros dados sensíveis via lista de exclusão configurável. O processamento via Groq foca apenas na extração da lógica estrutural.
+
+---
+
+**Quer que eu te ajude a gerar um arquivo `.env.example` pronto para acompanhar esse README?**
+```
+
+### File: .\setup-menu.ps1
+```ps1
+# =================================================================
+# VibeToolkit - Context Menu & Environment Auto-Installer
+# =================================================================
+
+# 1. TENTA CONFIGURAR A POLÍTICA DE EXECUÇÃO AUTOMATICAMENTE
+Write-Host "[*] Configurando permissões do PowerShell..." -ForegroundColor Cyan
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+
+# 2. VERIFICA PRÉ-REQUISITOS (NODE.JS)
+$NodeCheck = Get-Command node -ErrorAction SilentlyContinue
+if (-not $NodeCheck) {
+    Write-Error "Node.js não encontrado! Por favor, instale o Node.js antes de continuar."
+    Pause
+    exit
+}
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BundlerPath = Join-Path $ScriptDir "project-bundler.ps1"
+$RegFile = Join-Path $ScriptDir "install-vibe-menu.reg"
+
+$EscapedPath = $BundlerPath -replace '\\', '\\\\'
+
+$RegContent = @"
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkit]
+@="Gerar Blueprint / Contexto (Vibe AI)"
+"Icon"="powershell.exe"
+
+[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkit\command]
+@="powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"$EscapedPath\" -Path \"%V\""
+
+[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkit]
+@="Gerar Blueprint / Contexto (Vibe AI)"
+"Icon"="powershell.exe"
+
+[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkit\command]
+@="powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"$EscapedPath\" -Path \"%1\""
+"@
+
+try {
+    [System.IO.File]::WriteAllText($RegFile, $RegContent, [System.Text.Encoding]::Unicode)
+    
+    Write-Host "==================================================" -ForegroundColor Green
+    Write-Host " [✓] Verificações de ambiente concluídas!" -ForegroundColor Green
+    Write-Host " [✓] Ficheiro de registo gerado com sucesso!" -ForegroundColor Green
+    Write-Host "==================================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Deseja aplicar as alterações ao Registro (Botão Direito) agora? (S/N)" -ForegroundColor Cyan
+    
+    $Confirm = Read-Host
+    if ($Confirm -match '^[Ss]$') {
+        Start-Process "regedit.exe" -ArgumentList "/s `"$RegFile`"" -Verb RunAs
+        Write-Host "[✓] Menu de contexto instalado e permissões configuradas!" -ForegroundColor Green
+    }
+} catch {
+    Write-Error "Falha ao gerar o ficheiro: $($_.Exception.Message)"
+}
+
+Pause
+```
+
+### File: .\tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist"
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+

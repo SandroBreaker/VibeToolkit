@@ -2,16 +2,31 @@
 # VibeToolkit - Context Menu & Environment Auto-Installer
 # =================================================================
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
 # 1. TENTA CONFIGURAR A POLÍTICA DE EXECUÇÃO AUTOMATICAMENTE
-Write-Host "[*] Configurando permissões do PowerShell..." -ForegroundColor Cyan
+Write-Host "Preparando tudo para você..." -ForegroundColor Cyan
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 # 2. VERIFICA PRÉ-REQUISITOS (NODE.JS)
 $NodeCheck = Get-Command node -ErrorAction SilentlyContinue
 if (-not $NodeCheck) {
-    Write-Error "Node.js não encontrado! Por favor, instale o Node.js antes de continuar."
+    Write-Host "Ops! O VibeToolkit precisa do Node.js instalado. Baixe rapidamente em nodejs.org, instale e rode este script novamente." -ForegroundColor Yellow
     Pause
     exit
+}
+
+# 3. VERIFICA E CRIA ARQUIVO .ENV
+$EnvFile = Join-Path $ScriptDir ".env"
+if (-not (Test-Path $EnvFile)) {
+    Write-Host "`nPrecisamos da sua chave da Groq para a Inteligência Artificial funcionar." -ForegroundColor Cyan
+    $ApiKey = Read-Host "Cole aqui sua chave gratuita da Groq API (acesse console.groq.com)"
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+        "GROQ_API_KEY=$ApiKey" | Set-Content -Path $EnvFile -Encoding UTF8
+        Write-Host "Chave salva com sucesso no arquivo .env!" -ForegroundColor Green
+    } else {
+        Write-Host "Nenhuma chave foi colada. Você precisará criar o arquivo .env manualmente depois." -ForegroundColor Yellow
+    }
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -41,20 +56,18 @@ Windows Registry Editor Version 5.00
 try {
     [System.IO.File]::WriteAllText($RegFile, $RegContent, [System.Text.Encoding]::Unicode)
     
-    Write-Host "==================================================" -ForegroundColor Green
-    Write-Host " [✓] Verificações de ambiente concluídas!" -ForegroundColor Green
-    Write-Host " [✓] Ficheiro de registo gerado com sucesso!" -ForegroundColor Green
-    Write-Host "==================================================" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Deseja aplicar as alterações ao Registro (Botão Direito) agora? (S/N)" -ForegroundColor Cyan
+    Write-Host "`nQuase pronto! O último passo é adicionar a opção do VibeToolkit no seu Windows." -ForegroundColor Cyan
+    $Confirm = Read-Host "Deseja adicionar o atalho ao botão direito do mouse agora? (S/N)"
     
-    $Confirm = Read-Host
     if ($Confirm -match '^[Ss]$') {
         Start-Process "regedit.exe" -ArgumentList "/s `"$RegFile`"" -Verb RunAs
-        Write-Host "[✓] Menu de contexto instalado e permissões configuradas!" -ForegroundColor Green
+        Write-Host "Tudo pronto! O atalho foi adicionado com sucesso. :)" -ForegroundColor Green
+    } else {
+        Write-Host "Tudo bem! Você pode rodar este script novamente caso mude de ideia." -ForegroundColor Yellow
     }
 } catch {
-    Write-Error "Falha ao gerar o ficheiro: $($_.Exception.Message)"
+    Write-Host "Ops, não foi possível criar o arquivo de atalho. Tente rodar como Administrador." -ForegroundColor Red
 }
 
-Pause
+Write-Host "`nPressione Enter para sair..." -ForegroundColor Cyan
+Read-Host | Out-Null

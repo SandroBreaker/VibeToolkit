@@ -20,26 +20,34 @@ const logger = {
     error: (message: string, error?: any) => {
         console.error(`[!] ERRO: ${message}`);
         if (error) {
-            if (error.status === 401) console.error("    Detalhes: Chave de API inválida ou não encontrada.");
-            else if (error.status === 429) console.error("    Detalhes: Limite de requisições atingido.");
-            else console.error(`    Detalhes: ${error.message || error}`);
+            if (error.status === 401) {
+                console.error("    Sua chave da Groq falhou. Verifique o arquivo .env.");
+                console.error("    Dica: Acesse console.groq.com, crie uma nova chave e cole lá.");
+            }
+            else if (error.status === 429) {
+                console.error("    O limite de uso gratuito da Groq foi atingido. Tente novamente em alguns minutos.");
+            }
+            else {
+                console.error(`    Detalhes técnicos: ${error.message || error}`);
+            }
         }
     }
 };
 
 const SYSTEM_PROMPT = `
-ROLE: PRINCIPAL_SOFTWARE_ARCHITECT
-OBJECTIVE: Analisar o dump de um projeto e gerar um "AI Context Briefing" de ALTÍSSIMA DENSIDADE + um <system_instruction> EXECUTOR.
+Você é um "Professor de Programação Paciente". 
+Sua tarefa é analisar o código do projeto enviado e gerar um resumo muito claro, didático e sem jargões complexos sobre:
+1. Quais tecnologias este projeto usa.
+2. Como os arquivos e pastas estão organizados (arquitetura).
+3. Para que serve este projeto, de forma simples.
 
-ESTRUTURA OBRIGATÓRIA DA SAÍDA (MARKDOWN):
-1) <system_instruction> (O bloco executor baseado no projeto)
-2) # AI PROJECT CONTEXT BRIEFING (As 5 seções técnicas)
+Não crie explicações longas ou código novo agora. Apenas entregue um resumo fácil de entender para quem está começando a mexer neste projeto.
 `;
 
 class GroqService {
     private client: Groq;
-    constructor() { 
-        this.client = new Groq({ apiKey: process.env.GROQ_API_KEY || "MISSING_KEY" }); 
+    constructor() {
+        this.client = new Groq({ apiKey: process.env.GROQ_API_KEY || "MISSING_KEY" });
     }
 
     public async generateContextDocument(params: GroqRequestParams): Promise<string | null> {
@@ -60,7 +68,7 @@ class GroqService {
 async function main() {
     // Validação imediata da API Key para ajudar o usuário
     if (!process.env.GROQ_API_KEY) {
-        logger.error("GROQ_API_KEY não configurada no arquivo .env");
+        logger.error("Ops! Não achamos a sua chave da API da Groq no arquivo .env");
         process.exit(1);
     }
 
@@ -81,9 +89,16 @@ async function main() {
 
     if (result) {
         const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_${projectName}.md`);
-        const finalFile = `${result.trim()}\n\n---\n\n# PROJECT BLUEPRINT (TECHNICAL REFERENCE)\n${sourceCodeDump}`;
+
+        const instructionalHeader = `> # COTEXTO DO PROJETO - VIBETOOLKIT
+> **COMO USAR ESTE ARQUIVO:**
+> Instruções: Copie TODO o conteúdo deste arquivo e cole no ChatGPT, Claude ou Gemini. Na linha de baixo, escreva o que você quer fazer (Exemplo: 'Com base nesse meu projeto, crie um botão azul na tela inicial').
+
+`;
+
+        const finalFile = `${instructionalHeader}${result.trim()}\n\n---\n\n# ESTRUTURA E CÓDIGO (REFERÊNCIA TÉCNICA)\n${sourceCodeDump}`;
         await fs.writeFile(outputPath, finalFile, "utf-8");
-        logger.info("Contexto unificado gerado sem duplicidade.");
+        logger.info("Resumo criado com sucesso e pronto para uso.");
     }
 }
 

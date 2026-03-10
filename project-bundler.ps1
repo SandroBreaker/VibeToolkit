@@ -21,9 +21,9 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host "          VIBE AI TOOLKIT - $ProjectName          " -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "Selecione o modo de extração de contexto:`n"
-Write-Host " [ 1 ] BUNDLER   (Código Completo - Todos os arquivos)" -ForegroundColor Yellow
-Write-Host " [ 2 ] BLUEPRINT (Arquitetura e Assinaturas TypeScript)" -ForegroundColor Green
-Write-Host " [ 3 ] SELECTIVE (Escolha manual de arquivos específicos)" -ForegroundColor Magenta
+Write-Host " [ 1 ] Modo Copiar Tudo (Recomendado para projetos pequenos)" -ForegroundColor Yellow
+Write-Host " [ 2 ] Modo Inteligente (Copia apenas a estrutura do projeto - gasta menos IA)" -ForegroundColor Green
+Write-Host " [ 3 ] Modo Manual (Você escolhe os arquivos da lista)" -ForegroundColor Magenta
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -140,13 +140,13 @@ $BlueprintIssues = @()
 
 if ($Choice -eq '1' -or $Choice -eq '3') {
     if ($Choice -eq '1') {
-        $OutputFile = "_BUNDLER__${ProjectName}.md"
-        Write-Host "`n[>] Executando BUNDLER: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Yellow
-        $HeaderTitle = "PROJECT BUNDLER"
+        $OutputFile = "_COPIAR_TUDO__${ProjectName}.md"
+        Write-Host "`n[>] Iniciando Modo Copiar Tudo: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Yellow
+        $HeaderTitle = "MODO COPIAR TUDO"
     } else {
-        $OutputFile = "_SELECTIVE__${ProjectName}.md"
-        Write-Host "`n[>] Executando SELECTIVE: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Magenta
-        $HeaderTitle = "PROJECT BUNDLER (SELECTIVE)"
+        $OutputFile = "_MANUAL__${ProjectName}.md"
+        Write-Host "`n[>] Iniciando Modo Manual: Consolidando $($FilesToProcess.Count) arquivo(s)..." -ForegroundColor Magenta
+        $HeaderTitle = "MODO MANUAL"
     }
     
     $FinalContent += "# ${HeaderTitle}: $ProjectName`n`n"
@@ -185,10 +185,10 @@ if ($Choice -eq '1' -or $Choice -eq '3') {
     }
 
 } else {
-    $OutputFile = "_BLUEPRINT__${ProjectName}.md"
-    Write-Host "`n[>] Executando BLUEPRINT: Extraindo contratos de arquitetura..." -ForegroundColor Green
+    $OutputFile = "_INTELIGENTE__${ProjectName}.md"
+    Write-Host "`n[>] Iniciando Modo Inteligente: Extraindo contratos e estrutura..." -ForegroundColor Green
     
-    $FinalContent += "# PROJECT BLUEPRINT: $ProjectName`n`n"
+    $FinalContent += "# MODO INTELIGENTE: $ProjectName`n`n"
     
     $FinalContent += "## 1. TECH STACK`n"
     if (Test-Path "package.json") {
@@ -305,9 +305,9 @@ if ($BlueprintIssues -and $BlueprintIssues.Count -gt 0) {
     Write-Host "==================================================" -ForegroundColor Green
 }
 
-if ($Choice -eq '1') { $ModoNome = "BUNDLER" }
-elseif ($Choice -eq '2') { $ModoNome = "BLUEPRINT" }
-else { $ModoNome = "SELECTIVE" }
+if ($Choice -eq '1') { $ModoNome = "Copiar Tudo" }
+elseif ($Choice -eq '2') { $ModoNome = "Inteligente" }
+else { $ModoNome = "Manual" }
 
 Write-Host " 📌 Modo     : $ModoNome"
 Write-Host " 📄 Arquivo   : $OutputFile"
@@ -321,7 +321,7 @@ Write-Host "==================================================`n" -ForegroundCol
 # ==========================================
 $SendToAI = Read-Host "Deseja que a IA gere o 'AI Context Document' agora? (S/N)"
 if ($SendToAI -match '^[Ss]$') {
-    Write-Host "`n[~] Processando contexto no Groq via SDK. Aguarde..." -ForegroundColor Yellow
+    Write-Host "`nConversando com a IA... isso pode levar alguns segundos." -ForegroundColor Yellow
     
     $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
     
@@ -329,12 +329,10 @@ if ($SendToAI -match '^[Ss]$') {
         # Define variável de ambiente para silenciar o dotenv (algumas versões respeitam)
         $env:DOTENV_CONFIG_SILENT="true"
 
-        # Executa o comando e filtra linhas que contenham "[dotenv]" ou mensagens de update do npm
-        cmd.exe /c npx --quiet tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`" 2>&1 | 
-            Where-Object { $_ -notmatch "\[dotenv@.*\]" -and $_ -notmatch "npx: installed" } | 
-            ForEach-Object { Write-Host "    $_.ToString()" -ForegroundColor Cyan }
+        # Executa o comando silenciando toda a saída padrão e de erro
+        $null = cmd.exe /c npx --quiet tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`" 2>&1
 
-        Write-Host "`n[✓] Documento de Contexto gerado com sucesso!" -ForegroundColor Green
+        Write-Host "Pronto! O resumo do seu projeto está na área de transferência." -ForegroundColor Green
     } else {
         Write-Warning "Falha: Script groq-agent.ts não localizado."
     }

@@ -1,5 +1,4 @@
-﻿# =================================================================
-# VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
+﻿# VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
 # =================================================================
 
 [CmdletBinding()]

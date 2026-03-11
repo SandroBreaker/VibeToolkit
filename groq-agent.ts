@@ -90,10 +90,7 @@ async function main() {
     if (result) {
         const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_${projectName}.md`);
 
-        const instructionalHeader = `> # CONTEXTO DO PROJETO - VIBETOOLKIT
-> **COMO USAR ESTE ARQUIVO:**
-> Instruções: Copie TODO o conteúdo deste arquivo e cole no ChatGPT, Claude ou Gemini. Na linha de baixo, escreva o que você quer fazer (Exemplo: 'Com base nesse meu projeto, crie um botão azul na tela inicial').
-
+        const instructionalHeader = `> # CONTEXTO DO PROJETO
 `;
 
         const finalFile = `${instructionalHeader}${result.trim()}\n\n---\n\n# ESTRUTURA E CÓDIGO (REFERÊNCIA TÉCNICA)\n${sourceCodeDump}`;

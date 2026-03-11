@@ -13,6 +13,7 @@
 .\setup-menu.ps1
 .\tsconfig.json
 .\_COPIAR_TUDO__VibeToolkit.md
+.\_INTELIGENTE__VibeToolkit.md
 ```
 
 ## 3. CORE DOMAINS & CONTRACTS
@@ -33,7 +34,7 @@ const absolutePath = path.resolve(process.cwd(), bundlePath);
 const groqService = new GroqService();
 const result = await groqService.generateContextDocument(
 const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_$
-const instructionalHeader = `> # COTEXTO DO PROJETO - VIBETOOLKIT
+const instructionalHeader = `> # CONTEXTO DO PROJETO
 const finalFile = `$
 ```
 

@@ -1,45 +1,61 @@
-> # COTEXTO DO PROJETO - VIBETOOLKIT
-> **COMO USAR ESTE ARQUIVO:**
-> Instruções: Copie TODO o conteúdo deste arquivo e cole no ChatGPT, Claude ou Gemini. Na linha de baixo, escreva o que você quer fazer (Exemplo: 'Com base nesse meu projeto, crie um botão azul na tela inicial').
-
-Olá! Vamos analisar o projeto "VibeToolkit" juntos.
+> # CONTEXTO DO PROJETO
+Aqui está um resumo claro e simples sobre o projeto VibeToolkit:
 
 **1. Tecnologias usadas:**
-Este projeto utiliza as seguintes tecnologias:
-- Node.js (um ambiente de execução para JavaScript)
-- TypeScript (uma linguagem de programação que é uma extensão do JavaScript)
-- Dotenv (uma biblioteca para gerenciar variáveis de ambiente)
-- Groq SDK (uma biblioteca para interagir com a plataforma Groq)
-- TSX (uma ferramenta para compilar arquivos TypeScript)
+O projeto VibeToolkit utiliza as seguintes tecnologias:
+- dotenv (para gerenciar variáveis de ambiente)
+- groq-sdk (para interagir com a API do Groq)
+- TypeScript (para escrever o código)
+- Node.js (para executar o código)
 
-**2. Organização dos arquivos e pastas (arquitetura):**
-Infelizmente, com base apenas no arquivo `package.json` fornecido, não é possível saber exatamente como os arquivos e pastas estão organizados. No entanto, podemos supor que o projeto segue uma estrutura comum para projetos Node.js, com arquivos como `index.js` (especificado como o ponto de entrada do projeto) e possivelmente pastas para armazenar código-fonte, testes, etc.
+**2. Organização dos arquivos e pastas:**
+Os arquivos e pastas estão organizados da seguinte forma:
+- O projeto tem um arquivo `groq-agent.ts` que contém o código principal
+- Existem arquivos de configuração como `package.json`, `tsconfig.json` e `README.md`
+- Há também scripts em PowerShell como `project-bundler.ps1` e `setup-menu.ps1`
 
-**3. Para que serve este projeto:**
-Este projeto parece ser uma ferramenta ou biblioteca que fornece funcionalidades relacionadas à plataforma Groq, utilizando o SDK da Groq. O projeto também utiliza Dotenv para gerenciar variáveis de ambiente, o que sugere que pode ser configurado para diferentes ambientes ou usos. No entanto, sem mais informações, é difícil determinar o propósito exato do projeto. Pode ser uma ferramenta de linha de comando, uma biblioteca para ser usada em outros projetos, ou algo mais específico.
+**3. Propósito do projeto:**
+O projeto VibeToolkit parece ser uma ferramenta para gerar contextos de projeto de forma inteligente, utilizando a API do Groq. Ele pode ser usado para criar documentos de contexto para projetos, com base em prompts de usuário e modelos pré-definidos. Em resumo, é uma ferramenta para ajudar a criar documentos de contexto de forma automática e inteligente.
 
 ---
 
 # ESTRUTURA E CÓDIGO (REFERÊNCIA TÉCNICA)
-{
-  "name": "vibetoolkit",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "dotenv": "^17.3.1",
-    "groq-sdk": "^0.37.0"
-  },
-  "devDependencies": {
-    "@types/node": "^25.3.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  }
+# MODO INTELIGENTE: VibeToolkit
+
+## 1. TECH STACK
+* **Deps:** dotenv, groq-sdk
+* **Dev Deps:** @types/node, tsx, typescript
+
+## 2. PROJECT STRUCTURE
+```text
+.\groq-agent.ts
+.\package.json
+.\project-bundler.ps1
+.\README.md
+.\setup-menu.ps1
+.\tsconfig.json
+.\_COPIAR_TUDO__VibeToolkit.md
+.\_INTELIGENTE__VibeToolkit.md
+```
+
+## 3. CORE DOMAINS & CONTRACTS
+### File: .\groq-agent.ts
+```typescript
+interface GroqRequestParams {
+    model: string;
+    systemContent: string;
+    userPrompt: string;
+    temperature?: number;
+    maxTokens?: number;
 }
+const logger = 
+const SYSTEM_PROMPT = `
+class GroqService 
+const response = await this.client.chat.completions.create(
+const absolutePath = path.resolve(process.cwd(), bundlePath);
+const groqService = new GroqService();
+const result = await groqService.generateContextDocument(
+const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_$
+const instructionalHeader = `> # CONTEXTO DO PROJETO
+const finalFile = `$
+```

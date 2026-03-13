@@ -1,4 +1,4 @@
-> # CONTEXTO DO PROJETO
+# CONTEXTO DO PROJETO
 Aqui está um resumo claro e fácil de entender sobre o projeto "VibeToolkit":
 
 **1. Tecnologias usadas:**

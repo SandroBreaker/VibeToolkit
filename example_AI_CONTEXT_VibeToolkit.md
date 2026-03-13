@@ -1,4 +1,4 @@
-> # CONTEXTO DO PROJETO
+# CONTEXTO DO PROJETO
 Aqui está um resumo claro e fácil de entender sobre o projeto "VibeToolkit":
 
 **1. Tecnologias usadas:**
@@ -35,7 +35,6 @@ O projeto "VibeToolkit" parece ser uma ferramenta que utiliza a API do Groq para
 .\remove-menu.ps1
 .\setup-menu.ps1
 .\tsconfig.json
-.\_COPIAR_TUDO__VibeToolkit.md
 ```
 
 ## 3. CORE DOMAINS & CONTRACTS

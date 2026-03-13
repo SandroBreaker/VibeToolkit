@@ -1,8 +1,8 @@
 > # CONTEXTO DO PROJETO
-Aqui está um resumo claro e simples sobre o projeto VibeToolkit:
+Aqui está um resumo claro e fácil de entender sobre o projeto "VibeToolkit":
 
 **1. Tecnologias usadas:**
-O projeto VibeToolkit utiliza as seguintes tecnologias:
+O projeto utiliza as seguintes tecnologias:
 - dotenv (para gerenciar variáveis de ambiente)
 - groq-sdk (para interagir com a API do Groq)
 - TypeScript (para escrever o código)
@@ -10,12 +10,12 @@ O projeto VibeToolkit utiliza as seguintes tecnologias:
 
 **2. Organização dos arquivos e pastas:**
 Os arquivos e pastas estão organizados da seguinte forma:
-- O projeto tem um arquivo `groq-agent.ts` que contém o código principal
-- Existem arquivos de configuração como `package.json`, `tsconfig.json` e `README.md`
-- Há também scripts em PowerShell como `project-bundler.ps1` e `setup-menu.ps1`
+- Todos os arquivos importantes estão na raiz do projeto, incluindo o arquivo `groq-agent.ts` que contém o código principal.
+- Há arquivos de configuração como `package.json` e `tsconfig.json`.
+- Há também scripts em PowerShell para realizar tarefas específicas.
 
 **3. Propósito do projeto:**
-O projeto VibeToolkit parece ser uma ferramenta para gerar contextos de projeto de forma inteligente, utilizando a API do Groq. Ele pode ser usado para criar documentos de contexto para projetos, com base em prompts de usuário e modelos pré-definidos. Em resumo, é uma ferramenta para ajudar a criar documentos de contexto de forma automática e inteligente.
+O projeto "VibeToolkit" parece ser uma ferramenta que utiliza a API do Groq para gerar contextos de projeto de forma automática. Ele recebe parâmetros como modelo, conteúdo do sistema e prompt do usuário, e então gera um documento de contexto com base nesses parâmetros. O projeto parece ser útil para gerar documentação ou contexto para projetos de forma rápida e eficiente.
 
 ---
 
@@ -32,10 +32,10 @@ O projeto VibeToolkit parece ser uma ferramenta para gerar contextos de projeto 
 .\package.json
 .\project-bundler.ps1
 .\README.md
+.\remove-menu.ps1
 .\setup-menu.ps1
 .\tsconfig.json
 .\_COPIAR_TUDO__VibeToolkit.md
-.\_INTELIGENTE__VibeToolkit.md
 ```
 
 ## 3. CORE DOMAINS & CONTRACTS

@@ -10,10 +10,10 @@
 .\package.json
 .\project-bundler.ps1
 .\README.md
+.\remove-menu.ps1
 .\setup-menu.ps1
 .\tsconfig.json
 .\_COPIAR_TUDO__VibeToolkit.md
-.\_INTELIGENTE__VibeToolkit.md
 ```
 
 ## 3. CORE DOMAINS & CONTRACTS

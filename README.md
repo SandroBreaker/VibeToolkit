@@ -1,4 +1,4 @@
-![VibeToolkit Banner](file:///C:/Users/alede/.gemini/antigravity/brain/ecab1957-f30b-41c3-8ab9-b53d92d18063/vibetoolkit_banner_1773381305290.png)
+![VibeToolkit Banner](vibetoolkit_banner.png)
 
 # ⚡ VibeToolkit: Domine o Vibe-Coding com Contexto Real
 
@@ -56,4 +56,4 @@ Escolha a intensidade do contexto que você quer enviar:
 
 ---
 
-*Desenvolvido para quem quer criar mais e configurar menos.* 🚀
+*Desenvolvido para quem quer criar mais e configurar menos.* 🚀

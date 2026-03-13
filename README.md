@@ -1,62 +1,59 @@
-# ⚡ VibeToolkit: IA com Contexto Real
+![VibeToolkit Banner](file:///C:/Users/alede/.gemini/antigravity/brain/ecab1957-f30b-41c3-8ab9-b53d92d18063/vibetoolkit_banner_1773381305290.png)
 
-O **VibeToolkit** é a ponte definitiva entre o seu código local e as IAs (ChatGPT, Claude, Gemini). Ele resolve o problema da "amnésia" das IAs, consolidando seu projeto em um único documento de contexto inteligente, permitindo que a IA entenda a arquitetura, as tecnologias e a lógica do seu sistema de uma só vez.
+# ⚡ VibeToolkit: Domine o Vibe-Coding com Contexto Real
 
-## 🚀 O que ele faz?
+O **VibeToolkit** é o seu parceiro definitivo para programar com IAs (ChatGPT, Claude, Gemini). Ele elimina a "amnésia" dos modelos, consolidando seu projeto em um **Blueprint Inteligente** que permite à IA entender sua arquitetura, tecnologias e lógica instantaneamente.
 
-* **Mapeamento Inteligente:** Varre suas pastas ignorando arquivos desnecessários (como `node_modules` e travas de pacotes).
-* **Resumo por IA:** Utiliza a API da Groq para gerar um resumo didático no topo do arquivo, explicando o projeto como um "Professor de Programação Paciente".
-* **Integração Nativa:** Adiciona uma opção ao menu de contexto do Windows (botão direito na pasta) para gerar o contexto instantaneamente.
+> **Vibe-coding** é sobre focar na ideia e deixar a IA cuidar dos detalhes. Este toolkit garante que a IA saiba exatamente onde ela está pisando.
+
+---
+
+## ✨ Recursos Mágicos
+
+*   **🔍 Mapeamento Inteligente:** Varre suas pastas ignorando o lixo (`node_modules`, `dist`, etc) e focando no que importa.
+*   **🧠 Mentor de Código:** Utiliza IA (via Groq) para escrever um resumo didático do seu projeto no topo do arquivo.
+*   **🖱️ Integração Nativa:** Clique com o botão direito em qualquer pasta e gere seu contexto em segundos.
+*   **📋 Auto-Copy:** Tudo o que a IA precisa já vai direto para a sua área de transferência. Paste & Go!
 
 ---
 
 ## 🛠️ Modos de Extração
 
-Ao rodar a ferramenta, você pode escolher o nível de detalhe que deseja enviar para a IA:
+Escolha a intensidade do contexto que você quer enviar:
 
-| Modo | Descrição | Uso Ideal |
+| Modo | Estilo | Uso Ideal |
 | --- | --- | --- |
-| **[ 1 ] Copiar Tudo** | Consolida o código-fonte completo de todos os arquivos relevantes. | Projetos pequenos ou depuração de lógica complexa. |
-| **[ 2 ] Inteligente** | Extrai apenas a "assinatura" (esqueleto) das funções, classes e interfaces. | Projetos grandes onde você quer focar na arquitetura e economizar tokens. |
-| **[ 3 ] Manual** | Você seleciona individualmente na lista quais arquivos quer incluir. | Quando você precisa de ajuda com arquivos específicos e quer evitar ruído. |
+| **[ 1 ] Full Vibe** | Tudo o que você escreveu. | Projetos pequenos ou bugs difíceis. |
+| **[ 2 ] Architect** | Apenas as "assinaturas" (esqueleto). | Projetos gigantes, foco em estrutura. |
+| **[ 3 ] Sniper** | Você escolhe arquivo por arquivo. | Focar em uma parte específica sem ruído. |
 
 ---
 
-## 📦 Tecnologias Utilizadas
+## 🚀 Instalando em 30 Segundos
 
-* **Node.js & TypeScript:** Motor principal para processamento de texto e integração com APIs.
-* **PowerShell:** Automação de sistema e integração com o explorador de arquivos do Windows.
-* **Groq SDK (Llama 3):** Inteligência artificial de ultravelocidade para resumir seu código.
-
----
-
-## ⚙️ Como Instalar (Passo a Passo)
-
-1. **Pré-requisitos:** Certifique-se de ter o [Node.js](https://nodejs.org/) instalado em sua máquina.
-2. **Configuração Inicial:** Dentro da pasta do VibeToolkit, clique com o botão direito no arquivo `setup-menu.ps1` e selecione **"Executar com o PowerShell"**.
-3. **Chave da API:** O instalador solicitará sua chave da Groq (gratuita em [console.groq.com](https://console.groq.com)). Ela ficará salva com segurança em um arquivo `.env`.
-4. **Menu de Contexto:** O script perguntará se deseja adicionar o atalho ao Windows. Confirme para poder usar o toolkit em qualquer pasta do seu PC.
+1.  **Node.js:** Tenha o [Node.js](https://nodejs.org/) instalado.
+2.  **Setup:** Clique com o botão direito no arquivo `setup-menu.ps1` e selecione **"Executar com o PowerShell"**.
+3.  **API Key:** O script vai pedir sua chave da Groq (Grátis em [console.groq.com](https://console.groq.com)).
+4.  **Pronto!** O menu de contexto será instalado automaticamente.
 
 ---
 
-## 📖 Como Usar no Dia a Dia
+## 📖 Como Usar (O Fluxo Perfeito)
 
-1. Vá até qualquer pasta de um projeto que você esteja desenvolvendo.
-2. Clique com o **botão direito** na pasta (ou no fundo dela) e escolha **"Gerar Blueprint / Contexto (Vibe AI)"**.
-3. Escolha o modo desejado no console que abrirá.
-4. Um arquivo chamado `_AI_CONTEXT_NomeDoProjeto.md` será gerado.
-5. **Arraste esse arquivo para o chat da sua IA favorita** e comece a fazer perguntas com contexto total!
-
----
-
-## 🧹 Remoção Manual (UI)
-
-Se desejar remover os menus de contexto sem usar scripts:
-
-1. Abra o **Editor de Registro (regedit)**.
-2. Navegue até `HKEY_CLASSES_ROOT\Directory\shell\` e exclua a chave `VibeToolkit`.
-3. Navegue até `HKEY_CLASSES_ROOT\Directory\Background\shell\` e exclua a chave `VibeToolkit`.
+1.  Vá na pasta do seu projeto.
+2.  **Botão Direito** > **"Gerar Blueprint / Contexto (Vibe AI)"**.
+3.  Escolha o modo no console (o console agora é lindão!).
+4.  Aguarde o resumo da IA... **PLIM!** 
+5.  O conteúdo está no seu **Clipboard**. Basta dar `Ctrl+V` no chat da sua IA favorita.
 
 ---
 
-> **Dica de Ouro:** Sempre envie o arquivo gerado **antes** de começar a pedir novas funcionalidades para a IA. Isso garante que ela não "alucine" sugerindo coisas que não batem com o que você já construiu.
+## 💡 Dicas de Vibe-Coding
+
+*   **Sempre envie o contexto primeiro:** Antes de pedir uma feature, dê o contexto. Isso evita alucinações.
+*   **Use o Modo Inteligente em Monorepos:** Economize tokens enviando apenas as definições de tipos e interfaces.
+*   **Peça Explicações:** O Toolkit gera um resumo pensado em te ensinar. Leia-o para entender melhor seu próprio progresso!
+
+---
+
+*Desenvolvido para quem quer criar mais e configurar menos.* 🚀

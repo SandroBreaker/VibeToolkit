@@ -13,23 +13,36 @@ $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ToolkitDir = Split-Path $ScriptFullPath
 
 # ==========================================
-# 1. MENU INTERATIVO
+# 1. MENU INTERATIVO - VIBE STYLE
 # ==========================================
 Clear-Host
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "          VIBE AI TOOLKIT - $ProjectName          " -ForegroundColor Cyan
-Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "Selecione o modo de extração de contexto:`n"
-Write-Host " [ 1 ] Modo Copiar Tudo (Recomendado para projetos pequenos)" -ForegroundColor Yellow
-Write-Host " [ 2 ] Modo Inteligente (Copia apenas a estrutura do projeto - gasta menos IA)" -ForegroundColor Green
-Write-Host " [ 3 ] Modo Manual (Você escolhe os arquivos da lista)" -ForegroundColor Magenta
-Write-Host "==================================================" -ForegroundColor Cyan
+$Yellow = [ConsoleColor]::Yellow
+$Cyan = [ConsoleColor]::Cyan
+$Magenta = [ConsoleColor]::Magenta
+$Green = [ConsoleColor]::Green
+$White = [ConsoleColor]::White
+
+Write-Host "`n  ⚡ VIBE AI TOOLKIT ⚡" -ForegroundColor $Cyan
+Write-Host "  ======================" -ForegroundColor $Cyan
+Write-Host "  Projeto: $ProjectName" -ForegroundColor $White
+Write-Host "`n  Selecione sua vibe de extração:" -ForegroundColor $White
+
+Write-Host "  [ 1 ] 🚀 Full Vibe   " -NoNewline -ForegroundColor $Yellow
+Write-Host "- Enviar TUDO (ideal p/ iniciantes e bugs)" -ForegroundColor $White
+
+Write-Host "  [ 2 ] 🏛️  Architect   " -NoNewline -ForegroundColor $Green
+Write-Host "- Apenas a estrutura (economiza tokens)" -ForegroundColor $White
+
+Write-Host "  [ 3 ] 🎯 Sniper      " -NoNewline -ForegroundColor $Magenta
+Write-Host "- Escolha manual de arquivos" -ForegroundColor $White
+
+Write-Host "`n  ======================" -ForegroundColor $Cyan
 Write-Host ""
 
-$Choice = Read-Host "Opção (1, 2 ou 3)"
+$Choice = Read-Host "  Qual a sua escolha? (1, 2 ou 3)"
 
 if ($Choice -notmatch '^[123]$') {
-    Write-Warning "Opção inválida. Operação abortada."
+    Write-Host "`n  [!] Vibe errada. Operação abortada." -ForegroundColor Red
     Start-Sleep -Seconds 2
     exit
 }
@@ -134,7 +147,50 @@ if ($Choice -eq '3') {
 # ==========================================
 # 5. PROCESSAMENTO E GERAÇÃO DE MARKDOWN
 # ==========================================
-$FinalContent = ""
+$FinalContent = @"
+<system_instruction>
+
+ROLE: SENIOR_FULLSTACK_ARCHITECT_EXECUTOR
+DETERMINISM_MODE: LOW_ENTROPY
+OUTPUT_VARIANCE: MINIMIZED
+
+PURPOSE:
+Garantir decisões técnicas corretas, previsibilidade do sistema e alta confiabilidade.
+
+ENGINEERING_RULES:
+- Tipagem forte sempre que disponível.
+- Contratos explícitos entre camadas.
+- Princípios de design aplicados de forma consistente.
+- Nenhuma alteração não solicitada.
+- Preservação total de comportamento existente.
+
+EFFICIENCY_POLICY:
+- Priorizar soluções simples e performáticas.
+- Eliminar desperdícios computacionais.
+- Evitar estados ou dependências desnecessárias.
+
+STABILITY_STANDARD:
+- Tratamento explícito de falhas.
+- Considerar cenários limites.
+- Nenhuma operação assíncrona sem controle.
+
+DELIVERY_CONSTRAINTS:
+- Saídas completas e utilizáveis.
+- Escopo rigidamente respeitado.
+- Identificadores preservados.
+
+COMMUNICATION:
+- Direta, técnica e objetiva.
+- Código acima de explicações.
+
+PROCESS:
+1. Receber contexto.
+2. Avaliar sem modificar.
+3. Executar conforme instruções.
+4. Aguardar continuidade.
+
+</system_instruction>
+"@ + "`n`n"
 $BlueprintIssues = @()
 
 if ($Choice -eq '1' -or $Choice -eq '3') {
@@ -318,22 +374,28 @@ Write-Host "==================================================`n" -ForegroundCol
 # ==========================================
 # 7. GERAÇÃO DE CONTEXTO COM IA (GROQ)
 # ==========================================
-$SendToAI = Read-Host "Deseja que a IA gere o 'AI Context Document' agora? (S/N)"
+$SendToAI = Read-Host "  Deseja que a IA gere o 'Documento de Contexto' agora? (S/N)"
 if ($SendToAI -match '^[Ss]$') {
-    Write-Host "`nConversando com a IA... isso pode levar alguns segundos." -ForegroundColor Yellow
+    Write-Host "`n  🧠 Conversando com o Mentor IA... isso pode levar uns segundos." -ForegroundColor $Yellow
     
     $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
     
     if (Test-Path $AgentScript) {
-        # Define variável de ambiente para silenciar o dotenv (algumas versões respeitam)
         $env:DOTENV_CONFIG_SILENT="true"
-
-        # Executa o comando silenciando toda a saída padrão e de erro
         $null = cmd.exe /c npx --quiet tsx `"$AgentScript`" `"$OutputFullPath`" `"$ProjectName`" 2>&1
 
-        Write-Host "Pronto! O resumo do seu projeto está na área de transferência." -ForegroundColor Green
+        # Se a IA rodou, o arquivo foi atualizado. Vamos ler e copiar o NOVO conteúdo.
+        $FinalSummarizedContent = Get-Content $OutputFullPath -Raw -Encoding UTF8
+        $FinalSummarizedContent | Set-Clipboard
+        
+        Write-Host "  ✨ PLIM! O resumo e o código estão no seu CLIPBOARD." -ForegroundColor $Green
+        Write-Host "  🚀 Agora é só dar Ctrl+V no seu Chat IA favorito!" -ForegroundColor $Cyan
     } else {
-        Write-Warning "Falha: Script groq-agent.ts não localizado."
+        Write-Host "  [!] Erro: Script groq-agent.ts não localizado." -ForegroundColor Red
     }
+} else {
+    Write-Host "  📌 Ok! O arquivo bruto foi gerado e copiado para o Clipboard." -ForegroundColor $Cyan
 }
+
+Write-Host "`n  Vibe finalizada com sucesso. Boa codificação! ✌️`n" -ForegroundColor $Green
 Pause

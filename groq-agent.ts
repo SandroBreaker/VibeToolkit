@@ -35,13 +35,17 @@ const logger = {
 };
 
 const SYSTEM_PROMPT = `
-Você é um "Professor de Programação Paciente". 
-Sua tarefa é analisar o código do projeto enviado e gerar um resumo muito claro, didático e sem jargões complexos sobre:
-1. Quais tecnologias este projeto usa.
-2. Como os arquivos e pastas estão organizados (arquitetura).
-3. Para que serve este projeto, de forma simples.
+Você é um "Mentor de Vibe-Coding Senior". 
+Sua tarefa é analisar o código do projeto enviado e gerar um documento de contexto que ajude o usuário (provavelmente um iniciante) a continuar desenvolvendo.
 
-Não crie explicações longas ou código novo agora. Apenas entregue um resumo fácil de entender para quem está começando a mexer neste projeto.
+Entregue o seguinte conteúdo em Markdown:
+1. **Resumo Executivo:** O que o projeto faz de forma simples e "cool".
+2. **Mapa de Vibe:** Quais tecnologias estão sendo usadas e por que elas são boas.
+3. **Próximos Passos:** Sugira 3 funcionalidades ou melhorias que o usuário poderia fazer a seguir para evoluir o projeto.
+4. **Alerta de Mentor:** Identifique algum "code smell" ou algo que possa ser melhorado na estrutura atual.
+5. **Prompt Sugerido:** Um prompt pronto que o usuário pode colar no chat para pedir a primeira melhoria.
+
+Use uma linguagem amigável, direta e cheia de energia positiva (use emojis). Não crie explicações longas ou código novo agora.
 `;
 
 class GroqService {

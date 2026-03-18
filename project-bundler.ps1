@@ -33,7 +33,7 @@ $ThemeSuccess = [System.Drawing.ColorTranslator]::FromHtml("#22C55E")
 
 $AllowedExtensions = @(
     ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
-    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1"
+    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv"
 )
 $SignatureExtensions = @(
     ".tsx", ".ts", ".js", ".jsx", ".prisma",
@@ -64,12 +64,12 @@ function Get-RelevantFiles {
                 }
             } else {
                 $IsTarget = ($Item.Extension -in $AllowedExtensions) -and
-                            ($Item.Name -notin $IgnoredFiles) -and
-                            ($Item.Name -notmatch "-[a-zA-Z0-9]{8,}\.") -and
-                            ($Item.Name -notmatch "^_BUNDLER__") -and
-                            ($Item.Name -notmatch "^_BLUEPRINT__") -and
-                            ($Item.Name -notmatch "^_SELECTIVE__") -and
-                            ($Item.Name -notmatch "^_AI_CONTEXT_")
+                    ($Item.Name -notin $IgnoredFiles) -and
+                    ($Item.BaseName -notmatch '-[a-f0-9]{8,}$') -and
+                    ($Item.Name -notmatch '^_BUNDLER__') -and
+                    ($Item.Name -notmatch '^_BLUEPRINT__') -and
+                    ($Item.Name -notmatch '^_SELECTIVE__') -and
+                    ($Item.Name -notmatch '^_AI_CONTEXT_')
 
                 if ($IsTarget) { $Item }
             }
@@ -133,19 +133,85 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = "Vibe AI Toolkit"
 $form.StartPosition = "CenterScreen"
 $form.Size = New-Object System.Drawing.Size(860, 820)
-$form.MinimumSize = New-Object System.Drawing.Size(860, 820)
-$form.MaximumSize = New-Object System.Drawing.Size(860, 1040)
+$form.MinimumSize = New-Object System.Drawing.Size(860, 720)
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.BackColor = $ThemeBg
 $form.ForeColor = $ThemeText
 $form.TopMost = $false
 
+$script:PreferredNormalSize = New-Object System.Drawing.Size(860, 820)
+$script:PreferredSniperSize = New-Object System.Drawing.Size(860, 1040)
 $script:IsDragging = $false
 $script:DragCursor = [System.Drawing.Point]::Empty
 $script:DragForm = [System.Drawing.Point]::Empty
+$script:IsResizing = $false
+$script:ResizeCursor = [System.Drawing.Point]::Empty
+$script:ResizeBounds = [System.Drawing.Rectangle]::Empty
+
+function Get-WorkingAreaForBounds {
+    param([System.Drawing.Rectangle]$Bounds)
+    return [System.Windows.Forms.Screen]::FromRectangle($Bounds).WorkingArea
+}
+
+function Clamp-RectangleToWorkingArea {
+    param([System.Drawing.Rectangle]$Bounds)
+
+    $workingArea = Get-WorkingAreaForBounds -Bounds $Bounds
+
+    $minWidth = [Math]::Max($form.MinimumSize.Width, 640)
+    $minHeight = [Math]::Max($form.MinimumSize.Height, 520)
+
+    $targetWidth = [Math]::Min([Math]::Max($Bounds.Width, $minWidth), $workingArea.Width)
+    $targetHeight = [Math]::Min([Math]::Max($Bounds.Height, $minHeight), $workingArea.Height)
+
+    $targetX = $Bounds.X
+    $targetY = $Bounds.Y
+
+    if ($targetX -lt $workingArea.Left) {
+        $targetX = $workingArea.Left
+    }
+    if ($targetY -lt $workingArea.Top) {
+        $targetY = $workingArea.Top
+    }
+    if (($targetX + $targetWidth) -gt $workingArea.Right) {
+        $targetX = $workingArea.Right - $targetWidth
+    }
+    if (($targetY + $targetHeight) -gt $workingArea.Bottom) {
+        $targetY = $workingArea.Bottom - $targetHeight
+    }
+
+    return New-Object System.Drawing.Rectangle($targetX, $targetY, $targetWidth, $targetHeight)
+}
+
+function Set-FormBoundsSafe {
+    param(
+        [int]$Width,
+        [int]$Height,
+        [bool]$PreserveLocation = $true
+    )
+
+    $baseLocation = if ($PreserveLocation) { $form.Location } else { [System.Drawing.Point]::Empty }
+    $requestedBounds = New-Object System.Drawing.Rectangle($baseLocation.X, $baseLocation.Y, $Width, $Height)
+    $safeBounds = Clamp-RectangleToWorkingArea -Bounds $requestedBounds
+    $form.SetBounds($safeBounds.X, $safeBounds.Y, $safeBounds.Width, $safeBounds.Height)
+}
+
+function Ensure-FormVisible {
+    $currentBounds = New-Object System.Drawing.Rectangle($form.Left, $form.Top, $form.Width, $form.Height)
+    $safeBounds = Clamp-RectangleToWorkingArea -Bounds $currentBounds
+
+    if (
+        $safeBounds.X -ne $form.Left -or
+        $safeBounds.Y -ne $form.Top -or
+        $safeBounds.Width -ne $form.Width -or
+        $safeBounds.Height -ne $form.Height
+    ) {
+        $form.SetBounds($safeBounds.X, $safeBounds.Y, $safeBounds.Width, $safeBounds.Height)
+    }
+}
 
 $DragMouseDown = {
-    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left -and -not $script:IsResizing) {
         $script:IsDragging = $true
         $script:DragCursor = [System.Windows.Forms.Cursor]::Position
         $script:DragForm = $form.Location
@@ -155,10 +221,12 @@ $DragMouseDown = {
 $DragMouseMove = {
     if ($script:IsDragging) {
         $currentCursor = [System.Windows.Forms.Cursor]::Position
-        $form.Location = New-Object System.Drawing.Point(
-            ($script:DragForm.X + $currentCursor.X - $script:DragCursor.X),
-            ($script:DragForm.Y + $currentCursor.Y - $script:DragCursor.Y)
-        )
+        $newX = $script:DragForm.X + $currentCursor.X - $script:DragCursor.X
+        $newY = $script:DragForm.Y + $currentCursor.Y - $script:DragCursor.Y
+
+        $candidate = New-Object System.Drawing.Rectangle($newX, $newY, $form.Width, $form.Height)
+        $safeBounds = Clamp-RectangleToWorkingArea -Bounds $candidate
+        $form.Location = New-Object System.Drawing.Point($safeBounds.X, $safeBounds.Y)
     }
 }
 
@@ -171,6 +239,7 @@ $titleBar.Size = New-Object System.Drawing.Size(860, 44)
 $titleBar.Location = New-Object System.Drawing.Point(0, 0)
 $titleBar.BackColor = $ThemePanelAlt
 $titleBar.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+$titleBar.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($titleBar)
 
 $titleLabel = New-Object System.Windows.Forms.Label
@@ -195,6 +264,7 @@ $projectLabel.ForeColor = $ThemeMuted
 $projectLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 $projectLabel.AutoSize = $true
 $projectLabel.Location = New-Object System.Drawing.Point(18, 54)
+$projectLabel.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($projectLabel)
 
 $closeButton = New-Object System.Windows.Forms.Label
@@ -203,11 +273,55 @@ $closeButton.ForeColor = $ThemeText
 $closeButton.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
 $closeButton.AutoSize = $true
 $closeButton.Location = New-Object System.Drawing.Point(826, 9)
+$closeButton.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $closeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
 $closeButton.Add_MouseEnter({ $closeButton.ForeColor = $ThemePink })
 $closeButton.Add_MouseLeave({ $closeButton.ForeColor = $ThemeText })
 $closeButton.Add_Click({ $form.Close() })
 $titleBar.Controls.Add($closeButton)
+
+$resizeGrip = New-Object System.Windows.Forms.Panel
+$resizeGrip.Size = New-Object System.Drawing.Size(18, 18)
+$resizeGrip.BackColor = $ThemePanelAlt
+$resizeGrip.Cursor = [System.Windows.Forms.Cursors]::SizeNWSE
+$resizeGrip.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Right
+$form.Controls.Add($resizeGrip)
+
+$ResizeMouseDown = {
+    if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $script:IsResizing = $true
+        $script:ResizeCursor = [System.Windows.Forms.Cursor]::Position
+        $script:ResizeBounds = $form.Bounds
+    }
+}
+
+$ResizeMouseMove = {
+    if ($script:IsResizing) {
+        $currentCursor = [System.Windows.Forms.Cursor]::Position
+        $deltaX = $currentCursor.X - $script:ResizeCursor.X
+        $deltaY = $currentCursor.Y - $script:ResizeCursor.Y
+
+        $requestedWidth = $script:ResizeBounds.Width + $deltaX
+        $requestedHeight = $script:ResizeBounds.Height + $deltaY
+
+        $candidate = New-Object System.Drawing.Rectangle(
+            $script:ResizeBounds.X,
+            $script:ResizeBounds.Y,
+            $requestedWidth,
+            $requestedHeight
+        )
+        $safeBounds = Clamp-RectangleToWorkingArea -Bounds $candidate
+        $form.SetBounds($safeBounds.X, $safeBounds.Y, $safeBounds.Width, $safeBounds.Height)
+    }
+}
+
+$ResizeMouseUp = {
+    $script:IsResizing = $false
+}
+
+$resizeGrip.Add_MouseDown($ResizeMouseDown)
+$resizeGrip.Add_MouseMove($ResizeMouseMove)
+$resizeGrip.Add_MouseUp($ResizeMouseUp)
 
 $titleBar.Add_MouseDown($DragMouseDown)
 $titleBar.Add_MouseMove($DragMouseMove)
@@ -226,6 +340,7 @@ $panelMode.BackColor = $ThemePanel
 $panelMode.Size = New-Object System.Drawing.Size(395, 162)
 $panelMode.Location = New-Object System.Drawing.Point(18, 84)
 $panelMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelMode.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelMode)
 
 $rbFull = New-Object System.Windows.Forms.RadioButton
@@ -281,6 +396,7 @@ $panelExecutor.BackColor = $ThemePanel
 $panelExecutor.Size = New-Object System.Drawing.Size(409, 162)
 $panelExecutor.Location = New-Object System.Drawing.Point(433, 84)
 $panelExecutor.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelExecutor.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($panelExecutor)
 
 $rbAIStudio = New-Object System.Windows.Forms.RadioButton
@@ -320,7 +436,6 @@ $lblAntigravity.AutoSize = $true
 $lblAntigravity.Location = New-Object System.Drawing.Point(38, 116)
 $panelExecutor.Controls.Add($lblAntigravity)
 
-
 $panelProvider = New-Object System.Windows.Forms.GroupBox
 $panelProvider.Text = "IA Orquestradora"
 $panelProvider.ForeColor = $ThemeCyan
@@ -328,6 +443,7 @@ $panelProvider.BackColor = $ThemePanel
 $panelProvider.Size = New-Object System.Drawing.Size(824, 118)
 $panelProvider.Location = New-Object System.Drawing.Point(18, 262)
 $panelProvider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelProvider.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($panelProvider)
 
 $providerHint = New-Object System.Windows.Forms.Label
@@ -392,6 +508,7 @@ $panelSniper.BackColor = $ThemePanel
 $panelSniper.Size = New-Object System.Drawing.Size(824, 210)
 $panelSniper.Location = New-Object System.Drawing.Point(18, 396)
 $panelSniper.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelSniper.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $panelSniper.Visible = $false
 $form.Controls.Add($panelSniper)
 
@@ -412,6 +529,7 @@ $checkedFiles.CheckOnClick = $true
 $checkedFiles.Font = New-Object System.Drawing.Font("Consolas", 9)
 $checkedFiles.Location = New-Object System.Drawing.Point(18, 54)
 $checkedFiles.Size = New-Object System.Drawing.Size(788, 130)
+$checkedFiles.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $panelSniper.Controls.Add($checkedFiles)
 
 foreach ($file in $FoundFiles) {
@@ -435,6 +553,7 @@ $chkSendToAI.BackColor = $ThemeBg
 $chkSendToAI.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $chkSendToAI.AutoSize = $true
 $chkSendToAI.Location = New-Object System.Drawing.Point(18, 396)
+$chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $form.Controls.Add($chkSendToAI)
 
 $btnRun = New-Object System.Windows.Forms.Button
@@ -447,6 +566,7 @@ $btnRun.ForeColor = $ThemeText
 $btnRun.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
 $btnRun.Location = New-Object System.Drawing.Point(657, 390)
 $btnRun.Size = New-Object System.Drawing.Size(185, 40)
+$btnRun.Anchor = [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $form.Controls.Add($btnRun)
 
 $progressBar = New-Object System.Windows.Forms.ProgressBar
@@ -454,6 +574,7 @@ $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
 $progressBar.MarqueeAnimationSpeed = 30
 $progressBar.Size = New-Object System.Drawing.Size(824, 12)
 $progressBar.Location = New-Object System.Drawing.Point(18, 444)
+$progressBar.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $progressBar.Visible = $false
 $form.Controls.Add($progressBar)
 
@@ -466,30 +587,86 @@ $logViewer.DetectUrls = $false
 $logViewer.Font = New-Object System.Drawing.Font("Consolas", 9.5)
 $logViewer.Location = New-Object System.Drawing.Point(18, 466)
 $logViewer.Size = New-Object System.Drawing.Size(824, 316)
+$logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($logViewer)
+
+function Update-ResponsiveLayout {
+    $clientWidth = [int]$form.ClientSize.Width
+    $clientHeight = [int]$form.ClientSize.Height
+
+    $rightGap = 18
+    $leftGap = 18
+    $topContentY = 84
+    $columnGap = 20
+    $panelHeight = 162
+
+    $usableWidth = [int]($clientWidth - ($leftGap * 2))
+    $leftWidth = [int][Math]::Floor(($usableWidth - $columnGap) / 2)
+    $rightWidth = [int]($usableWidth - $leftWidth - $columnGap)
+
+    $panelMode.Location = New-Object System.Drawing.Point($leftGap, $topContentY)
+    $panelMode.Size = New-Object System.Drawing.Size($leftWidth, $panelHeight)
+
+    $executorX = [int]($leftGap + $leftWidth + $columnGap)
+    $panelExecutor.Location = New-Object System.Drawing.Point($executorX, $topContentY)
+    $panelExecutor.Size = New-Object System.Drawing.Size($rightWidth, $panelHeight)
+
+    $panelProvider.Location = New-Object System.Drawing.Point($leftGap, 262)
+    $panelProvider.Size = New-Object System.Drawing.Size($usableWidth, 118)
+
+    $providerFallbackX = [int][Math]::Max(594, ($panelProvider.Width - $providerFallbackLabel.PreferredWidth - 18))
+    $providerFallbackLabel.Location = New-Object System.Drawing.Point($providerFallbackX, 66)
+
+    $providerHintMaxWidth = [int]($panelProvider.Width - 36)
+    $providerHint.MaximumSize = New-Object System.Drawing.Size($providerHintMaxWidth, 0)
+
+    $sniperTop = 396
+    $panelSniper.Location = New-Object System.Drawing.Point($leftGap, $sniperTop)
+    $panelSniper.Size = New-Object System.Drawing.Size($usableWidth, 210)
+
+    $checkedFilesWidth = [int]($panelSniper.ClientSize.Width - 36)
+    $checkedFiles.Size = New-Object System.Drawing.Size($checkedFilesWidth, 130)
+
+    if ($panelSniper.Visible) {
+        $chkY = [int]($panelSniper.Bottom + 22)
+    } else {
+        $chkY = 396
+    }
+
+    $chkSendToAI.Location = New-Object System.Drawing.Point($leftGap, $chkY)
+
+    $btnRunX = [int]($clientWidth - $rightGap - $btnRun.Width)
+    $btnRunY = [int]($chkY - 6)
+    $btnRun.Location = New-Object System.Drawing.Point($btnRunX, $btnRunY)
+
+    $progressBarY = [int]($chkY + 48)
+    $progressBar.Location = New-Object System.Drawing.Point($leftGap, $progressBarY)
+    $progressBar.Size = New-Object System.Drawing.Size($usableWidth, 12)
+
+    $logTop = [int]($progressBar.Bottom + 10)
+    $logHeight = [int][Math]::Max(140, ($clientHeight - $logTop - 20))
+    $logViewer.Location = New-Object System.Drawing.Point($leftGap, $logTop)
+    $logViewer.Size = New-Object System.Drawing.Size($usableWidth, $logHeight)
+
+    $resizeGripX = [int]($clientWidth - $resizeGrip.Width)
+    $resizeGripY = [int]($clientHeight - $resizeGrip.Height)
+    $resizeGrip.Location = New-Object System.Drawing.Point($resizeGripX, $resizeGripY)
+}
 
 function Set-SniperLayout {
     param([bool]$Visible)
 
     $panelSniper.Visible = $Visible
 
-    if ($Visible) {
-        $form.Size = New-Object System.Drawing.Size(860, 1040)
-        $form.MinimumSize = New-Object System.Drawing.Size(860, 1040)
-        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 628)
-        $btnRun.Location = New-Object System.Drawing.Point(657, 622)
-        $progressBar.Location = New-Object System.Drawing.Point(18, 676)
-        $logViewer.Location = New-Object System.Drawing.Point(18, 698)
-        $logViewer.Size = New-Object System.Drawing.Size(824, 300)
+    $preferredSize = if ($Visible) {
+        $script:PreferredSniperSize
     } else {
-        $form.Size = New-Object System.Drawing.Size(860, 820)
-        $form.MinimumSize = New-Object System.Drawing.Size(860, 820)
-        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 396)
-        $btnRun.Location = New-Object System.Drawing.Point(657, 390)
-        $progressBar.Location = New-Object System.Drawing.Point(18, 444)
-        $logViewer.Location = New-Object System.Drawing.Point(18, 466)
-        $logViewer.Size = New-Object System.Drawing.Size(824, 316)
+        $script:PreferredNormalSize
     }
+
+    Set-FormBoundsSafe -Width $preferredSize.Width -Height $preferredSize.Height -PreserveLocation $true
+    Update-ResponsiveLayout
+    Ensure-FormVisible
 }
 
 $rbSniper.Add_CheckedChanged({
@@ -504,7 +681,23 @@ $rbArchitect.Add_CheckedChanged({
     if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }
 })
 
-Set-SniperLayout -Visible $false
+$form.Add_Shown({
+    Set-SniperLayout -Visible $false
+    Ensure-FormVisible
+})
+
+$form.Add_Move({
+    if (-not $script:IsDragging -and -not $script:IsResizing) {
+        Ensure-FormVisible
+    }
+})
+
+$form.Add_SizeChanged({
+    if (-not $script:IsResizing) {
+        Ensure-FormVisible
+    }
+    Update-ResponsiveLayout
+})
 
 function Write-UILog {
     param(
@@ -683,93 +876,71 @@ $btnRun.Add_Click({
 
         if ($ExecutorTarget -eq "AI Studio Apps") {
             $HeaderContent = @"
-text
-<system_instruction>
-ROLE: SENIOR_ENGINEERING_EXECUTOR
+## Instruções  
+CONTEXTO:
+- Papel esperado: SENIOR_ENGINEERING_EXECUTOR
+- Tarefa: executar alterações técnicas em código existente
+- Prioridade: precisão, previsibilidade e zero impacto colateral
+- Premissas: o projeto já possui contratos, identificadores e princípios de design que devem ser preservados
 
-OBJECTIVE:
-Executar alterações técnicas com precisão, previsibilidade e zero impacto colateral.
+OBJETIVO:
+Executar exatamente a alteração solicitada no escopo informado, mantendo compatibilidade com a base atual, sem regressões funcionais e sem modificar nada fora do pedido.
 
-NON_NEGOTIABLES:
-- Tipagem estrita.
-- Contratos claros.
-- Princípios de design preservados.
-- Nenhuma regressão funcional.
-- Nenhuma modificação fora do escopo explícito.
+REGRAS:
+- Usar tipagem estrita quando a stack suportar
+- Preservar contratos, assinaturas, identificadores e comportamento existente
+- Não alterar arquitetura, layout, nomes ou fluxos fora do escopo explícito
+- Priorizar eficiência e simplicidade, evitando abstrações e operações redundantes
+- Tratar falhas explicitamente
+- Controlar fluxos assíncronos corretamente
+- Inserir logs apenas quando forem realmente necessários
+- Não entregar conteúdo fragmentado
+- Não incluir comentários supérfluos
+- Responder de forma curta e técnica
+- Código deve ser o artefato principal da resposta
 
-PERFORMANCE_ENFORCEMENT:
-- Eficiência antes de abstração.
-- Evitar operações redundantes.
-- Simplicidade como regra.
+ENTREGA:
+- Implementação completa
+- Pronta para uso
+- Sem regressão
+- Sem mudanças colaterais
+- Com o mínimo de texto explicativo
 
-ERROR_POLICY:
-- Falhas tratadas explicitamente.
-- Assíncronos sempre controlados.
-- Logs apenas quando necessários.
-
-OUTPUT_RULES:
-- Entrega completa.
-- Nada fragmentado.
-- Identificadores preservados.
-- Sem comentários supérfluos.
-
-INTERACTION_MODEL:
-- Respostas curtas.
-- Código como artefato principal.
-
-FLOW:
-1. Receber entrada.
-2. Validar contexto.
-3. Executar exatamente o solicitado.
-4. Aguardar próxima instrução.
-
-</system_instruction>
 ```
+
 "@
-        } else {
-            $HeaderContent = @"
-text
-<system_instruction>
-ROLE: SENIOR_ENGINEERING_EXECUTOR
+} else {
+$HeaderContent = @"
+## Instruções  
+CONTEXTO:
+- Papel esperado: SENIOR_ENGINEERING_EXECUTOR
+- Tarefa: executar alterações técnicas em código existente
+- Prioridade: precisão, previsibilidade e zero impacto colateral
+- Premissas: o projeto já possui contratos, identificadores e princípios de design que devem ser preservados
 
-OBJECTIVE:
-Executar alterações técnicas com precisão, previsibilidade e zero impacto colateral.
+OBJETIVO:
+Executar exatamente a alteração solicitada no escopo informado, mantendo compatibilidade com a base atual, sem regressões funcionais e sem modificar nada fora do pedido.
 
-NON_NEGOTIABLES:
-- Tipagem estrita.
-- Contratos claros.
-- Princípios de design preservados.
-- Nenhuma regressão funcional.
-- Nenhuma modificação fora do escopo explícito.
+REGRAS:
+- Usar tipagem estrita quando a stack suportar
+- Preservar contratos, assinaturas, identificadores e comportamento existente
+- Não alterar arquitetura, layout, nomes ou fluxos fora do escopo explícito
+- Priorizar eficiência e simplicidade, evitando abstrações e operações redundantes
+- Tratar falhas explicitamente
+- Controlar fluxos assíncronos corretamente
+- Inserir logs apenas quando forem realmente necessários
+- Não entregar conteúdo fragmentado
+- Não incluir comentários supérfluos
+- Responder de forma curta e técnica
+- Código deve ser o artefato principal da resposta
 
-PERFORMANCE_ENFORCEMENT:
-- Eficiência antes de abstração.
-- Evitar operações redundantes.
-- Simplicidade como regra.
-
-ERROR_POLICY:
-- Falhas tratadas explicitamente.
-- Assíncronos sempre controlados.
-- Logs apenas quando necessários.
-
-OUTPUT_RULES:
-- Entrega completa.
-- Nada fragmentado.
-- Identificadores preservados.
-- Sem comentários supérfluos.
-
-INTERACTION_MODEL:
-- Respostas curtas.
-- Código como artefato principal.
-
-FLOW:
-1. Receber entrada.
-2. Validar contexto.
-3. Executar exatamente o solicitado.
-4. Aguardar próxima instrução.
-
-</system_instruction>
-```
+ENTREGA:
+- Implementação completa
+- Pronta para uso
+- Sem regressão
+- Sem mudanças colaterais
+- Com o mínimo de texto explicativo
+````
 "@
         }
 

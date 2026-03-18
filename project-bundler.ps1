@@ -19,6 +19,7 @@ $Choice = $null
 $ExecutorTarget = $null
 $FilesToProcess = @()
 $SendToAI = $false
+$AIProvider = $null
 
 $ThemeBg = [System.Drawing.ColorTranslator]::FromHtml("#0F0F0C")
 $ThemePanel = [System.Drawing.ColorTranslator]::FromHtml("#161613")
@@ -113,12 +114,27 @@ function Resolve-ExecutorFromUI {
     return $null
 }
 
+function Resolve-AIProviderFromUI {
+    param(
+        [System.Windows.Forms.RadioButton]$RbGroq,
+        [System.Windows.Forms.RadioButton]$RbGemini,
+        [System.Windows.Forms.RadioButton]$RbOpenAI,
+        [System.Windows.Forms.RadioButton]$RbAnthropic
+    )
+
+    if ($RbGroq.Checked) { return "groq" }
+    if ($RbGemini.Checked) { return "gemini" }
+    if ($RbOpenAI.Checked) { return "openai" }
+    if ($RbAnthropic.Checked) { return "anthropic" }
+    return $null
+}
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Vibe AI Toolkit"
 $form.StartPosition = "CenterScreen"
-$form.Size = New-Object System.Drawing.Size(860, 700)
-$form.MinimumSize = New-Object System.Drawing.Size(860, 700)
-$form.MaximumSize = New-Object System.Drawing.Size(860, 920)
+$form.Size = New-Object System.Drawing.Size(860, 820)
+$form.MinimumSize = New-Object System.Drawing.Size(860, 820)
+$form.MaximumSize = New-Object System.Drawing.Size(860, 1040)
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.BackColor = $ThemeBg
 $form.ForeColor = $ThemeText
@@ -304,12 +320,77 @@ $lblAntigravity.AutoSize = $true
 $lblAntigravity.Location = New-Object System.Drawing.Point(38, 116)
 $panelExecutor.Controls.Add($lblAntigravity)
 
+
+$panelProvider = New-Object System.Windows.Forms.GroupBox
+$panelProvider.Text = "IA Orquestradora"
+$panelProvider.ForeColor = $ThemeCyan
+$panelProvider.BackColor = $ThemePanel
+$panelProvider.Size = New-Object System.Drawing.Size(824, 118)
+$panelProvider.Location = New-Object System.Drawing.Point(18, 262)
+$panelProvider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($panelProvider)
+
+$providerHint = New-Object System.Windows.Forms.Label
+$providerHint.Text = "Escolha a IA primária. Se ela falhar ou atingir limite, o agente tenta a próxima automaticamente."
+$providerHint.ForeColor = $ThemeMuted
+$providerHint.BackColor = $ThemePanel
+$providerHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$providerHint.AutoSize = $true
+$providerHint.Location = New-Object System.Drawing.Point(18, 28)
+$panelProvider.Controls.Add($providerHint)
+
+$rbGroq = New-Object System.Windows.Forms.RadioButton
+$rbGroq.Text = "Groq"
+$rbGroq.ForeColor = $ThemeText
+$rbGroq.BackColor = $ThemePanel
+$rbGroq.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbGroq.Location = New-Object System.Drawing.Point(18, 62)
+$rbGroq.Size = New-Object System.Drawing.Size(120, 24)
+$rbGroq.Checked = $true
+$panelProvider.Controls.Add($rbGroq)
+
+$rbGemini = New-Object System.Windows.Forms.RadioButton
+$rbGemini.Text = "Gemini"
+$rbGemini.ForeColor = $ThemeText
+$rbGemini.BackColor = $ThemePanel
+$rbGemini.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbGemini.Location = New-Object System.Drawing.Point(162, 62)
+$rbGemini.Size = New-Object System.Drawing.Size(120, 24)
+$panelProvider.Controls.Add($rbGemini)
+
+$rbOpenAI = New-Object System.Windows.Forms.RadioButton
+$rbOpenAI.Text = "OpenAI"
+$rbOpenAI.ForeColor = $ThemeText
+$rbOpenAI.BackColor = $ThemePanel
+$rbOpenAI.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbOpenAI.Location = New-Object System.Drawing.Point(306, 62)
+$rbOpenAI.Size = New-Object System.Drawing.Size(120, 24)
+$panelProvider.Controls.Add($rbOpenAI)
+
+$rbAnthropic = New-Object System.Windows.Forms.RadioButton
+$rbAnthropic.Text = "Anthropic"
+$rbAnthropic.ForeColor = $ThemeText
+$rbAnthropic.BackColor = $ThemePanel
+$rbAnthropic.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbAnthropic.Location = New-Object System.Drawing.Point(450, 62)
+$rbAnthropic.Size = New-Object System.Drawing.Size(140, 24)
+$panelProvider.Controls.Add($rbAnthropic)
+
+$providerFallbackLabel = New-Object System.Windows.Forms.Label
+$providerFallbackLabel.Text = "Fallback: Groq → Gemini → OpenAI → Anthropic (a ordem começa pela IA escolhida)."
+$providerFallbackLabel.ForeColor = $ThemePink
+$providerFallbackLabel.BackColor = $ThemePanel
+$providerFallbackLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$providerFallbackLabel.AutoSize = $true
+$providerFallbackLabel.Location = New-Object System.Drawing.Point(594, 66)
+$panelProvider.Controls.Add($providerFallbackLabel)
+
 $panelSniper = New-Object System.Windows.Forms.GroupBox
 $panelSniper.Text = "Preview de Arquivos — Sniper Mode"
 $panelSniper.ForeColor = $ThemeCyan
 $panelSniper.BackColor = $ThemePanel
 $panelSniper.Size = New-Object System.Drawing.Size(824, 210)
-$panelSniper.Location = New-Object System.Drawing.Point(18, 262)
+$panelSniper.Location = New-Object System.Drawing.Point(18, 396)
 $panelSniper.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $panelSniper.Visible = $false
 $form.Controls.Add($panelSniper)
@@ -348,12 +429,12 @@ $lblFileCount.Location = New-Object System.Drawing.Point(18, 188)
 $panelSniper.Controls.Add($lblFileCount)
 
 $chkSendToAI = New-Object System.Windows.Forms.CheckBox
-$chkSendToAI.Text = "Gerar o Prompt Final com Groq ao concluir"
+$chkSendToAI.Text = "Gerar o Prompt Final com IA ao concluir"
 $chkSendToAI.ForeColor = $ThemeText
 $chkSendToAI.BackColor = $ThemeBg
 $chkSendToAI.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $chkSendToAI.AutoSize = $true
-$chkSendToAI.Location = New-Object System.Drawing.Point(18, 488)
+$chkSendToAI.Location = New-Object System.Drawing.Point(18, 396)
 $form.Controls.Add($chkSendToAI)
 
 $btnRun = New-Object System.Windows.Forms.Button
@@ -364,7 +445,7 @@ $btnRun.FlatAppearance.BorderColor = $ThemeCyan
 $btnRun.BackColor = $ThemePanelAlt
 $btnRun.ForeColor = $ThemeText
 $btnRun.Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-$btnRun.Location = New-Object System.Drawing.Point(657, 482)
+$btnRun.Location = New-Object System.Drawing.Point(657, 390)
 $btnRun.Size = New-Object System.Drawing.Size(185, 40)
 $form.Controls.Add($btnRun)
 
@@ -372,7 +453,7 @@ $progressBar = New-Object System.Windows.Forms.ProgressBar
 $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
 $progressBar.MarqueeAnimationSpeed = 30
 $progressBar.Size = New-Object System.Drawing.Size(824, 12)
-$progressBar.Location = New-Object System.Drawing.Point(18, 536)
+$progressBar.Location = New-Object System.Drawing.Point(18, 444)
 $progressBar.Visible = $false
 $form.Controls.Add($progressBar)
 
@@ -383,8 +464,8 @@ $logViewer.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $logViewer.ReadOnly = $true
 $logViewer.DetectUrls = $false
 $logViewer.Font = New-Object System.Drawing.Font("Consolas", 9.5)
-$logViewer.Location = New-Object System.Drawing.Point(18, 558)
-$logViewer.Size = New-Object System.Drawing.Size(824, 110)
+$logViewer.Location = New-Object System.Drawing.Point(18, 466)
+$logViewer.Size = New-Object System.Drawing.Size(824, 316)
 $form.Controls.Add($logViewer)
 
 function Set-SniperLayout {
@@ -393,21 +474,21 @@ function Set-SniperLayout {
     $panelSniper.Visible = $Visible
 
     if ($Visible) {
-        $form.Size = New-Object System.Drawing.Size(860, 860)
-        $form.MinimumSize = New-Object System.Drawing.Size(860, 860)
-        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 488)
-        $btnRun.Location = New-Object System.Drawing.Point(657, 482)
-        $progressBar.Location = New-Object System.Drawing.Point(18, 536)
-        $logViewer.Location = New-Object System.Drawing.Point(18, 558)
-        $logViewer.Size = New-Object System.Drawing.Size(824, 264)
+        $form.Size = New-Object System.Drawing.Size(860, 1040)
+        $form.MinimumSize = New-Object System.Drawing.Size(860, 1040)
+        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 628)
+        $btnRun.Location = New-Object System.Drawing.Point(657, 622)
+        $progressBar.Location = New-Object System.Drawing.Point(18, 676)
+        $logViewer.Location = New-Object System.Drawing.Point(18, 698)
+        $logViewer.Size = New-Object System.Drawing.Size(824, 300)
     } else {
-        $form.Size = New-Object System.Drawing.Size(860, 700)
-        $form.MinimumSize = New-Object System.Drawing.Size(860, 700)
-        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 262)
-        $btnRun.Location = New-Object System.Drawing.Point(657, 256)
-        $progressBar.Location = New-Object System.Drawing.Point(18, 310)
-        $logViewer.Location = New-Object System.Drawing.Point(18, 332)
-        $logViewer.Size = New-Object System.Drawing.Size(824, 336)
+        $form.Size = New-Object System.Drawing.Size(860, 820)
+        $form.MinimumSize = New-Object System.Drawing.Size(860, 820)
+        $chkSendToAI.Location = New-Object System.Drawing.Point(18, 396)
+        $btnRun.Location = New-Object System.Drawing.Point(657, 390)
+        $progressBar.Location = New-Object System.Drawing.Point(18, 444)
+        $logViewer.Location = New-Object System.Drawing.Point(18, 466)
+        $logViewer.Size = New-Object System.Drawing.Size(824, 316)
     }
 }
 
@@ -447,19 +528,21 @@ function Set-UiBusy {
 
     $panelMode.Enabled = -not $Busy
     $panelExecutor.Enabled = -not $Busy
+    $panelProvider.Enabled = -not $Busy
     $panelSniper.Enabled = -not $Busy
     $chkSendToAI.Enabled = -not $Busy
     $btnRun.Enabled = -not $Busy
     $progressBar.Visible = $Busy
 }
 
-function Invoke-GroqAgent {
+function Invoke-OrchestratorAgent {
     param(
         [string]$AgentScriptPath,
         [string]$BundlePath,
         [string]$ProjectNameValue,
         [string]$ExecutorTargetValue,
-        [string]$BundleModeValue
+        [string]$BundleModeValue,
+        [string]$PrimaryProviderValue
     )
 
     if (-not (Test-Path $AgentScriptPath)) {
@@ -469,7 +552,7 @@ function Invoke-GroqAgent {
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $process.StartInfo.FileName = "cmd.exe"
-    $process.StartInfo.Arguments = "/c npx --quiet tsx `"$AgentScriptPath`" `"$BundlePath`" `"$ProjectNameValue`" `"$ExecutorTargetValue`" `"$BundleModeValue`""
+    $process.StartInfo.Arguments = "/c npx --quiet tsx `"$AgentScriptPath`" `"$BundlePath`" `"$ProjectNameValue`" `"$ExecutorTargetValue`" `"$BundleModeValue`" `"$PrimaryProviderValue`""
     $process.StartInfo.WorkingDirectory = (Get-Location).Path
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
@@ -479,7 +562,7 @@ function Invoke-GroqAgent {
     $env:DOTENV_CONFIG_SILENT = "true"
 
     if (-not $process.Start()) {
-        throw "Falha ao iniciar o processo da Groq."
+        throw "Falha ao iniciar o processo do agente de IA."
     }
 
     while (-not $process.HasExited) {
@@ -525,10 +608,21 @@ function Invoke-GroqAgent {
 $btnRun.Add_Click({
     $currentChoice = Resolve-ChoiceFromUI -RbFull $rbFull -RbArchitect $rbArchitect -RbSniper $rbSniper
     $currentExecutorTarget = Resolve-ExecutorFromUI -RbAIStudio $rbAIStudio -RbAntigravity $rbAntigravity
+    $currentAIProvider = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
 
     if (-not $currentChoice) {
         [System.Windows.Forms.MessageBox]::Show(
             "Selecione um modo de extração.",
+            "VibeToolkit",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+        return
+    }
+
+    if (-not $currentAIProvider) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Selecione a IA primária.",
             "VibeToolkit",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning
@@ -570,6 +664,7 @@ $btnRun.Add_Click({
 
     $Choice = $currentChoice
     $ExecutorTarget = $currentExecutorTarget
+    $AIProvider = $currentAIProvider
     $FilesToProcess = @($selectedFiles)
     $SendToAI = $chkSendToAI.Checked
 
@@ -581,6 +676,7 @@ $btnRun.Add_Click({
         Write-UILog -Message "Projeto detectado: $ProjectName"
         Write-UILog -Message "Modo selecionado: $(if ($Choice -eq '1') { 'Full Vibe' } elseif ($Choice -eq '2') { 'Architect' } else { 'Sniper' })"
         Write-UILog -Message "Executor alvo: $ExecutorTarget"
+        Write-UILog -Message "IA primária: $AIProvider"
         Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
 
         $HeaderContent = ""
@@ -858,6 +954,7 @@ FLOW:
 
         Write-UILog -Message "Modo: $ModoNome"
         Write-UILog -Message "Executor: $ExecutorTarget"
+        Write-UILog -Message "IA primária: $AIProvider"
         Write-UILog -Message "Arquivo: $OutputFile"
         Write-UILog -Message "Tokens estimados: ~$TokenEstimate"
 
@@ -868,11 +965,12 @@ FLOW:
         }
 
         if ($SendToAI) {
-            Write-UILog -Message "Chamando Groq..." -Color $ThemeCyan
+            Write-UILog -Message "Chamando agente de IA..." -Color $ThemeCyan
+            Write-UILog -Message "Provider primário: $AIProvider | fallback automático ativo." -Color $ThemeCyan
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
             $BundleMode = if ($Choice -eq '1') { 'full' } elseif ($Choice -eq '2') { 'blueprint' } else { 'manual' }
 
-            Invoke-GroqAgent -AgentScriptPath $AgentScript -BundlePath $OutputFullPath -ProjectNameValue $ProjectName -ExecutorTargetValue $ExecutorTarget -BundleModeValue $BundleMode
+            Invoke-OrchestratorAgent -AgentScriptPath $AgentScript -BundlePath $OutputFullPath -ProjectNameValue $ProjectName -ExecutorTargetValue $ExecutorTarget -BundleModeValue $BundleMode -PrimaryProviderValue $AIProvider
 
             $FinalSummarizedContent = Get-Content $OutputFullPath -Raw -Encoding UTF8
             try {
@@ -881,6 +979,7 @@ FLOW:
             } catch {
                 Write-UILog -Message "Prompt final preparado, mas não foi possível copiar para o clipboard." -Color $ThemePink
             }
+            Write-UILog -Message "Verifique no log acima qual provider venceu o fallback." -Color $ThemeCyan
             Write-UILog -Message "Agora é só colar no seu orquestrador." -Color $ThemeCyan
         } else {
             Write-UILog -Message "Execução concluída sem chamada da Groq." -Color $ThemeSuccess

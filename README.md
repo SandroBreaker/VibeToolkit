@@ -1,69 +1,104 @@
-![VibeToolkit Banner](vibetoolkit_banner.png)
+# 🚀 VibeToolkit
+**AI Context Synthesizer for Orchestrators**
 
-# ⚡ VibeToolkit: Domine o Vibe-Coding com Contexto Real
+O **VibeToolkit** é uma ferramenta de infraestrutura para IA focada em transformar projetos de software em bundles estruturados. Ele prepara o contexto ideal para **orquestradores** (como ChatGPT Web e Gemini Web), que geram o prompt final para execução em ferramentas como **AI Studio Apps** ou **Antigravity**.
 
-O **VibeToolkit** é o seu parceiro definitivo para programar com IAs (ChatGPT, Claude, Gemini). Ele elimina a "amnésia" dos modelos, consolidando seu projeto em um **Blueprint Inteligente** que permite à IA entender sua arquitetura, tecnologias e lógica instantaneamente.
-
-> **Vibe-coding** é sobre focar na ideia e deixar a IA cuidar dos detalhes. Este toolkit garante que a IA saiba exatamente onde ela está pisando.
-
----
-
-## 🎯 Arquitetura Orquestrador -> Executor
-
-O VibeToolkit agora trabalha com o conceito de delegação técnica. O bundle gerado **não é** para ser executado diretamente. O fluxo correto é:
-1. Você extrai o código escolhendo o **Executor Alvo** (AI Studio Apps ou Antigravity).
-2. O bundle é colado em um **Orquestrador** (Gemini Web ou ChatGPT Web).
-3. O Orquestrador analisa o contexto arquitetural e cospe um **Prompt Final** cirúrgico.
-4. Você cola esse prompt final no **Executor** que fará a mudança no projeto real.
+O objetivo central é eliminar alucinações por falta de contexto, gerando uma **Source of Truth** (Fonte de Verdade) consistente e previsível.
 
 ---
 
-## ✨ Recursos Mágicos
+## 🛠️ Fluxo de Trabalho
 
-* **🔍 Mapeamento Inteligente:** Varre suas pastas ignorando o lixo (`node_modules`, `dist`, etc) e focando no que importa.
-* **🧠 Delegação Automática:** IA embutida (via Groq) já prepara o Prompt de Execução para você.
-* **🖱️ Integração Nativa:** Clique com o botão direito em qualquer pasta e gere seu contexto em segundos.
-* **📋 Auto-Copy:** Tudo o que o Orquestrador precisa já vai direto para a sua área de transferência. Paste & Go!
+1.  **Consolidação:** Lê e agrupa arquivos relevantes do projeto.
+2.  **Bundling:** Gera um arquivo Markdown estruturado.
+3.  **Injeção:** Embuti instruções específicas para o executor alvo.
+4.  **Orquestração (Opcional):** Chama uma IA para refinar o contexto.
+5.  **Entrega:** Copia o prompt final para o clipboard, pronto para o uso.
 
----
-
-## 🛠️ Modos de Extração
-
-Escolha a intensidade do contexto que você quer enviar:
-
-| Modo | Estilo | Uso Ideal |
-| --- | --- | --- |
-| **[ 1 ] Full Vibe** | Tudo o que você escreveu. | Projetos pequenos ou bugs difíceis. |
-| **[ 2 ] Architect** | Apenas as "assinaturas" (esqueleto). | Projetos gigantes, foco em estrutura. |
-| **[ 3 ] Sniper** | Você escolhe arquivo por arquivo. | Focar em uma parte específica sem ruído. |
+### Stack Técnica
+* **Runtime:** Node.js via `tsx` (TypeScript)
+* **Interface:** PowerShell + WinForms (HUD Visual)
+* **Providers:** Groq, Gemini, OpenAI e Anthropic.
+* **Comunicação:** REST/JSON com fallback inteligente.
 
 ---
 
-## 🚀 Instalando em 30 Segundos
+## ✨ Principais Recursos
 
-1.  **Node.js:** Tenha o [Node.js](https://nodejs.org/) instalado.
-2.  **Setup:** Clique com o botão direito no arquivo `setup-menu.ps1` e selecione **"Executar com o PowerShell"**.
-3.  **API Key:** O script vai pedir sua chave da Groq (Grátis em [console.groq.com](https://console.groq.com)).
-4.  **Pronto!** O menu de contexto será instalado automaticamente.
+### 🔄 Multi-provider com Fallback Automático
+Suporte nativo a Groq, Gemini, OpenAI e Anthropic. Se o provedor primário falhar (Rate limit, erro de autenticação ou indisponibilidade), o toolkit aciona automaticamente o próximo da cadeia.
 
----
+### 📂 Modos de Extração
+* **Full Vibe:** Conteúdo completo de todos os arquivos (Entendimento global).
+* **Architect:** Extrai apenas estruturas, contratos e assinaturas (Economia de tokens).
+* **Sniper:** Seleção manual de arquivos para correções cirúrgicas.
 
-## 📖 Como Usar (O Fluxo Perfeito)
-
-1.  Vá na pasta do seu projeto.
-2.  **Botão Direito** > **"Gerar Blueprint / Contexto (Vibe AI)"**.
-3.  Escolha o modo de extração (1, 2 ou 3).
-4.  Escolha o **Executor Alvo** (1 para AI Studio Apps, 2 para Antigravity).
-5.  Aguarde o processamento... **PLIM!** 6.  O conteúdo está no seu **Clipboard**. Cole no seu Orquestrador (Gemini/ChatGPT Web).
-7.  Copie o Prompt Final gerado pelo Orquestrador e execute no seu Executor (AI Studio Apps/Antigravity).
+### 🎯 Executores Alvo
+O bundle é otimizado especificamente para o comportamento do executor final:
+* **AI Studio Apps**
+* **Antigravity**
 
 ---
 
-## 💡 Dicas de Vibe-Coding
+## 📂 Estrutura do Projeto
 
-* **Sempre siga o pipeline:** Orquestradores são ótimos para pensar. Executores são ótimos para agir. Não inverta os papéis.
-* **Use o Modo Inteligente em Monorepos:** Economize tokens enviando apenas as definições de tipos e interfaces ao Orquestrador.
+* `groq-agent.ts`: Motor principal de orquestração e lógica de fallback.
+* `project-bundler.ps1`: Interface (HUD), leitura de arquivos e montagem do bundle.
+* `package.json`: Gerenciamento de dependências e scripts.
+* `tsconfig.json`: Configurações de tipagem estrita do TypeScript.
 
 ---
 
-*Desenvolvido para quem quer criar mais e configurar menos.* 🚀
+## ⚙️ Configuração
+
+### 1. Instalação
+```bash
+npm install
+```
+
+### 2. Variáveis de Ambiente
+Crie um arquivo `.env` na raiz do projeto:
+```env
+GROQ_API_KEY=sua_chave
+GEMINI_API_KEY=sua_chave
+OPENAI_API_KEY=sua_chave
+ANTHROPIC_API_KEY=sua_chave
+
+# Modelos Preferenciais
+GROQ_MODEL=llama-3.3-70b-versatile
+GEMINI_MODEL=gemini-1.5-pro
+OPENAI_MODEL=gpt-4o
+ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
+```
+
+---
+
+## 🚀 Como Usar
+
+### Via Interface Visual (Recomendado)
+Execute o script PowerShell para abrir o HUD de controle:
+```powershell
+.\project-bundler.ps1
+```
+No HUD, você poderá selecionar o modo de extração, o executor alvo e o provedor de IA.
+
+### Via Linha de Comando (CLI)
+Para integrar em outros fluxos, chame o agente diretamente:
+```bash
+npx tsx groq-agent.ts <caminho_bundle> <nome_projeto> <executor> <modo> <provedor>
+```
+
+---
+
+## 🛡️ Política de Resiliência
+O toolkit utiliza a classe `ProviderRequestError` para monitorar a saúde das requisições. O sistema realiza retries e fallbacks automáticos em casos de:
+* Erros de autenticação ou chaves expiradas.
+* Rate limiting (Excesso de requisições).
+* Respostas vazias ou instabilidade do servidor.
+
+---
+
+## 🧠 Princípios do Projeto
+* **Previsibilidade:** Markdown padronizado para evitar interpretações erradas.
+* **Eficiência:** Foco em reduzir o consumo de tokens sem perder a essência do código.
+* **Contexto Fechado:** No modo Sniper, a IA é instruída a não assumir nada além do que foi fornecido.

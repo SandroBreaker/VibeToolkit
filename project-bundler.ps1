@@ -157,6 +157,16 @@ function Resolve-AIPromptModeFromUI {
     return "default"
 }
 
+function Resolve-AIFlowModeFromUI {
+    param(
+        [System.Windows.Forms.RadioButton]$RbDirector,
+        [System.Windows.Forms.RadioButton]$RbExecutor
+    )
+
+    if ($RbExecutor.Checked) { return "executor" }
+    return "director"
+}
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Vibe AI Toolkit"
 $form.StartPosition = "CenterScreen"
@@ -588,19 +598,65 @@ $panelAIPromptMode = New-Object System.Windows.Forms.GroupBox
 $panelAIPromptMode.Text = "Geração Final com IA"
 $panelAIPromptMode.ForeColor = $ThemePink
 $panelAIPromptMode.BackColor = $ThemePanel
-$panelAIPromptMode.Size = New-Object System.Drawing.Size(824, 96)
+$panelAIPromptMode.Size = New-Object System.Drawing.Size(824, 148)
 $panelAIPromptMode.Location = New-Object System.Drawing.Point(18, 430)
 $panelAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $panelAIPromptMode.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $panelAIPromptMode.Visible = $false
 $form.Controls.Add($panelAIPromptMode)
 
+$lblAIFlowMode = New-Object System.Windows.Forms.Label
+$lblAIFlowMode.Text = "Fluxo final"
+$lblAIFlowMode.ForeColor = $ThemeCyan
+$lblAIFlowMode.BackColor = $ThemePanel
+$lblAIFlowMode.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblAIFlowMode.AutoSize = $true
+$lblAIFlowMode.Location = New-Object System.Drawing.Point(18, 30)
+$panelAIPromptMode.Controls.Add($lblAIFlowMode)
+
+$rbAIFlowDirector = New-Object System.Windows.Forms.RadioButton
+$rbAIFlowDirector.Text = "Via Diretor"
+$rbAIFlowDirector.ForeColor = $ThemeText
+$rbAIFlowDirector.BackColor = $ThemePanel
+$rbAIFlowDirector.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbAIFlowDirector.Location = New-Object System.Drawing.Point(18, 52)
+$rbAIFlowDirector.Size = New-Object System.Drawing.Size(140, 24)
+$rbAIFlowDirector.Checked = $true
+$panelAIPromptMode.Controls.Add($rbAIFlowDirector)
+
+$rbAIFlowExecutor = New-Object System.Windows.Forms.RadioButton
+$rbAIFlowExecutor.Text = "Direto para Executor"
+$rbAIFlowExecutor.ForeColor = $ThemeText
+$rbAIFlowExecutor.BackColor = $ThemePanel
+$rbAIFlowExecutor.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbAIFlowExecutor.Location = New-Object System.Drawing.Point(180, 52)
+$rbAIFlowExecutor.Size = New-Object System.Drawing.Size(180, 24)
+$panelAIPromptMode.Controls.Add($rbAIFlowExecutor)
+
+$lblAIFlowHint = New-Object System.Windows.Forms.Label
+$lblAIFlowHint.Text = "Via Diretor mantém o fluxo atual. Direto para Executor gera um contexto final para a IA executora atuar sem intermediação do Diretor."
+$lblAIFlowHint.ForeColor = $ThemeMuted
+$lblAIFlowHint.BackColor = $ThemePanel
+$lblAIFlowHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblAIFlowHint.AutoSize = $true
+$lblAIFlowHint.Location = New-Object System.Drawing.Point(18, 76)
+$panelAIPromptMode.Controls.Add($lblAIFlowHint)
+
+$lblAIPromptMode = New-Object System.Windows.Forms.Label
+$lblAIPromptMode.Text = "SystemPrompt"
+$lblAIPromptMode.ForeColor = $ThemeCyan
+$lblAIPromptMode.BackColor = $ThemePanel
+$lblAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblAIPromptMode.AutoSize = $true
+$lblAIPromptMode.Location = New-Object System.Drawing.Point(18, 100)
+$panelAIPromptMode.Controls.Add($lblAIPromptMode)
+
 $rbPromptModeDefault = New-Object System.Windows.Forms.RadioButton
 $rbPromptModeDefault.Text = "Modo padrão"
 $rbPromptModeDefault.ForeColor = $ThemeText
 $rbPromptModeDefault.BackColor = $ThemePanel
 $rbPromptModeDefault.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbPromptModeDefault.Location = New-Object System.Drawing.Point(18, 34)
+$rbPromptModeDefault.Location = New-Object System.Drawing.Point(18, 122)
 $rbPromptModeDefault.Size = New-Object System.Drawing.Size(140, 24)
 $rbPromptModeDefault.Checked = $true
 $panelAIPromptMode.Controls.Add($rbPromptModeDefault)
@@ -610,17 +666,17 @@ $rbPromptModeCustom.Text = "Modo personalizado"
 $rbPromptModeCustom.ForeColor = $ThemeText
 $rbPromptModeCustom.BackColor = $ThemePanel
 $rbPromptModeCustom.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbPromptModeCustom.Location = New-Object System.Drawing.Point(180, 34)
+$rbPromptModeCustom.Location = New-Object System.Drawing.Point(180, 122)
 $rbPromptModeCustom.Size = New-Object System.Drawing.Size(180, 24)
 $panelAIPromptMode.Controls.Add($rbPromptModeCustom)
 
 $lblAIPromptModeHint = New-Object System.Windows.Forms.Label
-$lblAIPromptModeHint.Text = "No modo padrão, nada muda. No modo personalizado, o HUD envia o systemPrompt digitado abaixo."
+$lblAIPromptModeHint.Text = "No modo padrão, o toolkit usa o systemPrompt nativo do fluxo selecionado. No modo personalizado, o HUD envia o systemPrompt digitado abaixo."
 $lblAIPromptModeHint.ForeColor = $ThemeMuted
 $lblAIPromptModeHint.BackColor = $ThemePanel
 $lblAIPromptModeHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblAIPromptModeHint.AutoSize = $true
-$lblAIPromptModeHint.Location = New-Object System.Drawing.Point(18, 62)
+$lblAIPromptModeHint.Location = New-Object System.Drawing.Point(18, 146)
 $panelAIPromptMode.Controls.Add($lblAIPromptModeHint)
 
 $lblCustomSystemPrompt = New-Object System.Windows.Forms.Label
@@ -629,7 +685,7 @@ $lblCustomSystemPrompt.ForeColor = $ThemeCyan
 $lblCustomSystemPrompt.BackColor = $ThemePanel
 $lblCustomSystemPrompt.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
 $lblCustomSystemPrompt.AutoSize = $true
-$lblCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 96)
+$lblCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 172)
 $lblCustomSystemPrompt.Visible = $false
 $panelAIPromptMode.Controls.Add($lblCustomSystemPrompt)
 
@@ -642,7 +698,7 @@ $txtCustomSystemPrompt.BackColor = $ThemePanelAlt
 $txtCustomSystemPrompt.ForeColor = $ThemeText
 $txtCustomSystemPrompt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $txtCustomSystemPrompt.Font = New-Object System.Drawing.Font("Consolas", 9)
-$txtCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 118)
+$txtCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 194)
 $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size(788, 86)
 $txtCustomSystemPrompt.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $txtCustomSystemPrompt.Visible = $false
@@ -691,9 +747,9 @@ function Update-AIPromptModeUi {
     $txtCustomSystemPrompt.Visible = $customPromptVisible
 
     if ($customPromptVisible) {
-        $panelAIPromptMode.Height = 220
+        $panelAIPromptMode.Height = 292
     } else {
-        $panelAIPromptMode.Height = 96
+        $panelAIPromptMode.Height = 172
     }
 
     Update-ResponsiveLayout
@@ -752,6 +808,7 @@ function Update-ResponsiveLayout {
         $panelAIPromptMode.Location = New-Object System.Drawing.Point($leftGap, ($chkY + 32))
         $panelAIPromptMode.Size = New-Object System.Drawing.Size($usableWidth, $panelAIPromptMode.Height)
 
+        $lblAIFlowHint.MaximumSize = New-Object System.Drawing.Size(($panelAIPromptMode.Width - 36), 0)
         $lblAIPromptModeHint.MaximumSize = New-Object System.Drawing.Size(($panelAIPromptMode.Width - 36), 0)
         $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size(($panelAIPromptMode.Width - 36), 86)
 
@@ -813,6 +870,14 @@ $rbPromptModeCustom.Add_CheckedChanged({
     Update-AIPromptModeUi
 })
 
+$rbAIFlowDirector.Add_CheckedChanged({
+    Update-AIPromptModeUi
+})
+
+$rbAIFlowExecutor.Add_CheckedChanged({
+    Update-AIPromptModeUi
+})
+
 $form.Add_Shown({
     Set-SniperLayout -Visible $false
     Update-AIPromptModeUi
@@ -869,6 +934,7 @@ function Invoke-OrchestratorAgent {
         [string]$ExecutorTargetValue,
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
+        [string]$OutputRouteModeValue,
         [string]$CustomSystemPromptFilePath = $null
     )
 
@@ -909,7 +975,8 @@ function Invoke-OrchestratorAgent {
         "`"$ProjectNameValue`"",
         "`"$ExecutorTargetValue`"",
         "`"$BundleModeValue`"",
-        "`"$PrimaryProviderValue`""
+        "`"$PrimaryProviderValue`"",
+        "`"$OutputRouteModeValue`""
     )
 
     if (-not [string]::IsNullOrWhiteSpace($CustomSystemPromptFilePath)) {
@@ -996,6 +1063,7 @@ $btnRun.Add_Click({
     $currentExecutorTarget = Resolve-ExecutorFromUI -RbAIStudio $rbAIStudio -RbAntigravity $rbAntigravity
     $currentAIProvider = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
     $currentAIPromptMode = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbCustom $rbPromptModeCustom
+    $currentAIFlowMode = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
 
     if (-not $currentChoice) {
         [System.Windows.Forms.MessageBox]::Show(
@@ -1078,6 +1146,7 @@ $btnRun.Add_Click({
         Write-UILog -Message "IA primária: $AIProvider"
         Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
         Write-UILog -Message "Modo de geração final com IA: $(if ($SendToAI) { if ($currentAIPromptMode -eq 'custom') { 'Personalizado' } else { 'Padrão' } } else { 'Desabilitado' })"
+        Write-UILog -Message "Fluxo final da IA: $(if ($SendToAI) { if ($currentAIFlowMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' } } else { 'Desabilitado' })"
 
         $HeaderContent = ""
 
@@ -1416,7 +1485,13 @@ REGRA FINAL DO DIRETOR:
                 [System.IO.File]::WriteAllText($CustomSystemPromptFilePath, $txtCustomSystemPrompt.Text, (New-Object System.Text.UTF8Encoding $false))
                 Write-UILog -Message "Modo personalizado ativo: systemPrompt definido no HUD será enviado para a IA." -Color $ThemePink
             } else {
-                Write-UILog -Message "Modo padrão ativo: usando o fluxo atual configurado no agente." -Color $ThemeCyan
+                Write-UILog -Message "Modo padrão ativo: usando o fluxo nativo configurado no agente." -Color $ThemeCyan
+            }
+
+            if ($currentAIFlowMode -eq "executor") {
+                Write-UILog -Message "Fluxo direto para executor ativo: a saída final será preparada para a IA executora atuar sem passar pelo Diretor." -Color $ThemePink
+            } else {
+                Write-UILog -Message "Fluxo via Diretor ativo: a saída final continuará preparando a IA orquestradora no papel de Diretor." -Color $ThemeCyan
             }
 
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
@@ -1429,6 +1504,7 @@ REGRA FINAL DO DIRETOR:
                 -ExecutorTargetValue $ExecutorTarget `
                 -BundleModeValue $BundleMode `
                 -PrimaryProviderValue $AIProvider `
+                -OutputRouteModeValue $currentAIFlowMode `
                 -CustomSystemPromptFilePath $CustomSystemPromptFilePath
 
             $FinalPromptPath = $null
@@ -1460,7 +1536,11 @@ REGRA FINAL DO DIRETOR:
                 Write-UILog -Message "Provider efetivo não identificado no retorno do agente." -Color $ThemePink
             }
 
-            Write-UILog -Message "Agora é só colar no seu orquestrador." -Color $ThemeCyan
+            if ($currentAIFlowMode -eq "executor") {
+                Write-UILog -Message "Agora é só colar no seu executor." -Color $ThemeCyan
+            } else {
+                Write-UILog -Message "Agora é só colar no seu orquestrador." -Color $ThemeCyan
+            }
         } else {
             Write-UILog -Message "Execução concluída sem chamada da Groq." -Color $ThemeSuccess
         }

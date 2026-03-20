@@ -11,6 +11,24 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class Win32 {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+
+$consoleHandle = [Win32]::GetConsoleWindow()
+if ($consoleHandle -ne [IntPtr]::Zero) {
+    [Win32]::ShowWindow($consoleHandle, 0) | Out-Null
+}
+
 $ProjectName = (Get-Item .).Name
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ToolkitDir = Split-Path $ScriptFullPath
@@ -127,6 +145,16 @@ function Resolve-AIProviderFromUI {
     if ($RbOpenAI.Checked) { return "openai" }
     if ($RbAnthropic.Checked) { return "anthropic" }
     return $null
+}
+
+function Resolve-AIPromptModeFromUI {
+    param(
+        [System.Windows.Forms.RadioButton]$RbDefault,
+        [System.Windows.Forms.RadioButton]$RbCustom
+    )
+
+    if ($RbCustom.Checked) { return "custom" }
+    return "default"
 }
 
 $form = New-Object System.Windows.Forms.Form
@@ -556,6 +584,70 @@ $chkSendToAI.Location = New-Object System.Drawing.Point(18, 396)
 $chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $form.Controls.Add($chkSendToAI)
 
+$panelAIPromptMode = New-Object System.Windows.Forms.GroupBox
+$panelAIPromptMode.Text = "Geração Final com IA"
+$panelAIPromptMode.ForeColor = $ThemePink
+$panelAIPromptMode.BackColor = $ThemePanel
+$panelAIPromptMode.Size = New-Object System.Drawing.Size(824, 96)
+$panelAIPromptMode.Location = New-Object System.Drawing.Point(18, 430)
+$panelAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelAIPromptMode.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$panelAIPromptMode.Visible = $false
+$form.Controls.Add($panelAIPromptMode)
+
+$rbPromptModeDefault = New-Object System.Windows.Forms.RadioButton
+$rbPromptModeDefault.Text = "Modo padrão"
+$rbPromptModeDefault.ForeColor = $ThemeText
+$rbPromptModeDefault.BackColor = $ThemePanel
+$rbPromptModeDefault.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbPromptModeDefault.Location = New-Object System.Drawing.Point(18, 34)
+$rbPromptModeDefault.Size = New-Object System.Drawing.Size(140, 24)
+$rbPromptModeDefault.Checked = $true
+$panelAIPromptMode.Controls.Add($rbPromptModeDefault)
+
+$rbPromptModeCustom = New-Object System.Windows.Forms.RadioButton
+$rbPromptModeCustom.Text = "Modo personalizado"
+$rbPromptModeCustom.ForeColor = $ThemeText
+$rbPromptModeCustom.BackColor = $ThemePanel
+$rbPromptModeCustom.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbPromptModeCustom.Location = New-Object System.Drawing.Point(180, 34)
+$rbPromptModeCustom.Size = New-Object System.Drawing.Size(180, 24)
+$panelAIPromptMode.Controls.Add($rbPromptModeCustom)
+
+$lblAIPromptModeHint = New-Object System.Windows.Forms.Label
+$lblAIPromptModeHint.Text = "No modo padrão, nada muda. No modo personalizado, o HUD envia o systemPrompt digitado abaixo."
+$lblAIPromptModeHint.ForeColor = $ThemeMuted
+$lblAIPromptModeHint.BackColor = $ThemePanel
+$lblAIPromptModeHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblAIPromptModeHint.AutoSize = $true
+$lblAIPromptModeHint.Location = New-Object System.Drawing.Point(18, 62)
+$panelAIPromptMode.Controls.Add($lblAIPromptModeHint)
+
+$lblCustomSystemPrompt = New-Object System.Windows.Forms.Label
+$lblCustomSystemPrompt.Text = "SystemPrompt personalizado"
+$lblCustomSystemPrompt.ForeColor = $ThemeCyan
+$lblCustomSystemPrompt.BackColor = $ThemePanel
+$lblCustomSystemPrompt.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblCustomSystemPrompt.AutoSize = $true
+$lblCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 96)
+$lblCustomSystemPrompt.Visible = $false
+$panelAIPromptMode.Controls.Add($lblCustomSystemPrompt)
+
+$txtCustomSystemPrompt = New-Object System.Windows.Forms.TextBox
+$txtCustomSystemPrompt.Multiline = $true
+$txtCustomSystemPrompt.AcceptsReturn = $true
+$txtCustomSystemPrompt.AcceptsTab = $true
+$txtCustomSystemPrompt.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+$txtCustomSystemPrompt.BackColor = $ThemePanelAlt
+$txtCustomSystemPrompt.ForeColor = $ThemeText
+$txtCustomSystemPrompt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$txtCustomSystemPrompt.Font = New-Object System.Drawing.Font("Consolas", 9)
+$txtCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 118)
+$txtCustomSystemPrompt.Size = New-Object System.Drawing.Size(788, 86)
+$txtCustomSystemPrompt.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$txtCustomSystemPrompt.Visible = $false
+$panelAIPromptMode.Controls.Add($txtCustomSystemPrompt)
+
 $btnRun = New-Object System.Windows.Forms.Button
 $btnRun.Text = "ENERGIZE"
 $btnRun.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
@@ -589,6 +681,23 @@ $logViewer.Location = New-Object System.Drawing.Point(18, 466)
 $logViewer.Size = New-Object System.Drawing.Size(824, 316)
 $logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($logViewer)
+
+function Update-AIPromptModeUi {
+    $panelAIPromptMode.Visible = $chkSendToAI.Checked
+
+    $customPromptVisible = $chkSendToAI.Checked -and $rbPromptModeCustom.Checked
+
+    $lblCustomSystemPrompt.Visible = $customPromptVisible
+    $txtCustomSystemPrompt.Visible = $customPromptVisible
+
+    if ($customPromptVisible) {
+        $panelAIPromptMode.Height = 220
+    } else {
+        $panelAIPromptMode.Height = 96
+    }
+
+    Update-ResponsiveLayout
+}
 
 function Update-ResponsiveLayout {
     $clientWidth = [int]$form.ClientSize.Width
@@ -639,12 +748,23 @@ function Update-ResponsiveLayout {
     $btnRunY = [int]($chkY - 6)
     $btnRun.Location = New-Object System.Drawing.Point($btnRunX, $btnRunY)
 
-    $progressBarY = [int]($chkY + 48)
+    if ($panelAIPromptMode.Visible) {
+        $panelAIPromptMode.Location = New-Object System.Drawing.Point($leftGap, ($chkY + 32))
+        $panelAIPromptMode.Size = New-Object System.Drawing.Size($usableWidth, $panelAIPromptMode.Height)
+
+        $lblAIPromptModeHint.MaximumSize = New-Object System.Drawing.Size(($panelAIPromptMode.Width - 36), 0)
+        $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size(($panelAIPromptMode.Width - 36), 86)
+
+        $progressBarY = [int]($panelAIPromptMode.Bottom + 16)
+    } else {
+        $progressBarY = [int]($chkY + 48)
+    }
+
     $progressBar.Location = New-Object System.Drawing.Point($leftGap, $progressBarY)
     $progressBar.Size = New-Object System.Drawing.Size($usableWidth, 12)
 
     $logTop = [int]($progressBar.Bottom + 10)
-    $logHeight = [int][Math]::Max(140, ($clientHeight - $logTop - 20))
+    $logHeight = [int][Math]::Max(120, ($clientHeight - $logTop - 20))
     $logViewer.Location = New-Object System.Drawing.Point($leftGap, $logTop)
     $logViewer.Size = New-Object System.Drawing.Size($usableWidth, $logHeight)
 
@@ -681,8 +801,21 @@ $rbArchitect.Add_CheckedChanged({
     if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }
 })
 
+$chkSendToAI.Add_CheckedChanged({
+    Update-AIPromptModeUi
+})
+
+$rbPromptModeDefault.Add_CheckedChanged({
+    Update-AIPromptModeUi
+})
+
+$rbPromptModeCustom.Add_CheckedChanged({
+    Update-AIPromptModeUi
+})
+
 $form.Add_Shown({
     Set-SniperLayout -Visible $false
+    Update-AIPromptModeUi
     Ensure-FormVisible
 })
 
@@ -735,24 +868,66 @@ function Invoke-OrchestratorAgent {
         [string]$ProjectNameValue,
         [string]$ExecutorTargetValue,
         [string]$BundleModeValue,
-        [string]$PrimaryProviderValue
+        [string]$PrimaryProviderValue,
+        [string]$CustomSystemPromptFilePath = $null
     )
 
     if (-not (Test-Path $AgentScriptPath)) {
         throw "Script groq-agent.ts não localizado."
     }
 
+    $winner = [ordered]@{
+        Provider = $null
+        Model    = $null
+    }
+
+    $handleAgentLine = {
+        param(
+            [string]$Line,
+            [System.Drawing.Color]$DefaultColor
+        )
+
+        if ([string]::IsNullOrWhiteSpace($Line)) {
+            return
+        }
+
+        if ($Line -match '\[AI_RESULT\]\s+provider=([^;]+);model=(.+)$') {
+            $winner.Provider = $Matches[1].Trim()
+            $winner.Model = $Matches[2].Trim()
+            return
+        }
+
+        Write-UILog -Message $Line -Color $DefaultColor
+    }.GetNewClosure()
+
+    $commandParts = @(
+        "npx",
+        "--quiet",
+        "tsx",
+        "`"$AgentScriptPath`"",
+        "`"$BundlePath`"",
+        "`"$ProjectNameValue`"",
+        "`"$ExecutorTargetValue`"",
+        "`"$BundleModeValue`"",
+        "`"$PrimaryProviderValue`""
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CustomSystemPromptFilePath)) {
+        $commandParts += "`"$CustomSystemPromptFilePath`""
+    }
+
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $process.StartInfo.FileName = "cmd.exe"
-    $process.StartInfo.Arguments = "/c npx --quiet tsx `"$AgentScriptPath`" `"$BundlePath`" `"$ProjectNameValue`" `"$ExecutorTargetValue`" `"$BundleModeValue`" `"$PrimaryProviderValue`""
+    $process.StartInfo.Arguments = "/c " + ($commandParts -join " ")
     $process.StartInfo.WorkingDirectory = (Get-Location).Path
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
     $process.StartInfo.RedirectStandardOutput = $true
     $process.StartInfo.RedirectStandardError = $true
-
-    $env:DOTENV_CONFIG_SILENT = "true"
+    $process.StartInfo.EnvironmentVariables["DOTENV_CONFIG_SILENT"] = "true"
+    $process.StartInfo.EnvironmentVariables["npm_config_update_notifier"] = "false"
+    $process.StartInfo.EnvironmentVariables["NO_UPDATE_NOTIFIER"] = "1"
 
     if (-not $process.Start()) {
         throw "Falha ao iniciar o processo do agente de IA."
@@ -761,40 +936,58 @@ function Invoke-OrchestratorAgent {
     while (-not $process.HasExited) {
         while ($process.StandardOutput.Peek() -ge 0) {
             $line = $process.StandardOutput.ReadLine()
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                Write-UILog -Message $line -Color $ThemeCyan
-            }
+            & $handleAgentLine $line $ThemeCyan
         }
 
         while ($process.StandardError.Peek() -ge 0) {
             $line = $process.StandardError.ReadLine()
-            if (-not [string]::IsNullOrWhiteSpace($line)) {
-                Write-UILog -Message $line -Color $ThemePink
-            }
+            & $handleAgentLine $line $ThemePink
         }
 
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 100
     }
 
+    $process.WaitForExit()
+
     while ($process.StandardOutput.Peek() -ge 0) {
         $line = $process.StandardOutput.ReadLine()
-        if (-not [string]::IsNullOrWhiteSpace($line)) {
-            Write-UILog -Message $line -Color $ThemeCyan
-        }
+        & $handleAgentLine $line $ThemeCyan
     }
 
     while ($process.StandardError.Peek() -ge 0) {
         $line = $process.StandardError.ReadLine()
-        if (-not [string]::IsNullOrWhiteSpace($line)) {
-            Write-UILog -Message $line -Color $ThemePink
-        }
+        & $handleAgentLine $line $ThemePink
     }
-
-    $process.WaitForExit()
 
     if ($process.ExitCode -ne 0) {
         throw "groq-agent.ts finalizou com código $($process.ExitCode)."
+    }
+
+    $resultMetaPath = Join-Path (Split-Path $BundlePath -Parent) "_AI_RESULT_$ProjectNameValue.json"
+
+    if (Test-Path $resultMetaPath) {
+        try {
+            $resultMeta = Get-Content $resultMetaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+            return [pscustomobject]@{
+                WinnerProvider = if ($resultMeta.provider) { [string]$resultMeta.provider } else { $winner.Provider }
+                WinnerModel    = if ($resultMeta.model) { [string]$resultMeta.model } else { $winner.Model }
+                OutputPath     = if ($resultMeta.outputPath) { [string]$resultMeta.outputPath } else { $null }
+            }
+        } catch {
+            return [pscustomobject]@{
+                WinnerProvider = $winner.Provider
+                WinnerModel    = $winner.Model
+                OutputPath     = $null
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        WinnerProvider = $winner.Provider
+        WinnerModel    = $winner.Model
+        OutputPath     = $null
     }
 }
 
@@ -802,6 +995,7 @@ $btnRun.Add_Click({
     $currentChoice = Resolve-ChoiceFromUI -RbFull $rbFull -RbArchitect $rbArchitect -RbSniper $rbSniper
     $currentExecutorTarget = Resolve-ExecutorFromUI -RbAIStudio $rbAIStudio -RbAntigravity $rbAntigravity
     $currentAIProvider = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
+    $currentAIPromptMode = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbCustom $rbPromptModeCustom
 
     if (-not $currentChoice) {
         [System.Windows.Forms.MessageBox]::Show(
@@ -826,6 +1020,16 @@ $btnRun.Add_Click({
     if (-not $currentExecutorTarget) {
         [System.Windows.Forms.MessageBox]::Show(
             "Selecione o executor alvo.",
+            "VibeToolkit",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+        return
+    }
+
+    if ($chkSendToAI.Checked -and $currentAIPromptMode -eq "custom" -and [string]::IsNullOrWhiteSpace($txtCustomSystemPrompt.Text)) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "No modo personalizado, preencha o systemPrompt da IA.",
             "VibeToolkit",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Warning
@@ -861,6 +1065,8 @@ $btnRun.Add_Click({
     $FilesToProcess = @($selectedFiles)
     $SendToAI = $chkSendToAI.Checked
 
+    $CustomSystemPromptFilePath = $null
+
     Set-UiBusy -Busy $true
     $logViewer.Clear()
 
@@ -871,25 +1077,55 @@ $btnRun.Add_Click({
         Write-UILog -Message "Executor alvo: $ExecutorTarget"
         Write-UILog -Message "IA primária: $AIProvider"
         Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
+        Write-UILog -Message "Modo de geração final com IA: $(if ($SendToAI) { if ($currentAIPromptMode -eq 'custom') { 'Personalizado' } else { 'Padrão' } } else { 'Desabilitado' })"
 
         $HeaderContent = ""
 
-        if ($ExecutorTarget -eq "AI Studio Apps") {
+        if ($Choice -eq '3') {
             $HeaderContent = @"
-## Instruções  
+## Instruções
+Você deve assumir a persona de DIRETOR TÉCNICO DE EXECUÇÃO.
+
+POSICIONAMENTO:
+- Este documento é uma SOURCE OF TRUTH PARCIAL do projeto
+- O conteúdo representa apenas um RECORTE VISÍVEL do sistema
+- O executor alvo final deste fluxo é: $ExecutorTarget
+
+PAPEL DO DIRETOR:
+- Ler este documento como base técnica de verdade
+- Assimilar apenas stack, contratos, fluxos, componentes, arquivos, assinaturas e restrições efetivamente visíveis
+- Aguardar a solicitação futura do usuário
+- Converter a solicitação em um prompt técnico otimizado para um agente executor com capacidades agênticas
+- Produzir instruções para uma IA que cria/edita arquivos, roda comandos, aplica mudanças e valida resultados
+
+REGRAS DE INTERPRETAÇÃO OBRIGATÓRIAS:
+- Considerar exclusivamente o que está visível neste recorte
+- Não inferir arquivos, módulos, dependências, fluxos, regras, responsabilidades ou comportamentos fora do material apresentado
+- Quando faltar contexto, declarar explicitamente a limitação no prompt gerado
+- Restringir qualquer execução futura ao escopo observável neste documento
+- Priorizar precisão, previsibilidade e zero impacto colateral
+
+OBJETIVO DO DIRETOR:
+Receber este recorte parcial, compreender o que está visível e, diante de uma solicitação futura do usuário, gerar um prompt otimizado para execução técnica segura e precisa, limitado ao escopo documentado, sem extrapolar contexto e sem modificar nada fora do que puder ser sustentado por evidência neste material.
+
+TEMPLATE DE PROMPT QUE VOCÊ DEVE GERAR PARA O EXECUTOR:
+
+## Instruções
 CONTEXTO:
 - Papel esperado: SENIOR_ENGINEERING_EXECUTOR
 - Tarefa: executar alterações técnicas em código existente
 - Prioridade: precisão, previsibilidade e zero impacto colateral
 - Premissas: o projeto já possui contratos, identificadores e princípios de design que devem ser preservados
+- Restrição adicional: atuar somente sobre o escopo visível neste recorte parcial
 
 OBJETIVO:
-Executar exatamente a alteração solicitada no escopo informado, mantendo compatibilidade com a base atual, sem regressões funcionais e sem modificar nada fora do pedido.
+Executar exatamente a alteração solicitada no escopo informado, mantendo compatibilidade com a base atual visível, sem regressões funcionais e sem modificar nada fora do pedido ou fora do recorte analisado.
 
 REGRAS:
 - Usar tipagem estrita quando a stack suportar
 - Preservar contratos, assinaturas, identificadores e comportamento existente
 - Não alterar arquitetura, layout, nomes ou fluxos fora do escopo explícito
+- Não inferir dependências, arquivos ou comportamentos não documentados no recorte
 - Priorizar eficiência e simplicidade, evitando abstrações e operações redundantes
 - Tratar falhas explicitamente
 - Controlar fluxos assíncronos corretamente
@@ -904,14 +1140,45 @@ ENTREGA:
 - Pronta para uso
 - Sem regressão
 - Sem mudanças colaterais
+- Restrita ao escopo visível
 - Com o mínimo de texto explicativo
 
-```
-
+REGRA FINAL DO DIRETOR:
+- O prompt gerado deve ser adaptado ao contexto real deste recorte
+- O prompt nunca deve ser genérico
+- O prompt deve deixar explícito o que é limitação de contexto
+- O prompt deve impedir qualquer execução fora do material visível
 "@
-} else {
-$HeaderContent = @"
-## Instruções  
+        } else {
+            $HeaderContent = @"
+## Instruções
+Você deve assumir a persona de DIRETOR TÉCNICO DE EXECUÇÃO.
+
+POSICIONAMENTO:
+- Este documento é uma SOURCE OF TRUTH do projeto
+- O conteúdo representa uma visão global ou estrutural ampla do sistema
+- O executor alvo final deste fluxo é: $ExecutorTarget
+
+PAPEL DO DIRETOR:
+- Ler este documento como base técnica de verdade
+- Assimilar stack, arquitetura, contratos, identificadores, fluxos, componentes, módulos e restrições observáveis
+- Aguardar a solicitação futura do usuário
+- Converter a solicitação em um prompt técnico otimizado para um agente executor com capacidades agênticas
+- Produzir instruções para uma IA que cria/edita arquivos, roda comandos, aplica mudanças e valida resultados
+
+REGRAS DE INTERPRETAÇÃO OBRIGATÓRIAS:
+- Basear-se exclusivamente no que estiver documentado neste bundle
+- Preservar contratos, identificadores, comportamento existente e princípios de design observáveis
+- Não inventar arquitetura, dependências ou regras sem evidência no material
+- Quando houver lacuna de contexto, explicitar a limitação no prompt gerado
+- Priorizar precisão, previsibilidade e zero impacto colateral
+
+OBJETIVO DO DIRETOR:
+Receber esta Source of Truth, compreender o projeto e, diante de uma solicitação futura do usuário, gerar um prompt otimizado para execução técnica segura e precisa no código existente, respeitando a base atual e sem modificar nada fora do escopo solicitado.
+
+TEMPLATE DE PROMPT QUE VOCÊ DEVE GERAR PARA O EXECUTOR:
+
+## Instruções
 CONTEXTO:
 - Papel esperado: SENIOR_ENGINEERING_EXECUTOR
 - Tarefa: executar alterações técnicas em código existente
@@ -940,7 +1207,12 @@ ENTREGA:
 - Sem regressão
 - Sem mudanças colaterais
 - Com o mínimo de texto explicativo
-````
+
+REGRA FINAL DO DIRETOR:
+- O prompt gerado deve ser adaptado ao contexto real deste projeto
+- O prompt nunca deve ser genérico
+- O prompt deve considerar stack, padrões, contratos, restrições e limites observáveis neste documento
+- O prompt deve orientar execução segura, precisa e sem impacto colateral
 "@
         }
 
@@ -1138,19 +1410,56 @@ ENTREGA:
         if ($SendToAI) {
             Write-UILog -Message "Chamando agente de IA..." -Color $ThemeCyan
             Write-UILog -Message "Provider primário: $AIProvider | fallback automático ativo." -Color $ThemeCyan
+
+            if ($currentAIPromptMode -eq "custom") {
+                $CustomSystemPromptFilePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-custom-systemprompt-" + [System.Guid]::NewGuid().ToString("N") + ".txt")
+                [System.IO.File]::WriteAllText($CustomSystemPromptFilePath, $txtCustomSystemPrompt.Text, (New-Object System.Text.UTF8Encoding $false))
+                Write-UILog -Message "Modo personalizado ativo: systemPrompt definido no HUD será enviado para a IA." -Color $ThemePink
+            } else {
+                Write-UILog -Message "Modo padrão ativo: usando o fluxo atual configurado no agente." -Color $ThemeCyan
+            }
+
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
             $BundleMode = if ($Choice -eq '1') { 'full' } elseif ($Choice -eq '2') { 'blueprint' } else { 'manual' }
 
-            Invoke-OrchestratorAgent -AgentScriptPath $AgentScript -BundlePath $OutputFullPath -ProjectNameValue $ProjectName -ExecutorTargetValue $ExecutorTarget -BundleModeValue $BundleMode -PrimaryProviderValue $AIProvider
+            $AgentResult = Invoke-OrchestratorAgent `
+                -AgentScriptPath $AgentScript `
+                -BundlePath $OutputFullPath `
+                -ProjectNameValue $ProjectName `
+                -ExecutorTargetValue $ExecutorTarget `
+                -BundleModeValue $BundleMode `
+                -PrimaryProviderValue $AIProvider `
+                -CustomSystemPromptFilePath $CustomSystemPromptFilePath
 
-            $FinalSummarizedContent = Get-Content $OutputFullPath -Raw -Encoding UTF8
-            try {
-                $FinalSummarizedContent | Set-Clipboard
-                Write-UILog -Message "Prompt final preparado e copiado para o clipboard." -Color $ThemeSuccess
-            } catch {
-                Write-UILog -Message "Prompt final preparado, mas não foi possível copiar para o clipboard." -Color $ThemePink
+            $FinalPromptPath = $null
+
+            if ($AgentResult -and $AgentResult.OutputPath -and (Test-Path $AgentResult.OutputPath)) {
+                $FinalPromptPath = $AgentResult.OutputPath
+            } else {
+                $FallbackAiContextPath = Join-Path (Split-Path $OutputFullPath -Parent) "_AI_CONTEXT_$ProjectName.md"
+                if (Test-Path $FallbackAiContextPath) {
+                    $FinalPromptPath = $FallbackAiContextPath
+                }
             }
-            Write-UILog -Message "Verifique no log acima qual provider venceu o fallback." -Color $ThemeCyan
+
+            if ($FinalPromptPath) {
+                $FinalSummarizedContent = Get-Content $FinalPromptPath -Raw -Encoding UTF8
+                try {
+                    $FinalSummarizedContent | Set-Clipboard
+                    Write-UILog -Message "Prompt final preparado e copiado para o clipboard." -Color $ThemeSuccess
+                } catch {
+                    Write-UILog -Message "Prompt final preparado, mas não foi possível copiar para o clipboard." -Color $ThemePink
+                }
+            } else {
+                Write-UILog -Message "Arquivo final da IA não foi localizado." -Color $ThemePink
+            }
+
+            if ($AgentResult -and $AgentResult.WinnerProvider) {
+                Write-UILog -Message "Provider efetivo usado: $($AgentResult.WinnerProvider) | Modelo: $($AgentResult.WinnerModel)" -Color $ThemeSuccess
+            } else {
+                Write-UILog -Message "Provider efetivo não identificado no retorno do agente." -Color $ThemePink
+            }
+
             Write-UILog -Message "Agora é só colar no seu orquestrador." -Color $ThemeCyan
         } else {
             Write-UILog -Message "Execução concluída sem chamada da Groq." -Color $ThemeSuccess
@@ -1164,6 +1473,10 @@ ENTREGA:
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
     } finally {
+        if ($CustomSystemPromptFilePath -and (Test-Path $CustomSystemPromptFilePath)) {
+            Remove-Item $CustomSystemPromptFilePath -Force -ErrorAction SilentlyContinue
+        }
+
         Set-UiBusy -Busy $false
     }
 })

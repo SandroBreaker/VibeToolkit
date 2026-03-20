@@ -1,104 +1,104 @@
 # 🚀 VibeToolkit
-**AI Context Synthesizer for Orchestrators**
+**AI Context Synthesizer & Execution Director**
 
-O **VibeToolkit** é uma ferramenta de infraestrutura para IA focada em transformar projetos de software em bundles estruturados. Ele prepara o contexto ideal para **orquestradores** (como ChatGPT Web e Gemini Web), que geram o prompt final para execução em ferramentas como **AI Studio Apps** ou **Antigravity**.
-
-O objetivo central é eliminar alucinações por falta de contexto, gerando uma **Source of Truth** (Fonte de Verdade) consistente e previsível.
+O **VibeToolkit** é uma suite de infraestrutura para IA focada em transformar bases de código brutas em um **Bundle de Contexto Estruturado**. Ele resolve o problema da "falta de contexto" ao preparar uma **Source of Truth** (Fonte de Verdade) blindada para orquestradores (ChatGPT, Gemini, Claude) que atuam como **Diretores** para executores agênticos (**AI Studio Apps** ou **Antigravity**).
 
 ---
 
-## 🛠️ Fluxo de Trabalho
-
-1.  **Consolidação:** Lê e agrupa arquivos relevantes do projeto.
-2.  **Bundling:** Gera um arquivo Markdown estruturado.
-3.  **Injeção:** Embuti instruções específicas para o executor alvo.
-4.  **Orquestração (Opcional):** Chama uma IA para refinar o contexto.
-5.  **Entrega:** Copia o prompt final para o clipboard, pronto para o uso.
-
-### Stack Técnica
-* **Runtime:** Node.js via `tsx` (TypeScript)
-* **Interface:** PowerShell + WinForms (HUD Visual)
-* **Providers:** Groq, Gemini, OpenAI e Anthropic.
-* **Comunicação:** REST/JSON com fallback inteligente.
+## 💎 O Conceito de "Vibe"
+O toolkit não apenas "copia arquivos", ele extrai a **vibe** (arquitetura, padrões, intenções e contratos) do projeto. O output final não é apenas código, mas um documento meta-analítico que ensina a IA subsequente a agir como um Diretor Técnico do seu projeto.
 
 ---
 
 ## ✨ Principais Recursos
 
-### 🔄 Multi-provider com Fallback Automático
-Suporte nativo a Groq, Gemini, OpenAI e Anthropic. Se o provedor primário falhar (Rate limit, erro de autenticação ou indisponibilidade), o toolkit aciona automaticamente o próximo da cadeia.
+### 🎨 HUD de Controle Visual
+Interface nativa em WinForms (HUD) que centraliza toda a operação. Zero CLI para o fluxo diário, focado em produtividade máxima.
 
-### 📂 Modos de Extração
-* **Full Vibe:** Conteúdo completo de todos os arquivos (Entendimento global).
-* **Architect:** Extrai apenas estruturas, contratos e assinaturas (Economia de tokens).
-* **Sniper:** Seleção manual de arquivos para correções cirúrgicas.
+### 🛡️ Smart Chain Multi-Provider (Fallback Dinâmico)
+Sistema resiliente de requisições:
+1.  **Ordem:** Groq → Gemini → OpenAI → Anthropic.
+2.  **Fallback Automático:** Se um provider atingir Rate Limit ou estiver offline, o agente pula para o próximo da cadeia sem perder o progresso.
+3.  **Monitoramento:** Logs em tempo real de latência e saúde de cada provider.
 
-### 🎯 Executores Alvo
-O bundle é otimizado especificamente para o comportamento do executor final:
-* **AI Studio Apps**
-* **Antigravity**
+### 🎯 Modos de Extração Cirúrgica
+*   **🔵 Full Vibe:** Contexto integral. Ideal para análise de bugs complexos.
+*   **🟠 Architect:** Apenas estruturas, assinaturas e contratos. Economia agressiva de tokens.
+*   **🔴 Sniper Mode:** Seleção granular de arquivos via checklist visual para correções focadas.
 
----
+### 🧩 Integração Nativa (Right-Click Magic)
+Acesso instantâneo via **Menu de Contexto do Windows**. Clique com o botão direito em qualquer pasta para iniciar o "Vibing" sem abrir terminais.
 
-## 📂 Estrutura do Projeto
-
-* `groq-agent.ts`: Motor principal de orquestração e lógica de fallback.
-* `project-bundler.ps1`: Interface (HUD), leitura de arquivos e montagem do bundle.
-* `package.json`: Gerenciamento de dependências e scripts.
-* `tsconfig.json`: Configurações de tipagem estrita do TypeScript.
+### 🧠 Custom System Prompts
+Controle total sobre a geração. Permite injetar instruções específicas (ex: "Foque apenas em refatorar para Hooks" ou "Analise performance de SQL") diretamente na orquestração da IA.
 
 ---
 
-## ⚙️ Configuração
+## 📂 Estrutura do Ecossistema
 
-### 1. Instalação
+-   `project-bundler.ps1`: O núcleo do HUD e lógica de bundling (PowerShell).
+-   `groq-agent.ts`: O motor de IA que estrutura o documento e gerencia os providers.
+-   `install-vibe-menu.reg`: Script de registro para integração com o Windows Explorer.
+-   `run-vibe-toolkit.vbs`: Helper para execução silenciosa e suave.
+-   `.env`: Centralização secreta e segura de credenciais de API.
+
+---
+
+## ⚙️ Configuração Rápida
+
+### 1. Requisitos
+-   [Node.js](https://nodejs.org/) instalado.
+-   [PowerShell 7](https://github.com/PowerShell/PowerShell) (Recomendado para melhor performance).
+
+### 2. Instale as Dependências
 ```bash
 npm install
 ```
 
-### 2. Variáveis de Ambiente
-Crie um arquivo `.env` na raiz do projeto:
+### 3. Credenciais (`.env`)
+Clone o `.env.example` para `.env` e preencha suas chaves:
 ```env
-GROQ_API_KEY=sua_chave
-GEMINI_API_KEY=sua_chave
-OPENAI_API_KEY=sua_chave
-ANTHROPIC_API_KEY=sua_chave
+# API Keys (Mínimo uma necessária para o chain funcionar)
+GROQ_API_KEY=gsk_...
+GEMINI_API_KEY=...
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
 
-# Modelos Preferenciais
+# Modelos (Padrões otimizados)
 GROQ_MODEL=llama-3.3-70b-versatile
 GEMINI_MODEL=gemini-1.5-pro
 OPENAI_MODEL=gpt-4o
 ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
 ```
 
+### 4. Instale o Menu de Contexto (Opcional)
+Execute o arquivo `install-vibe-menu.reg` para adicionar o "Vibe AI" ao botão direito do seu Windows.
+
 ---
 
 ## 🚀 Como Usar
 
-### Via Interface Visual (Recomendado)
-Execute o script PowerShell para abrir o HUD de controle:
+### Fluxo Padrão (HUD)
+1.  Clique com o botão direito na pasta do projeto e escolha **"Gerar Blueprint / Contexto (Vibe AI)"**.
+2.  No HUD, escolha o **Modo de Extração** (Sniper se for algo específico).
+3.  Selecione o **Executor Alvo** (Onde você vai colar o prompt).
+4.  Clique em **ENERGIZE**.
+5.  O bundle estruturado será copiado para o seu clipboard!
+
+### Versão CLI (Deep Integration)
+Se quiser rodar puramente via script:
 ```powershell
-.\project-bundler.ps1
-```
-No HUD, você poderá selecionar o modo de extração, o executor alvo e o provedor de IA.
-
-### Via Linha de Comando (CLI)
-Para integrar em outros fluxos, chame o agente diretamente:
-```bash
-npx tsx groq-agent.ts <caminho_bundle> <nome_projeto> <executor> <modo> <provedor>
+.\project-bundler.ps1 -Path "C:\caminho\do\meu\projeto"
 ```
 
 ---
 
-## 🛡️ Política de Resiliência
-O toolkit utiliza a classe `ProviderRequestError` para monitorar a saúde das requisições. O sistema realiza retries e fallbacks automáticos em casos de:
-* Erros de autenticação ou chaves expiradas.
-* Rate limiting (Excesso de requisições).
-* Respostas vazias ou instabilidade do servidor.
+## 🧠 Princípios de Engenharia
+*   **Predictability:** Markdown padronizado para evitar alucinações de interpretadores de prompt.
+*   **Resilience:** Failover de infraestrutura em nível de API.
+*   **Tokens-Efficiency:** Estratégias de blueprint para reduzir custos e aumentar a janela de contexto.
+*   **Local-First:** Leitura de arquivos local e segura.
 
 ---
+*VibeToolkit © 2026 - Engineered for the Agentic Era*
 
-## 🧠 Princípios do Projeto
-* **Previsibilidade:** Markdown padronizado para evitar interpretações erradas.
-* **Eficiência:** Foco em reduzir o consumo de tokens sem perder a essência do código.
-* **Contexto Fechado:** No modo Sniper, a IA é instruída a não assumir nada além do que foi fornecido.

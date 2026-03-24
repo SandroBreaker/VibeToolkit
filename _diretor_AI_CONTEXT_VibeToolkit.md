@@ -1,7 +1,7 @@
-# Source of Truth - VibeToolkit Core
+# Source of Truth Técnica - VibeToolkit (Fluxo Diretor)
 
 > Projeto: VibeToolkit
-> Executor alvo: AI Studio Apps
+> Executor alvo: Antigravity
 > Modo do documento: projeto completo.
 > Modo de extração: FULL.
 
@@ -19,11 +19,18 @@
 - Extração efetiva: FULL.
 - O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
 
-### MODO DIRETOR
+### MODO DIRETOR (OPTIMIZED v2.1)
 
-- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
-- Não implementar a alteração diretamente e não responder com código final.
-- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações "zero-gap" para o Executor.
+- **DNA do Output:** Técnico, imperativo, denso e orientado a "Differential Delivery".
+- **Template Obrigatório de Saída:**
+    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.
+    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.
+    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.
+    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.
+    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).
+    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.
+- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.
 
 ### §3 — POLÍTICA DE ESCOPO E CONTEXTO
 
@@ -36,76 +43,80 @@
 
 - Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
 - Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
-- Executor alvo de referência: AI Studio Apps.
+- Executor alvo de referência: Antigravity.
 
 ## FINALIDADE DO DOCUMENTO
 
-Estabelecer a base técnica integral do VibeToolkit para permitir que o Diretor orquestre evoluções, correções e manutenções no sistema de empacotamento de contexto e orquestração de LLMs.
+Estabelecer a base técnica definitiva para que a persona Diretor possa orquestrar evoluções e manutenções no VibeToolkit, garantindo a conformidade com o Protocolo ELITE v2 e o sistema de Sentinel Gatekeeping.
 
 ## RESUMO EXECUTIVO
 
-O VibeToolkit é uma solução de engenharia de prompts e orquestração de LLMs projetada para o fluxo de vibe coding. Ele automatiza a criação de contextos técnicos de alta densidade através de um HUD em PowerShell e um agente core em TypeScript, suportando múltiplos provedores (Groq, Gemini, OpenAI, Anthropic) com failover automático e um protocolo rigoroso de conformidade chamado Sentinel.
+O VibeToolkit é um ecossistema de orquestração de LLMs focado em 'vibe coding'. Ele utiliza um bundler em PowerShell para extração de contexto e um agente em TypeScript para processamento via múltiplos provedores (Groq, Gemini, OpenAI, Anthropic) com fallback automático. O diferencial arquitetural é o Sentinel, um kernel de conformidade que bloqueia deriva conversacional e força saídas estruturadas em JSON.
 
 ## ESCOPO ANALISADO E LIMITES
 
-O escopo abrange o agente de comunicação com LLMs (groq-agent.ts), o script de interface e empacotamento (project-bundler.ps1), o mecanismo de injeção de protocolo (patch_agent.js) e as configurações de ambiente e build (package.json, tsconfig.json).
+O escopo abrange o núcleo de processamento de agentes (groq-agent.ts), o sistema de injeção de regras (patch_agent.js), a interface de usuário e empacotamento (project-bundler.ps1) e as configurações de ambiente e build (package.json, tsconfig.json).
 
 ## STACK, DEPENDÊNCIAS E TECNOLOGIAS OBSERVADAS
 
-Node.js (Runtime), TypeScript (Linguagem Core), PowerShell (Interface e Automação), dotenv (Gestão de Ambiente), groq-sdk (Integração Groq), tsx (Execução TS), e APIs REST para Gemini, OpenAI e Anthropic.
+Node.js (Runtime), TypeScript (ES2022), PowerShell (HUD/Bundler), Groq SDK, Dotenv, TSX. Provedores suportados: Groq (Llama 3.3), Gemini (1.5 Pro), OpenAI (GPT-4o), Anthropic (Claude 3.5).
 
 ## ARQUITETURA E ORGANIZAÇÃO
 
-Arquitetura híbrida composta por um frontend de automação (PowerShell) que realiza operações de sistema de arquivos e UI, e um backend de orquestração (TypeScript). O backend utiliza o padrão Chain of Responsibility para failover de provedores e um Kernel de Conformidade (Sentinel) que atua como gatekeeper para validar a estrutura e o tom das respostas da IA.
+Arquitetura Orchestrator-Executor. O projeto separa a coleta de arquivos (PowerShell) da inteligência de processamento (TypeScript). O groq-agent.ts atua como o motor de execução, enquanto o patch_agent.js injeta dinamicamente o VibeToolkit_Agentic_Registry, que define as personas Diretor, Executor e Sentinel.
 
 ## CONTRATOS, ENTIDADES, INTERFACES E FLUXOS
 
-As entidades principais são StructuredDirectorDocument e StructuredExecutorDocument, que definem o schema de saída. O fluxo operacional inicia no project-bundler.ps1, que gera um bundle técnico e invoca o groq-agent.ts. Este, por sua vez, percorre a ProviderChain até obter uma resposta validada pela Gate Logic do Sentinel.
+Entidades principais: StructuredDirectorDocument e StructuredExecutorDocument (JSON). Fluxo: Bundling -> Geração de System Prompt com Header do Sentinel -> Chamada de Provedor com Fallback -> Validação de Gate Logic -> Output Markdown. O Sentinel valida triggers conversacionais e integridade de schema antes da entrega final.
 
 ## REGRAS DE DESIGN E PADRÕES OBSERVADOS
 
-Protocolo Operacional Transversal Elite v2: proibição de deriva conversacional, saídas 100% determinísticas em JSON, segregação estrita entre Diretor (Estratégico) e Executor (Operacional), e Zero-Trust Protocol Enforcement via Sentinel.
+Protocolo ELITE v2: Strict Global Enforcement. Padrão Sentinel: Interceptação de respostas para evitar 'polidez' da IA. Padrão Fallback: Cadeia de provedores determinística. Padrão Registry: Personas definidas por gateLogic e recoveryRules.
 
 ## RISCOS DE REGRESSÃO E CUIDADOS OPERACIONAIS
 
-Alterações na lógica de GateKeeper ou no Registry de autoridade podem bloquear o pipeline de execução. A manutenção da compatibilidade entre os argumentos do PowerShell e os parâmetros esperados pelo groq-agent.ts é crítica para o funcionamento do HUD.
+Alterações no groq-agent.ts devem preservar a compatibilidade com o patch_agent.js, que realiza substituições de string literais para injetar o Sentinel. Modificações no schema JSON de saída quebram a validação do Sentinel. O bundler PowerShell depende de caminhos absolutos e permissões de execução de script.
 
 ## LACUNAS DE CONTEXTO
 
-As chaves de API e modelos específicos são configurados via variáveis de ambiente (.env) não incluídas no bundle. A lógica de cálculo de tokens é uma estimativa baseada em caracteres (tamanho/4).
+As chaves de API e modelos específicos são injetados via variáveis de ambiente (.env). O comportamento agêntico do executor Antigravity é externo ao bundle, sendo o alvo das especificações geradas pelo Diretor.
 
 ## DIRETRIZES OPERACIONAIS PARA O DIRETOR
 
-Para executar o sistema, utiliza-se o project-bundler.ps1. Para aplicar ou atualizar o protocolo Sentinel no agente, deve-se executar o patch_agent.js. O desenvolvimento deve respeitar o tsconfig.json para garantir a compatibilidade CommonJS/ES2022.
+O Diretor deve processar pedidos de alteração focando na manutenção da rigidez do protocolo. Toda instrução para o Antigravity deve incluir a verificação de conformidade com o Sentinel e a preservação da lógica de fallback de provedores.
 
 ## TEMPLATE DE PROMPT OTIMIZADO PARA O DIRETOR
 
 ```text
 ## Instruções
 CONTEXTO:
-- Projeto VibeToolkit: sistema de orquestração de LLMs e geração de contexto técnico.
-- Fluxo atual: VIA DIRETOR.
-- Protocolo ativo: Elite v2 com Sentinel Gatekeeper.
-- Executor alvo: AI Studio Apps.
+- Projeto: VibeToolkit
+- Componente Alvo: {{component}}
+- Arquivos Afetados: {{files}}
+- Protocolo Ativo: ELITE v2 / Sentinel Gatekeeper
 
 OBJETIVO:
-Analisar a solicitação do usuário sobre o VibeToolkit, decompor em requisitos técnicos e gerar um prompt estruturado para o Executor realizar as alterações necessárias.
+Gerar uma especificação técnica de implementação para o executor Antigravity, garantindo que a alteração solicitada não comprometa a integridade do Sentinel nem a lógica de orquestração multi-provider.
 
 REGRAS:
-- Proibido gerar código final ou explicações conversacionais.
-- Manter a saída estritamente no schema JSON esperado pelo Sentinel.
-- Garantir que o plano de execução respeite a segregação de papéis entre Diretor e Executor.
-- Validar se a proposta mantém a integridade do failover de provedores e da lógica de normalização de arquivos.
+- Proibido gerar código final diretamente (reservado ao Executor)
+- Manter saída estritamente técnica e imperativa
+- Bloquear qualquer forma de introdução ou cortesia conversacional
+- Garantir que novas funcionalidades respeitem o VibeToolkit_Agentic_Registry
+- Validar compatibilidade com o sistema de fallback de provedores
 
 ENTREGA:
-- Plano de ação técnico detalhado.
-- Lista de arquivos a serem modificados ou criados.
-- Prompt estruturado para o Agente Executor contendo contexto, objetivo e regras específicas da tarefa.
+- CONTEXTO: Identificação clara dos módulos afetados
+- SINTOMA/DEMANDA: Diagnóstico técnico do pedido
+- OBJETIVO: Estado final esperado da implementação
+- REGRAS: Constraints de segurança e arquitetura
+- ESPECIFICAÇÃO DE IMPLEMENTAÇÃO: Lógica detalhada, tipos e fluxos
+- ENTREGA: Formato esperado (Full file ou Atomic Snippet) e critérios de validação
 
 ADAPTAÇÕES AO PROJETO:
-- Focar na manutenção da robustez do Sentinel.
-- Preservar a lógica de extração (Full, Blueprint, Sniper) conforme o modo ativo.
-- Assegurar que novas funcionalidades não introduzam side-effects na interface PowerShell.
+- Se a alteração for no project-bundler.ps1, validar extensões permitidas e lógica de hashing
+- Se a alteração for no groq-agent.ts, garantir que o patch_agent.js ainda consiga localizar os pontos de injeção
+- Verificar se novos provedores de IA seguem o contrato ProviderAttemptResult
 ```
 
 ---
@@ -981,10 +992,17 @@ function buildProtocolSliceSection1(outputRouteMode: OutputRouteMode, extraction
 function buildProtocolSliceDirectorMode(): string {
     return formatMarkdownFragment(
         [
-            "### MODO DIRETOR",
-            "- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.",
-            "- Não implementar a alteração diretamente e não responder com código final.",
-            "- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.",
+            "### MODO DIRETOR (OPTIMIZED v2.1)",
+            "- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações \"zero-gap\" para o Executor.",
+            "- **DNA do Output:** Técnico, imperativo, denso e orientado a \"Differential Delivery\".",
+            "- **Template Obrigatório de Saída:**",
+            "    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.",
+            "    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.",
+            "    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.",
+            "    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.",
+            "    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).",
+            "    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.",
+            "- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.",
         ].join("\n")
     ).trimEnd();
 }

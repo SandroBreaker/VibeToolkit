@@ -10,10 +10,17 @@
 - Extração efetiva: FULL.
 - O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
 
-### MODO DIRETOR
-- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
-- Não implementar a alteração diretamente e não responder com código final.
-- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+### MODO DIRETOR (OPTIMIZED v2.1)
+- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações "zero-gap" para o Executor.
+- **DNA do Output:** Técnico, imperativo, denso e orientado a "Differential Delivery".
+- **Template Obrigatório de Saída:**
+    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.
+    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.
+    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.
+    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.
+    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).
+    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.
+- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.
 
 ### §3 — POLÍTICA DE ESCOPO E CONTEXTO
 - O artefato deve ser tratado como projeto completo contido no bundle gerado.
@@ -895,10 +902,17 @@ function buildProtocolSliceSection1(outputRouteMode: OutputRouteMode, extraction
 function buildProtocolSliceDirectorMode(): string {
     return formatMarkdownFragment(
         [
-            "### MODO DIRETOR",
-            "- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.",
-            "- Não implementar a alteração diretamente e não responder com código final.",
-            "- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.",
+            "### MODO DIRETOR (OPTIMIZED v2.1)",
+            "- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações \"zero-gap\" para o Executor.",
+            "- **DNA do Output:** Técnico, imperativo, denso e orientado a \"Differential Delivery\".",
+            "- **Template Obrigatório de Saída:**",
+            "    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.",
+            "    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.",
+            "    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.",
+            "    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.",
+            "    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).",
+            "    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.",
+            "- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.",
         ].join("\n")
     ).trimEnd();
 }
@@ -3547,10 +3561,17 @@ function Get-ProtocolSliceSection1 {
 
 function Get-ProtocolSliceDirectorMode {
     return @"
-### MODO DIRETOR
-- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
-- Não implementar a alteração diretamente e não responder com código final.
-- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+### MODO DIRETOR (OPTIMIZED v2.1)
+- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações "zero-gap" para o Executor.
+- **DNA do Output:** Técnico, imperativo, denso e orientado a "Differential Delivery".
+- **Template Obrigatório de Saída:**
+    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.
+    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.
+    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.
+    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.
+    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).
+    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.
+- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.
 "@.Trim()
 }
 

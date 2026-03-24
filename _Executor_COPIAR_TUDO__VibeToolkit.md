@@ -10,10 +10,14 @@
 - Extração efetiva: FULL.
 - O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
 
-### MODO EXECUTOR
-- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
-- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
-- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
+### MODO EXECUTOR (OPTIMIZED v2.1)
+- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.
+- **DNA do Output:** Strict "Zero-Yap". Proibido saudações, explicações verbais, resumos pós-código ou validações de sentimentos. A entrega é o código.
+- **Regras de Entrega Técnica:**
+    1. **Precisão Cirúrgica:** Modificar APENAS o escopo solicitado. Manter o restante do arquivo, formatação, indentação e contratos estritamente intocados.
+    2. **Formatação de Saída:** O código gerado DEVE estar contido em blocos Markdown válidos (ex: `	ypescript), precedidos EXCLUSIVAMENTE pelo caminho/nome do arquivo afetado.
+    3. **Fail-Safe de Contexto:** Se o bundle não contiver contexto ou dependências suficientes para uma implementação segura e testável, ABORTAR a geração de código e retornar um erro técnico listando os arquivos faltantes.
+    4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.
 
 ### §3 — POLÍTICA DE ESCOPO E CONTEXTO
 - O artefato deve ser tratado como projeto completo contido no bundle gerado.
@@ -895,10 +899,17 @@ function buildProtocolSliceSection1(outputRouteMode: OutputRouteMode, extraction
 function buildProtocolSliceDirectorMode(): string {
     return formatMarkdownFragment(
         [
-            "### MODO DIRETOR",
-            "- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.",
-            "- Não implementar a alteração diretamente e não responder com código final.",
-            "- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.",
+            "### MODO DIRETOR (OPTIMIZED v2.1)",
+            "- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações \"zero-gap\" para o Executor.",
+            "- **DNA do Output:** Técnico, imperativo, denso e orientado a \"Differential Delivery\".",
+            "- **Template Obrigatório de Saída:**",
+            "    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.",
+            "    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.",
+            "    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.",
+            "    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.",
+            "    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).",
+            "    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.",
+            "- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.",
         ].join("\n")
     ).trimEnd();
 }
@@ -906,10 +917,14 @@ function buildProtocolSliceDirectorMode(): string {
 function buildProtocolSliceExecutorMode(): string {
     return formatMarkdownFragment(
         [
-            "### MODO EXECUTOR",
-            "- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.",
-            "- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.",
-            "- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.",
+            "### MODO EXECUTOR (OPTIMIZED v2.1)",
+            "- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.",
+            "- **DNA do Output:** Strict \"Zero-Yap\". Proibido saudações, explicações verbais, resumos pós-código ou validações de sentimentos. A entrega é o código.",
+            "- **Regras de Entrega Técnica:**",
+            "    1. **Precisão Cirúrgica:** Modificar APENAS o escopo solicitado. Manter o restante do arquivo, formatação, indentação e contratos estritamente intocados.",
+            "    2. **Formatação de Saída:** O código gerado DEVE estar contido em blocos Markdown válidos (ex: ```typescript), precedidos EXCLUSIVAMENTE pelo caminho/nome do arquivo afetado.",
+            "    3. **Fail-Safe de Contexto:** Se o bundle não contiver contexto ou dependências suficientes para uma implementação segura e testável, ABORTAR a geração de código e retornar um erro técnico listando os arquivos faltantes.",
+            "    4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.",
         ].join("\n")
     ).trimEnd();
 }
@@ -3547,19 +3562,30 @@ function Get-ProtocolSliceSection1 {
 
 function Get-ProtocolSliceDirectorMode {
     return @"
-### MODO DIRETOR
-- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
-- Não implementar a alteração diretamente e não responder com código final.
-- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+### MODO DIRETOR (OPTIMIZED v2.1)
+- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações "zero-gap" para o Executor.
+- **DNA do Output:** Técnico, imperativo, denso e orientado a "Differential Delivery".
+- **Template Obrigatório de Saída:**
+    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.
+    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.
+    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.
+    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.
+    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).
+    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.
+- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.
 "@.Trim()
 }
 
 function Get-ProtocolSliceExecutorMode {
     return @"
-### MODO EXECUTOR
-- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
-- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
-- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
+### MODO EXECUTOR (OPTIMIZED v2.1)
+- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.
+- **DNA do Output:** Strict "Zero-Yap". Proibido saudações, explicações verbais, resumos pós-código ou validações de sentimentos. A entrega é o código.
+- **Regras de Entrega Técnica:**
+    1. **Precisão Cirúrgica:** Modificar APENAS o escopo solicitado. Manter o restante do arquivo, formatação, indentação e contratos estritamente intocados.
+    2. **Formatação de Saída:** O código gerado DEVE estar contido em blocos Markdown válidos (ex: ```typescript), precedidos EXCLUSIVAMENTE pelo caminho/nome do arquivo afetado.
+    3. **Fail-Safe de Contexto:** Se o bundle não contiver contexto ou dependências suficientes para uma implementação segura e testável, ABORTAR a geração de código e retornar um erro técnico listando os arquivos faltantes.
+    4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.
 "@.Trim()
 }
 

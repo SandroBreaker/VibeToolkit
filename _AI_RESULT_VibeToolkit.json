@@ -1,8 +1,0 @@
-{
-  "provider": "gemini",
-  "model": "gemini-3-flash-preview",
-  "outputPath": "C:\\dev\\VibeToolkit\\_executor_AI_CONTEXT_VibeToolkit.md",
-  "promptMode": "default",
-  "outputRouteMode": "executor",
-  "extractionMode": "full"
-}

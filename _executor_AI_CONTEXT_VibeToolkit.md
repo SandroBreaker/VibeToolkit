@@ -1,34 +1,89 @@
+# Contexto Técnico de Execução - VibeToolkit
+
+> Projeto: VibeToolkit
+> Executor alvo: AI Studio Apps
+> Modo do documento: projeto completo.
+> Modo de extração: FULL.
+
 ## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2
 
 ### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)
+
 - Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.
 - É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.
 - Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.
 
 ### §1 — ENQUADRAMENTO OPERACIONAL
-- Rota ativa: VIA DIRETOR.
+
+- Rota ativa: DIRETO PARA O EXECUTOR.
 - Extração efetiva: FULL.
 - O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
 
-### MODO DIRETOR
-- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
-- Não implementar a alteração diretamente e não responder com código final.
-- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+### MODO EXECUTOR
+
+- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
+- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
+- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
 
 ### §3 — POLÍTICA DE ESCOPO E CONTEXTO
+
 - O artefato deve ser tratado como projeto completo contido no bundle gerado.
 - Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.
 - Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.
-- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor.
+- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor.
 
 ### §4 — REGRAS FINAIS DE EXECUÇÃO
+
 - Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
 - Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
 - Executor alvo de referência: AI Studio Apps.
 
-## MODO COPIAR TUDO: VibeToolkit
+## FINALIDADE DO DOCUMENTO
+
+Prover o contexto técnico integral do VibeToolkit para permitir a manutenção, evolução e depuração do sistema de orquestração de LLMs e empacotamento de contexto. O foco é garantir a integridade do fluxo de geração de prompts estruturados e a robustez da cadeia de failover entre provedores de IA.
+
+## RESUMO EXECUTIVO
+
+O VibeToolkit é uma ferramenta de automação de contexto para 'vibe coding', composta por um front-end em PowerShell (HUD) e um core de processamento em TypeScript. Ele extrai código-fonte, aplica filtros de extração (Full, Blueprint, Sniper) e utiliza LLMs (Groq, Gemini, OpenAI, Anthropic) para gerar documentos de 'Source of Truth' técnica. O sistema implementa o Protocolo ELITE v2, que impõe uma separação rigorosa entre as personas de Diretor (planejamento) e Executor (implementação).
+
+## ESCOPO ANALISADO E LIMITES
+
+O escopo abrange o core de comunicação com LLMs (groq-agent.ts), o sistema de interface e bundling (project-bundler.ps1), o mecanismo de injeção de regras de conformidade (patch_agent.js) e as configurações de ambiente/projeto (package.json, tsconfig.json).
+
+## STACK, DEPENDÊNCIAS E TECNOLOGIAS OBSERVADAS
+
+Runtime: Node.js (v20+ recomendado). Linguagens: TypeScript, PowerShell. Dependências Core: dotenv (gestão de env), groq-sdk (integração Groq). DevDeps: tsx (execução direta TS), typescript. APIs de IA: Groq (Llama 3.3), Google Gemini (1.5 Pro), OpenAI (GPT-4o), Anthropic (Claude 3.5).
+
+## ARQUITETURA E ORGANIZAÇÃO
+
+A arquitetura segue um fluxo linear: 1. O project-bundler.ps1 (GUI) coleta arquivos e metadados. 2. Gera um bundle Markdown temporário. 3. Invoca o groq-agent.ts via npx tsx. 4. O groq-agent.ts processa o bundle, gerencia a cadeia de provedores (failover) e valida a saída via Sentinel (após o patch). 5. O resultado é salvo como um novo documento de contexto (.md) e um metadado JSON.
+
+## CONTRATOS, ENTIDADES, INTERFACES E FLUXOS
+
+Interfaces principais: StructuredDirectorDocument e StructuredExecutorDocument definem o schema de saída da IA. ProviderConfig mapeia modelos e chaves. O fluxo de dados é protegido pelo Sentinel (injetado pelo patch_agent.js), que intercepta a resposta da IA, valida contra gatilhos conversacionais e garante que o routeMode (director/executor) corresponda à intenção original. O VibeToolkit_Agentic_Registry centraliza as definições de persona e regras de bloqueio.
+
+## REGRAS DE DESIGN E PADRÕES OBSERVADOS
+
+1. Protocolo ELITE v2: Separação estrita de papéis. 2. Failover Chain: Tentativa sequencial de provedores em caso de erro 429 ou falhas de rede. 3. Normalização de Markdown: Hierarquia de headers e limpeza de caracteres nulos. 4. Strict JSON Enforcement: Uso de reparo estrutural (repairStructuredPayload) caso a IA falhe no schema inicial. 5. Sentinel Gatekeeper: Bloqueio de deriva conversacional (ex: 'Aqui está o código').
+
+## RISCOS DE REGRESSÃO E CUIDADOS OPERACIONAIS
+
+O patch_agent.js modifica o groq-agent.ts em runtime (via substituição de strings), o que exige que os marcadores de texto no arquivo original sejam preservados. Alterações nos caminhos de arquivos no PowerShell devem considerar o escape de espaços em ambientes Windows. A gestão de tokens é baseada em estimativa (tamanho/4), o que pode variar entre provedores.
+
+## LACUNAS DE CONTEXTO
+
+As chaves de API reais e modelos específicos são carregados via .env, não estando hardcoded. O comportamento do menu de contexto do Windows depende de chaves de registro externas não detalhadas no bundle, mas referenciadas no README.
+
+## DIRETRIZES OPERACIONAIS PARA O EXECUTOR
+
+Para executar: 1. Configurar .env com as chaves de API. 2. Rodar node patch_agent.js para injetar o Sentinel. 3. Executar project-bundler.ps1 para abrir a interface. Para manutenção no core: Editar groq-agent.ts e garantir que as funções buildSystemHeader e parseStructuredDocument mantenham a compatibilidade com os regex de substituição do patch_agent.js.
+
+---
+
+## ESTRUTURA E CÓDIGO
 
 ### 1. PROJECT STRUCTURE
+
 ```text
 .\groq-agent.ts
 .\package.json
@@ -41,6 +96,7 @@
 ### 2. SOURCE FILES
 
 #### File: .\groq-agent.ts
+
 ```text
 import * as dotenv from "dotenv";
 import { promises as fs } from "fs";
@@ -1631,6 +1687,7 @@ main().catch((err) => {
 ```
 
 #### File: .\package.json
+
 ```text
 {
   "name": "vibetoolkit",
@@ -1657,6 +1714,7 @@ main().catch((err) => {
 ```
 
 #### File: .\patch_agent.js
+
 ```text
 const fs = require('fs');
 
@@ -1747,7 +1805,7 @@ const gateKeeperCode = `function parseStructuredDocument(rawContent: string, out
     if (Force_Protocol_Flag) {
         const lowerContent = rawContent.trim().toLowerCase();
         const conversationalTriggers = [
-            "aqui está", "aqui esta", "com certeza", "certamente", "claro,", 
+            "aqui está", "aqui esta", "com certeza", "certamente", "claro,",
             "vou gerar", "segue ", "vamos lá", "entendido"
         ];
         if (conversationalTriggers.some(t => lowerContent.startsWith(t))) {
@@ -1781,10 +1839,10 @@ const gateKeeperCode = `function parseStructuredDocument(rawContent: string, out
         throw new SentinelValidationError(\`Mixagem de papéis. Agente atuou como '\${payload.routeMode}' mas a rota exigia '\${outputRouteMode}'.\`, rawContent);
     }
 
-    const registryEntity = outputRouteMode === "director" 
-        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO 
+    const registryEntity = outputRouteMode === "director"
+        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO
         : VibeToolkit_Agentic_Registry.EXECUTOR_OPERACIONAL;
-        
+
     if (!registryEntity.gateLogic(payload)) {
         throw new SentinelValidationError(\`Payload rejeitado na Gate Logic do SENTINEL. O objeto não possui a arquitetura mínima exigida para a persona \${registryEntity.role}.\`, rawContent);
     }
@@ -1851,10 +1909,10 @@ const recoveryCode = `async function executeSentinelStateRecovery(
     logger.warn(\`[SENTINEL COMMAND] Quebra de protocolo interceptada! Motivo do bloqueio: \${error.message}\`);
     logger.info(\`[SENTINEL COMMAND] Iniciando protocolo de recuperação de estado e reancoragem...\`);
 
-    const registryEntity = outputRouteMode === "director" 
-        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO 
+    const registryEntity = outputRouteMode === "director"
+        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO
         : VibeToolkit_Agentic_Registry.EXECUTOR_OPERACIONAL;
-        
+
     const repairSystemPrompt = [
         "[SENTINEL COMMAND OVERRIDE - STATE RECOVERY ACTIVATED]",
         \`ALERTA DE SEGURANÇA OPERACIONAL DETECTADO.\`,
@@ -1920,6 +1978,7 @@ console.log('Patch complete.');
 ```
 
 #### File: .\project-bundler.ps1
+
 ```text
 # VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
 # =================================================================
@@ -4043,6 +4102,7 @@ Write-UILog -Message "Pronto. Configure o modo, o executor e energize." -Color $
 ```
 
 #### File: .\README.md
+
 ```text
 # VibeToolkit ⚡
 
@@ -4078,7 +4138,9 @@ O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2**, que ga
 
 ### CLI (Integração Profunda)
 ```powershell
+
 .\project-bundler.ps1 -Path "C:\caminho\do\projeto" -RouteMode "executor" -ExtractionMode "full"
+
 ```
 
 ## 🏗️ Estrutura do Projeto
@@ -4091,6 +4153,7 @@ O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2**, que ga
 ```
 
 #### File: .\tsconfig.json
+
 ```text
 {
   "compilerOptions": {
@@ -4107,4 +4170,3 @@ O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2**, que ga
   "exclude": ["node_modules"]
 }
 ```
-

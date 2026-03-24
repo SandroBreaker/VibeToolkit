@@ -1,31 +1,30 @@
 ## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2
 
 ### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)
-**ZERO-VERBOSITY RULE**:
-- Toda saída deve conter EXCLUSIVAMENTE conteúdo técnico de alta densidade.
-- Nenhuma frase introdutória, de transição, de encerramento ou de cortesia é tolerada.
+- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.
+- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.
+- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.
 
-**TOKEN ECONOMY RULE**:
-- Cada token consumido deve carregar valor técnico mensurável.
-- Priorizar notação compacta: bullet-points, key-value, diffs, blocos de código.
+### §1 — ENQUADRAMENTO OPERACIONAL
+- Rota ativa: DIRETO PARA O EXECUTOR.
+- Extração efetiva: FULL.
+- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
 
-### §1 — PROIBIÇÕES GLOBAIS (HARD-BLOCKED)
-As seguintes saídas são BLOQUEADAS em QUALQUER modo. Violação = falha de protocolo.
-1. Termos de cortesia ou rapport.
-2. Redundância com o contexto fornecido.
-3. Explicações de conceitos básicos.
-4. Meta-comentários sobre a própria resposta.
+### MODO EXECUTOR
+- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
+- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
+- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
 
-### §2 — ESPECIFICAÇÃO DE MODO: EXECUTOR
-**IDENTIDADE**: Você é o SENIOR_ENGINEERING_EXECUTOR.
-**FUNÇÃO OBRIGATÓRIA**: Executar diretamente a alteração solicitada no código existente.
+### §3 — POLÍTICA DE ESCOPO E CONTEXTO
+- O artefato deve ser tratado como projeto completo contido no bundle gerado.
+- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.
+- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.
+- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor.
 
-### §3 — REGRA DE CONTEXTO INSUFICIENTE
-Baseie sua resposta no projeto completo fornecido.
-
-### §4 — MANUTENÇÃO DE INTEGRIDADE
-- Preservar a estrutura de arquivos e código-fonte.
-- Contratos e identificadores são INTOCÁVEIS.
+### §4 — REGRAS FINAIS DE EXECUÇÃO
+- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
+- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
+- Executor alvo de referência: AI Studio Apps.
 
 ## MODO COPIAR TUDO: VibeToolkit
 
@@ -52,8 +51,8 @@ dotenv.config({ path: path.resolve(__dirname, ".env"), quiet: true, override: fa
 
 type ProviderId = "groq" | "gemini" | "openai" | "anthropic";
 type DocumentMode = "manual" | "full";
-type ExtractionMode = "full" | "blueprint" | "sniper";
 type OutputRouteMode = "director" | "executor";
+type ExtractionMode = "full" | "blueprint" | "sniper";
 
 interface GenerateRequestParams {
     model: string;
@@ -185,11 +184,36 @@ function normalizeOutputRouteMode(input?: string): OutputRouteMode {
     return input?.trim().toLowerCase() === "executor" ? "executor" : "director";
 }
 
-function normalizeExtractionMode(input?: string): ExtractionMode {
-    const val = input?.trim().toLowerCase();
-    if (val === "blueprint" || val === "architect") return "blueprint";
-    if (val === "sniper" || val === "manual") return "sniper";
+function normalizeExtractionMode(input?: string, bundleFileName = ""): ExtractionMode {
+    const value = (input || "").trim().toLowerCase();
+
+    if (value === "blueprint" || value === "architect" || value === "inteligente") {
+        return "blueprint";
+    }
+
+    if (value === "sniper" || value === "manual") {
+        return "sniper";
+    }
+
+    if (value === "full") {
+        return "full";
+    }
+
+    const normalizedFileName = bundleFileName.trim().toLowerCase();
+
+    if (normalizedFileName.startsWith("_manual__")) {
+        return "sniper";
+    }
+
+    if (normalizedFileName.startsWith("_inteligente__") || normalizedFileName.startsWith("_blueprint__") || normalizedFileName.startsWith("_architect__")) {
+        return "blueprint";
+    }
+
     return "full";
+}
+
+function resolveDocumentModeFromExtractionMode(extractionMode: ExtractionMode): DocumentMode {
+    return extractionMode === "sniper" ? "manual" : "full";
 }
 
 function buildProviderChain(primaryProvider: ProviderId): ProviderId[] {
@@ -835,72 +859,135 @@ function renderBulletList(values: string[]): string {
     return values.map((value) => `- ${value}`).join("\n");
 }
 
-function buildProtocolMarkdown(routeMode: OutputRouteMode, extractionMode: ExtractionMode): string {
-    const blocks: string[] = [];
-
-    // §0
-    blocks.push(
-        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2",
-        "",
-        "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)",
-        "**ZERO-VERBOSITY RULE**:\n- Toda saída deve conter EXCLUSIVAMENTE conteúdo técnico de alta densidade.\n- Nenhuma frase introdutória, de transição, de encerramento ou de cortesia é tolerada.\n- Se a informação já está implícita no contexto, NÃO repita.",
-        "**TOKEN ECONOMY RULE**:\n- Cada token consumido deve carregar valor técnico mensurável.\n- Priorizar notação compacta: bullet-points, key-value, diffs, blocos de código.\n- Eliminar artigos, preposições e estruturas frasais quando uma lista ou tabela comunica o mesmo."
-    );
-
-    // §1
-    blocks.push(
-        "### §1 — PROIBIÇÕES GLOBAIS (HARD-BLOCKED)",
-        "As seguintes saídas são BLOQUEADAS em QUALQUER modo. Violação = falha de protocolo.",
-        "1. Termos de cortesia ou rapport: 'Aqui está', 'Espero que ajude', 'Com certeza', 'Claro!', 'Vamos lá'.\n2. Redundância com o contexto fornecido: Repetir o que o usuário já disse ou o que consta na Source of Truth.\n3. Explicações de conceitos básicos: Definir o que é REST, o que é TypeScript, etc.\n4. Meta-comentários sobre a própria resposta: 'Abaixo segue...', 'Vou explicar...'.\n5. Respostas genéricas sem adaptação ao projeto.\n6. Inventar arquitetura/contratos/regras sem evidência textual."
-    );
-
-    // §2 — ESPECIFICAÇÃO POR MODO
-    if (routeMode === "director") {
-        blocks.push(
-            "### §2 — ESPECIFICAÇÃO DE MODO: DIRETOR",
-            "**IDENTIDADE**: Você é o DIRETOR TÉCNICO DE EXECUÇÃO. Você NÃO é a IA executora final.",
-            "**FUNÇÃO OBRIGATÓRIA**:\n- Ler este documento como Source of Truth\n- Assimilar o projeto\n- Aguardar a solicitação futura do usuário\n- Converter a solicitação em um PROMPT DE EXECUÇÃO imperativo e mapeado\n- Entregar esse prompt para uma IA executora/agêntica",
-            "**SAÍDA OBRIGATÓRIA**: Prompt estruturado no formato abaixo, sem texto fora do bloco:\n\n```text\n## Instruções\nCONTEXTO:\n- [referências diretas ao projeto, arquivos, contratos afetados]\n\nOBJETIVO:\n[verbo imperativo] + [alvo técnico preciso]\n\nREGRAS:\n- [restrições técnicas derivadas da Source of Truth]\n\nENTREGA:\n- [artefatos esperados: arquivos, diffs, comandos]\n\nADAPTAÇÕES AO PROJETO:\n- [particularidades do projeto que o executor DEVE respeitar]\n```"
-        );
-    } else {
-        blocks.push(
-            "### §2 — ESPECIFICAÇÃO DE MODO: EXECUTOR",
-            "**IDENTIDADE**: Você é o SENIOR_ENGINEERING_EXECUTOR. Você É a IA executora final.",
-            "**FUNÇÃO OBRIGATÓRIA**:\n- Ler este documento como contexto técnico de execução.\n- Executar diretamente a alteração solicitada no código existente.\n- Responder com implementação final pronta para uso.",
-            "**SAÍDA OBRIGATÓRIA**: Código completo, diffs ou arquivos completos. ZERO explicações narrativas.\n**SAÍDAS PROIBIDAS**: Prompt para outra IA, orquestração intermediária, explicações conceituais."
-        );
+function getExtractionModeLabel(extractionMode: ExtractionMode): string {
+    switch (extractionMode) {
+        case "blueprint":
+            return "BLUEPRINT";
+        case "sniper":
+            return "SNIPER";
+        default:
+            return "FULL";
     }
+}
 
-    // Modes
-    if (extractionMode === "blueprint") {
-        blocks.push(
+function buildProtocolSliceSection0(): string {
+    return formatMarkdownFragment(
+        [
+            "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)",
+            "- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.",
+            "- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.",
+            "- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceSection1(outputRouteMode: OutputRouteMode, extractionMode: ExtractionMode): string {
+    return formatMarkdownFragment(
+        [
+            "### §1 — ENQUADRAMENTO OPERACIONAL",
+            `- Rota ativa: ${outputRouteMode === "director" ? "VIA DIRETOR" : "DIRETO PARA O EXECUTOR"}.`,
+            `- Extração efetiva: ${getExtractionModeLabel(extractionMode)}.`,
+            "- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceDirectorMode(): string {
+    return formatMarkdownFragment(
+        [
+            "### MODO DIRETOR",
+            "- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.",
+            "- Não implementar a alteração diretamente e não responder com código final.",
+            "- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceExecutorMode(): string {
+    return formatMarkdownFragment(
+        [
+            "### MODO EXECUTOR",
+            "- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.",
+            "- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.",
+            "- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceBlueprintMode(): string {
+    return formatMarkdownFragment(
+        [
             "### MODO BLUEPRINT",
-            "- O contexto contém majoritariamente assinaturas, interfaces e contratos (Blueprints).",
-            "- Não tente inferir implementações internas profundas que não estão documentadas.",
-            "- Foque na integração e na conformidade com as interfaces expostas."
-        );
-    } else if (extractionMode === "sniper") {
-        blocks.push(
+            "- Priorizar estruturas, assinaturas, contratos, dependências e organização do projeto.",
+            "- Não puxar regras de SNIPER nem tratar o documento como recorte manual.",
+            "- Restringir a síntese ao que for compatível com leitura arquitetural/estrutural do bundle.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceSniperMode(): string {
+    return formatMarkdownFragment(
+        [
             "### MODO SNIPER",
-            "- O contexto é um RECORTE PARCIAL e cirúrgico de arquivos específicos.",
-            "- Respeite os limites do recorte; não assuma a existência de arquivos fora desta lista.",
-            "- Se precisar de algo fora do recorte, declare como LACUNA DE CONTEXTO."
-        );
+            "- Tratar o documento como recorte parcial/manual derivado de seleção granular de arquivos.",
+            "- Limitar qualquer análise, instrução ou execução ao escopo visível no recorte enviado.",
+            "- Declarar explicitamente lacunas como contexto não visível no recorte enviado.",
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolSliceSection3(
+    documentMode: DocumentMode,
+    extractionMode: ExtractionMode,
+    outputRouteMode: OutputRouteMode
+): string {
+    const lines = ["### §3 — POLÍTICA DE ESCOPO E CONTEXTO"];
+
+    if (documentMode === "manual") {
+        lines.push("- O artefato deve ser tratado como recorte parcial/manual.");
+        lines.push("- Qualquer decisão deve permanecer estritamente no escopo visível.");
+        lines.push("- Quando faltar contexto, declarar explicitamente a limitação em vez de inferir comportamento ausente.");
+    } else {
+        lines.push("- O artefato deve ser tratado como projeto completo contido no bundle gerado.");
+        lines.push("- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.");
+
+        if (extractionMode === "blueprint") {
+            lines.push("- Como a extração é BLUEPRINT, priorizar visão estrutural e não puxar regras de SNIPER.");
+        } else {
+            lines.push("- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.");
+        }
     }
 
-    // §3
-    const section3Body = extractionMode === "full"
-        ? "Baseie sua resposta no projeto completo fornecido nesta Source of Truth."
-        : "Em recorte parcial/blueprint: restringir ao escopo visível e declarar explicitamente o que não está disponível.";
-    blocks.push(`### §3 — REGRA DE CONTEXTO INSUFICIENTE\n${section3Body}`);
-
-    // §4
-    blocks.push(
-        "### §4 — MANUTENÇÃO DE INTEGRIDADE",
-        "- Preservar 100% da estrutura de arquivos e código-fonte que constam neste documento.",
-        "- Qualquer alteração deve referenciar o arquivo e a linha/contrato afetado.",
-        "- Contratos, identificadores e comportamento existente são INTOCÁVEIS salvo instrução explícita."
+    lines.push(
+        outputRouteMode === "director"
+            ? "- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor."
+            : "- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor."
     );
+
+    return formatMarkdownFragment(lines.join("\n")).trimEnd();
+}
+
+function buildProtocolSliceSection4(executorTarget: string): string {
+    return formatMarkdownFragment(
+        [
+            "### §4 — REGRAS FINAIS DE EXECUÇÃO",
+            "- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.",
+            "- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.",
+            `- Executor alvo de referência: ${executorTarget}.`,
+        ].join("\n")
+    ).trimEnd();
+}
+
+function buildProtocolMarkdown(document: StructuredOutputDocument, extractionMode: ExtractionMode): string {
+    const blocks = [
+        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2",
+        buildProtocolSliceSection0(),
+        buildProtocolSliceSection1(document.routeMode, extractionMode),
+        document.routeMode === "director" ? buildProtocolSliceDirectorMode() : buildProtocolSliceExecutorMode(),
+        extractionMode === "blueprint" ? buildProtocolSliceBlueprintMode() : extractionMode === "sniper" ? buildProtocolSliceSniperMode() : "",
+        buildProtocolSliceSection3(document.documentMode, extractionMode, document.routeMode),
+        buildProtocolSliceSection4(document.executorTarget),
+    ].filter(Boolean);
 
     return formatMarkdownFragment(blocks.join("\n\n")).trimEnd();
 }
@@ -929,14 +1016,17 @@ function buildDirectorPromptTemplateMarkdown(template: StructuredDirectorPromptT
     ).trimEnd();
 }
 
-function buildStructuredMarkdownDocument(document: StructuredOutputDocument, technicalBundleDump: string): string {
+function buildStructuredMarkdownDocument(
+    document: StructuredOutputDocument,
+    technicalBundleDump: string,
+    extractionMode: ExtractionMode
+): string {
     const analyzedScopeTitle =
         document.documentMode === "manual"
             ? "ESCOPO VISÍVEL E LIMITES DO RECORTE"
             : "ESCOPO ANALISADO E LIMITES";
 
-    const protocolMarkdown = buildProtocolMarkdown(document.routeMode, (document as any).extractionMode || "full");
-
+    const protocolMarkdown = buildProtocolMarkdown(document, extractionMode);
     const operationalHeading =
         document.routeMode === "director"
             ? "## DIRETRIZES OPERACIONAIS PARA O DIRETOR"
@@ -950,6 +1040,7 @@ function buildStructuredMarkdownDocument(document: StructuredOutputDocument, tec
         `> Projeto: ${document.projectName}`,
         `> Executor alvo: ${document.executorTarget}`,
         `> Modo do documento: ${document.documentMode === "manual" ? "recorte parcial" : "projeto completo"}.`,
+        `> Modo de extração: ${getExtractionModeLabel(extractionMode)}.`,
         "",
         protocolMarkdown,
         "",
@@ -1005,20 +1096,62 @@ function buildStructuredMarkdownDocument(document: StructuredOutputDocument, tec
     return formatMarkdownFragment(blocks.join("\n")).trimEnd() + "\n";
 }
 
-function buildDirectorStructuredSystemPrompt(mode: DocumentMode, executorTarget: string): string {
-    const scopeInstruction =
-        mode === "manual"
-            ? [
-                  "O bundle representa um RECORTE PARCIAL do projeto.",
-                  "Mapeie exclusivamente o que estiver visível.",
-                  "Não inferir módulos, contratos, arquivos, fluxos ou responsabilidades não presentes.",
-                  "Quando faltar contexto, declarar explicitamente que não está visível no recorte.",
-              ].join(" ")
-            : [
-                  "O bundle representa o projeto completo contido no artefato enviado.",
-                  "Baseie-se exclusivamente no material fornecido.",
-                  "Não invente arquitetura, comportamento ou responsabilidades sem evidência textual.",
-              ].join(" ");
+function buildExtractionModeScopeInstruction(extractionMode: ExtractionMode): string {
+    switch (extractionMode) {
+        case "blueprint":
+            return [
+                "A extração efetiva é BLUEPRINT (Architect).",
+                "O bundle representa o projeto completo contido no artefato enviado, mas a síntese deve priorizar estruturas, assinaturas, contratos, dependências e organização.",
+                "Não trate o conteúdo como recorte manual e não puxe regras de SNIPER.",
+            ].join(" ");
+        case "sniper":
+            return [
+                "A extração efetiva é SNIPER (Manual).",
+                "O bundle representa um RECORTE PARCIAL do projeto.",
+                "Mapeie exclusivamente o que estiver visível.",
+                "Não inferir módulos, contratos, arquivos, fluxos ou responsabilidades não presentes.",
+                "Quando faltar contexto, declarar explicitamente que não está visível no recorte.",
+            ].join(" ");
+        default:
+            return [
+                "A extração efetiva é FULL.",
+                "O bundle representa o projeto completo contido no artefato enviado.",
+                "Baseie-se exclusivamente no material fornecido.",
+                "Não invente arquitetura, comportamento ou responsabilidades sem evidência textual.",
+                "Não inclua regras de BLUEPRINT nem de SNIPER fora do contexto aplicável.",
+            ].join(" ");
+    }
+}
+
+function buildExtractionModeRequirements(extractionMode: ExtractionMode): string[] {
+    switch (extractionMode) {
+        case "blueprint":
+            return [
+                "A extração efetiva é BLUEPRINT (Architect).",
+                "Priorizar estruturas, assinaturas, contratos, dependências e organização.",
+                "Não puxar regras de sniper/manual e não tratar o bundle como recorte parcial.",
+            ];
+        case "sniper":
+            return [
+                "A extração efetiva é SNIPER (Manual).",
+                "Tratar o bundle como recorte parcial/manual e manter o escopo fechado ao conteúdo visível.",
+                "Declarar explicitamente lacunas como contexto não visível no recorte enviado.",
+            ];
+        default:
+            return [
+                "A extração efetiva é FULL.",
+                "Tratar o bundle como projeto completo do artefato enviado.",
+                "Não inserir blocos ou regras de BLUEPRINT/SNIPER no protocolo final.",
+            ];
+    }
+}
+
+function buildDirectorStructuredSystemPrompt(
+    mode: DocumentMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): string {
+    const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
 
     return [
         "Você é um ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE IA.",
@@ -1026,6 +1159,7 @@ function buildDirectorStructuredSystemPrompt(mode: DocumentMode, executorTarget:
         scopeInstruction,
         "A Source of Truth deve preparar uma IA subsequente para assumir a persona de Diretor.",
         "O Diretor deve assimilar o projeto, aguardar o pedido futuro do usuário e então gerar um prompt otimizado para um agente executor com capacidades agênticas.",
+        "A composição final do protocolo em markdown será feita por slices determinísticos compatíveis com routeMode + extractionMode.",
         "Na seção directorPromptTemplate, o valor principal é a ESTRUTURA TÓPICA.",
         "Preserve obrigatoriamente os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO.",
         "RETORNE EXCLUSIVAMENTE JSON VÁLIDO.",
@@ -1067,20 +1201,12 @@ function buildDirectorStructuredSystemPrompt(mode: DocumentMode, executorTarget:
     ].join("\n\n");
 }
 
-function buildExecutorStructuredSystemPrompt(mode: DocumentMode, executorTarget: string): string {
-    const scopeInstruction =
-        mode === "manual"
-            ? [
-                  "O bundle representa um RECORTE PARCIAL do projeto.",
-                  "Mapeie exclusivamente o que estiver visível.",
-                  "Não inferir módulos, contratos, arquivos, fluxos ou responsabilidades não presentes.",
-                  "Quando faltar contexto, declarar explicitamente que não está visível no recorte.",
-              ].join(" ")
-            : [
-                  "O bundle representa o projeto completo contido no artefato enviado.",
-                  "Baseie-se exclusivamente no material fornecido.",
-                  "Não invente arquitetura, comportamento ou responsabilidades sem evidência textual.",
-              ].join(" ");
+function buildExecutorStructuredSystemPrompt(
+    mode: DocumentMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): string {
+    const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
 
     return [
         "Você é um ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE IA.",
@@ -1089,6 +1215,7 @@ function buildExecutorStructuredSystemPrompt(mode: DocumentMode, executorTarget:
         "O documento deve preparar a IA subsequente para operar diretamente como SENIOR_ENGINEERING_EXECUTOR.",
         "O objetivo não é criar Diretor nem prompt intermediário.",
         "O documento deve permitir execução direta de alterações futuras no código.",
+        "A composição final do protocolo em markdown será feita por slices determinísticos compatíveis com routeMode + extractionMode.",
         "RETORNE EXCLUSIVAMENTE JSON VÁLIDO.",
         "NÃO use markdown.",
         "NÃO use comentários.",
@@ -1125,12 +1252,14 @@ function buildDirectorStructuredUserPrompt(
     projectName: string,
     executorTarget: string,
     mode: DocumentMode,
+    extractionMode: ExtractionMode,
     technicalBundleDump: string
 ): string {
     return [
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
         `DOCUMENT_MODE: ${mode}`,
+        `EXTRACTION_MODE: ${extractionMode}`,
         "",
         "Requisitos obrigatórios:",
         "- O fluxo é VIA DIRETOR.",
@@ -1138,8 +1267,8 @@ function buildDirectorStructuredUserPrompt(
         "- O valor principal do template é a sua estrutura tópica, não um texto fixo literal.",
         "- O template deve servir como matriz operacional para o Diretor converter pedidos futuros em prompt de execução.",
         "- O prompt final do Diretor deve ser voltado para um agente executor que cria/edita arquivos, roda comandos, aplica mudanças e valida resultados.",
+        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
         "- Preservar contratos, identificadores, comportamento existente e evitar impacto colateral.",
-        "- Em modo manual, deixar explícitos os limites do recorte.",
         "- Considere apenas as seções técnicas do bundle. Ignore qualquer cabeçalho instrucional anterior ao conteúdo técnico.",
         "",
         "BUNDLE TÉCNICO:",
@@ -1151,19 +1280,21 @@ function buildExecutorStructuredUserPrompt(
     projectName: string,
     executorTarget: string,
     mode: DocumentMode,
+    extractionMode: ExtractionMode,
     technicalBundleDump: string
 ): string {
     return [
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
         `DOCUMENT_MODE: ${mode}`,
+        `EXTRACTION_MODE: ${extractionMode}`,
         "",
         "Requisitos obrigatórios:",
         "- O fluxo é DIRETO PARA O EXECUTOR.",
         "- O documento deve preparar a IA subsequente para executar diretamente mudanças futuras no código.",
         "- Não criar Diretor, não criar prompt intermediário e não orientar outro agente.",
+        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
         "- Preservar contratos, identificadores, comportamento existente e evitar impacto colateral.",
-        "- Em modo manual, deixar explícitos os limites do recorte.",
         "- Considere apenas as seções técnicas do bundle. Ignore qualquer cabeçalho instrucional anterior ao conteúdo técnico.",
         "",
         "BUNDLE TÉCNICO:",
@@ -1172,6 +1303,7 @@ function buildExecutorStructuredUserPrompt(
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
+
     try {
         await fs.access(filePath);
         return true;
@@ -1199,6 +1331,7 @@ function buildCustomUserPrompt(
     projectName: string,
     executorTarget: string,
     mode: DocumentMode,
+    extractionMode: ExtractionMode,
     technicalBundleDump: string,
     outputRouteMode: OutputRouteMode
 ): string {
@@ -1206,10 +1339,12 @@ function buildCustomUserPrompt(
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
         `DOCUMENT_MODE: ${mode}`,
+        `EXTRACTION_MODE: ${extractionMode}`,
         `OUTPUT_ROUTE_MODE: ${outputRouteMode}`,
         "",
         "Você está operando em MODO PERSONALIZADO.",
         "Use o bundle técnico abaixo como contexto integral de trabalho.",
+        "Respeite rigidamente a combinação de routeMode + extractionMode informada.",
         "Ignore qualquer instrução estrutural padrão do modo default e siga exclusivamente o systemPrompt customizado recebido.",
         "",
         "BUNDLE TÉCNICO:",
@@ -1222,6 +1357,7 @@ async function repairStructuredPayload(
     projectName: string,
     executorTarget: string,
     mode: DocumentMode,
+    extractionMode: ExtractionMode,
     outputRouteMode: OutputRouteMode,
     primaryProvider: ProviderId
 ): Promise<StructuredOutputDocument | null> {
@@ -1231,6 +1367,7 @@ async function repairStructuredPayload(
                   "Converta a resposta abaixo para JSON VÁLIDO seguindo EXATAMENTE o schema solicitado.",
                   "Não invente fatos fora do texto de origem.",
                   "Na seção directorPromptTemplate, preserve obrigatoriamente os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO.",
+                  "Respeite a combinação externa de routeMode + extractionMode já definida no pipeline.",
                   "Não use markdown.",
                   "Não use comentários.",
                   "Não use crases.",
@@ -1240,6 +1377,7 @@ async function repairStructuredPayload(
                   "Converta a resposta abaixo para JSON VÁLIDO seguindo EXATAMENTE o schema solicitado.",
                   "Não invente fatos fora do texto de origem.",
                   "O fluxo é DIRETO PARA O EXECUTOR.",
+                  "Respeite a combinação externa de routeMode + extractionMode já definida no pipeline.",
                   "Não crie Diretor, não crie prompt intermediário e não adicione seções fora do schema.",
                   "Não use markdown.",
                   "Não use comentários.",
@@ -1299,6 +1437,7 @@ async function repairStructuredPayload(
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
         `DOCUMENT_MODE: ${mode}`,
+        `EXTRACTION_MODE: ${extractionMode}`,
         `OUTPUT_ROUTE_MODE: ${outputRouteMode}`,
         "",
         "Schema obrigatório:",
@@ -1330,6 +1469,7 @@ async function repairStructuredPayload(
 }
 
 async function main() {
+
     const [
         bundlePath,
         projectName,
@@ -1338,7 +1478,6 @@ async function main() {
         selectedProvider = "groq",
         outputRouteModeArg = "director",
         customSystemPromptFilePath = "",
-        extractionModeArg = "full",
     ] = process.argv.slice(2);
 
     if (!bundlePath || !executorTarget) {
@@ -1348,13 +1487,10 @@ async function main() {
     const absolutePath = path.resolve(process.cwd(), bundlePath);
     const rawBundleDump = normalizeSourceDump(await fs.readFile(absolutePath, "utf-8"));
     const technicalBundleDump = extractTechnicalBundleDump(rawBundleDump);
-    const mode: DocumentMode =
-        bundleMode === "manual" || path.basename(absolutePath).startsWith("_MANUAL__")
-            ? "manual"
-            : "full";
+    const extractionMode = normalizeExtractionMode(bundleMode, path.basename(absolutePath));
+    const mode: DocumentMode = resolveDocumentModeFromExtractionMode(extractionMode);
     const primaryProvider = normalizePrimaryProvider(selectedProvider);
     const outputRouteMode = normalizeOutputRouteMode(outputRouteModeArg);
-    const extractionMode = normalizeExtractionMode(extractionModeArg);
     const customSystemPrompt = await readOptionalCustomSystemPrompt(customSystemPromptFilePath);
 
     const prefix = outputRouteMode === "director" ? "_diretor_" : "_executor_";
@@ -1368,6 +1504,7 @@ async function main() {
             projectName,
             executorTarget,
             mode,
+            extractionMode,
             technicalBundleDump,
             outputRouteMode
         );
@@ -1413,13 +1550,13 @@ async function main() {
 
     const systemPrompt =
         outputRouteMode === "director"
-            ? buildDirectorStructuredSystemPrompt(mode, executorTarget)
-            : buildExecutorStructuredSystemPrompt(mode, executorTarget);
+            ? buildDirectorStructuredSystemPrompt(mode, extractionMode, executorTarget)
+            : buildExecutorStructuredSystemPrompt(mode, extractionMode, executorTarget);
 
     const userPrompt =
         outputRouteMode === "director"
-            ? buildDirectorStructuredUserPrompt(projectName, executorTarget, mode, technicalBundleDump)
-            : buildExecutorStructuredUserPrompt(projectName, executorTarget, mode, technicalBundleDump);
+            ? buildDirectorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump)
+            : buildExecutorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump);
 
     const result = await generateContextDocument(
         {
@@ -1451,6 +1588,7 @@ async function main() {
             projectName,
             executorTarget,
             mode,
+            extractionMode,
             outputRouteMode,
             primaryProvider
         );
@@ -1462,8 +1600,7 @@ async function main() {
         structuredDocument = repairedDocument;
     }
 
-    (structuredDocument as any).extractionMode = extractionMode;
-    const finalMarkdown = buildStructuredMarkdownDocument(structuredDocument, technicalBundleDump);
+    const finalMarkdown = buildStructuredMarkdownDocument(structuredDocument, technicalBundleDump, extractionMode);
 
     await fs.writeFile(outputPath, finalMarkdown, "utf-8");
     await fs.writeFile(
@@ -1906,6 +2043,30 @@ function Resolve-ChoiceFromUI {
     if ($RbArchitect.Checked){ return '2' }
     if ($RbSniper.Checked)   { return '3' }
     return $null
+}
+
+function Resolve-ExtractionModeFromChoice {
+    param([string]$Choice)
+    switch ($Choice) {
+        '2' { return 'blueprint' }
+        '3' { return 'sniper' }
+        default { return 'full' }
+    }
+}
+
+function Resolve-DocumentModeFromExtractionMode {
+    param([string]$ExtractionMode)
+    if ($ExtractionMode -eq 'sniper') { return 'manual' }
+    return 'full'
+}
+
+function Get-ExtractionModeLabel {
+    param([string]$ExtractionMode)
+    switch ($ExtractionMode) {
+        'blueprint' { return 'BLUEPRINT' }
+        'sniper' { return 'SNIPER' }
+        default { return 'FULL' }
+    }
 }
 
 function Resolve-AIProviderFromUI {
@@ -3284,8 +3445,7 @@ function Invoke-OrchestratorAgent {
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
         [string]$OutputRouteModeValue,
-        [string]$CustomSystemPromptFilePath = $null,
-        [string]$ExtractionModeValue = "full"
+        [string]$CustomSystemPromptFilePath = $null
     )
 
     if (-not (Test-Path $AgentScriptPath)) { throw "Script groq-agent.ts não localizado." }
@@ -3306,10 +3466,11 @@ function Invoke-OrchestratorAgent {
     $commandParts = @(
         "npx", "--quiet", "tsx", "`"$AgentScriptPath`"",
         "`"$BundlePath`"", "`"$ProjectNameValue`"", "`"$ExecutorTargetValue`"",
-        "`"$BundleModeValue`"", "`"$PrimaryProviderValue`"", "`"$OutputRouteModeValue`"",
-        (if ($null -ne $CustomSystemPromptFilePath -and $CustomSystemPromptFilePath -ne "") { "`"$CustomSystemPromptFilePath`"" } else { '""' }),
-        "`"$ExtractionModeValue`""
+        "`"$BundleModeValue`"", "`"$PrimaryProviderValue`"", "`"$OutputRouteModeValue`""
     )
+    if (-not [string]::IsNullOrWhiteSpace($CustomSystemPromptFilePath)) {
+        $commandParts += "`"$CustomSystemPromptFilePath`""
+    }
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -3365,93 +3526,205 @@ function Invoke-OrchestratorAgent {
 # ══════════════════════════════════════════════════════════════════
 # PROTOCOL HEADER BUILDER
 # ══════════════════════════════════════════════════════════════════
+function Get-ProtocolSliceSection0 {
+    return @"
+### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)
+- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.
+- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.
+- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.
+"@.Trim()
+}
+
+function Get-ProtocolSliceSection1 {
+    param([string]$RouteMode, [string]$ExtractionMode)
+    return @"
+### §1 — ENQUADRAMENTO OPERACIONAL
+- Rota ativa: $(if ($RouteMode -eq 'executor') { 'DIRETO PARA O EXECUTOR' } else { 'VIA DIRETOR' }).
+- Extração efetiva: $(Get-ExtractionModeLabel -ExtractionMode $ExtractionMode).
+- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
+"@.Trim()
+}
+
+function Get-ProtocolSliceDirectorMode {
+    return @"
+### MODO DIRETOR
+- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
+- Não implementar a alteração diretamente e não responder com código final.
+- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+"@.Trim()
+}
+
+function Get-ProtocolSliceExecutorMode {
+    return @"
+### MODO EXECUTOR
+- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
+- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
+- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
+"@.Trim()
+}
+
+function Get-ProtocolSliceBlueprintMode {
+    return @"
+### MODO BLUEPRINT
+- Priorizar estruturas, assinaturas, contratos, dependências e organização do projeto.
+- Não puxar regras de SNIPER nem tratar o documento como recorte manual.
+- Restringir a síntese ao que for compatível com leitura arquitetural/estrutural do bundle.
+"@.Trim()
+}
+
+function Get-ProtocolSliceSniperMode {
+    return @"
+### MODO SNIPER
+- Tratar o documento como recorte parcial/manual derivado de seleção granular de arquivos.
+- Limitar qualquer análise, instrução ou execução ao escopo visível no recorte enviado.
+- Declarar explicitamente lacunas como contexto não visível no recorte enviado.
+"@.Trim()
+}
+
+function Get-ProtocolSliceSection3 {
+    param([string]$RouteMode, [string]$ExtractionMode)
+    $documentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $ExtractionMode
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('### §3 — POLÍTICA DE ESCOPO E CONTEXTO')
+
+    if ($documentMode -eq 'manual') {
+        $lines.Add('- O artefato deve ser tratado como recorte parcial/manual.')
+        $lines.Add('- Qualquer decisão deve permanecer estritamente no escopo visível.')
+        $lines.Add('- Quando faltar contexto, declarar explicitamente a limitação em vez de inferir comportamento ausente.')
+    } else {
+        $lines.Add('- O artefato deve ser tratado como projeto completo contido no bundle gerado.')
+        $lines.Add('- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.')
+        if ($ExtractionMode -eq 'blueprint') {
+            $lines.Add('- Como a extração é BLUEPRINT, priorizar visão estrutural e não puxar regras de SNIPER.')
+        } else {
+            $lines.Add('- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.')
+        }
+    }
+
+    if ($RouteMode -eq 'executor') {
+        $lines.Add('- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor.')
+    } else {
+        $lines.Add('- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor.')
+    }
+
+    return ($lines -join "`n")
+}
+
+function Get-ProtocolSliceSection4 {
+    param([string]$ExecutorTargetValue)
+    return @"
+### §4 — REGRAS FINAIS DE EXECUÇÃO
+- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
+- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
+- Executor alvo de referência: $ExecutorTargetValue.
+"@.Trim()
+}
+
 function Get-ProtocolHeaderContent {
-    param([string]$RouteMode, [string]$BundleChoice, [string]$ExecutorTargetValue)
-    
-    $extractionMode = if ($BundleChoice -eq '1') { 'full' } elseif ($BundleChoice -eq '2') { 'blueprint' } else { 'sniper' }
-    
-    $blocks = @()
-    $blocks += "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2"
-    $blocks += ""
-    $blocks += "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)"
-    $blocks += "**ZERO-VERBOSITY RULE**:"
-    $blocks += "- Toda saída deve conter EXCLUSIVAMENTE conteúdo técnico de alta densidade."
-    $blocks += "- Nenhuma frase introdutória, de transição, de encerramento ou de cortesia é tolerada."
-    $blocks += ""
-    $blocks += "**TOKEN ECONOMY RULE**:"
-    $blocks += "- Cada token consumido deve carregar valor técnico mensurável."
-    $blocks += "- Priorizar notação compacta: bullet-points, key-value, diffs, blocos de código."
-    
-    $blocks += ""
-    $blocks += "### §1 — PROIBIÇÕES GLOBAIS (HARD-BLOCKED)"
-    $blocks += "As seguintes saídas são BLOQUEADAS em QUALQUER modo. Violação = falha de protocolo."
-    $blocks += "1. Termos de cortesia ou rapport."
-    $blocks += "2. Redundância com o contexto fornecido."
-    $blocks += "3. Explicações de conceitos básicos."
-    $blocks += "4. Meta-comentários sobre a própria resposta."
-    
-    if ($RouteMode -eq 'director') {
-        $blocks += ""
-        $blocks += "### §2 — ESPECIFICAÇÃO DE MODO: DIRETOR"
-        $blocks += "**IDENTIDADE**: Você é o DIRETOR TÉCNICO DE EXECUÇÃO. Você NÃO é a IA executora final."
-        $blocks += "**FUNÇÃO OBRIGATÓRIA**:"
-        $blocks += "- Ler este documento como Source of Truth"
-        $blocks += "- Assimilar o projeto"
-        $blocks += "- Aguardar a solicitação futura do usuário"
-        $blocks += "- Converter a solicitação em um PROMPT DE EXECUÇÃO imperativo e mapeado"
-        $blocks += "- Entregar esse prompt para uma IA executora/agêntica"
-        $blocks += ""
-        $blocks += "**SAÍDA OBRIGATÓRIA**: Prompt estruturado no formato abaixo, sem texto fora do bloco:"
-        $blocks += "````text"
-        $blocks += "## Instruções"
-        $blocks += "CONTEXTO:"
-        $blocks += "- [referências diretas ao projeto, arquivos, contratos afetados]"
-        $blocks += ""
-        $blocks += "OBJETIVO:"
-        $blocks += "[verbo imperativo] + [alvo técnico preciso]"
-        $blocks += ""
-        $blocks += "REGRAS:"
-        $blocks += "- [restrições técnicas derivadas da Source of Truth]"
-        $blocks += ""
-        $blocks += "ENTREGA:"
-        $blocks += "- [artefatos esperados: arquivos, diffs, comandos]"
-        $blocks += ""
-        $blocks += "ADAPTAÇÕES AO PROJETO:"
-        $blocks += "- [particularidades do projeto que o executor DEVE respeitar]"
-        $blocks += "````"
+    param([string]$RouteMode, [string]$ExtractionMode, [string]$ExecutorTargetValue)
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2')
+    $parts.Add((Get-ProtocolSliceSection0))
+    $parts.Add((Get-ProtocolSliceSection1 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
+
+    if ($RouteMode -eq 'executor') {
+        $parts.Add((Get-ProtocolSliceExecutorMode))
     } else {
-        $blocks += ""
-        $blocks += "### §2 — ESPECIFICAÇÃO DE MODO: EXECUTOR"
-        $blocks += "**IDENTIDADE**: Você é o SENIOR_ENGINEERING_EXECUTOR."
-        $blocks += "**FUNÇÃO OBRIGATÓRIA**: Executar diretamente a alteração solicitada no código existente."
+        $parts.Add((Get-ProtocolSliceDirectorMode))
     }
-    
-    if ($extractionMode -eq 'blueprint') {
-        $blocks += ""
-        $blocks += "### MODO BLUEPRINT"
-        $blocks += "- O contexto contém majoritariamente assinaturas e interfaces."
-        $blocks += "- Não tente inferir implementações profundas não documentadas."
-    } elseif ($extractionMode -eq 'sniper') {
-        $blocks += ""
-        $blocks += "### MODO SNIPER"
-        $blocks += "- O contexto é um RECORTE PARCIAL cirúrgico."
-        $blocks += "- Respeite os limites do recorte enviado."
+
+    if ($ExtractionMode -eq 'blueprint') {
+        $parts.Add((Get-ProtocolSliceBlueprintMode))
+    } elseif ($ExtractionMode -eq 'sniper') {
+        $parts.Add((Get-ProtocolSliceSniperMode))
     }
-    
-    $blocks += ""
-    $blocks += "### §3 — REGRA DE CONTEXTO INSUFICIENTE"
-    if ($extractionMode -eq 'full') {
-        $blocks += "Baseie sua resposta no projeto completo fornecido."
-    } else {
-        $blocks += "Em recorte parcial/blueprint: restringir ao escopo visível."
+
+    $parts.Add((Get-ProtocolSliceSection3 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
+    $parts.Add((Get-ProtocolSliceSection4 -ExecutorTargetValue $ExecutorTargetValue))
+
+    return (($parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
+}
+
+function Normalize-BundleContentForDiff {
+    param([AllowEmptyString()][string]$Content)
+
+    if ($null -eq $Content) { return "" }
+
+    return (($Content -replace "`0", "") -replace "`r`n", "`n").TrimEnd()
+}
+
+function Get-BundleContentHash {
+    param([AllowEmptyString()][string]$Content)
+
+    $normalized = Normalize-BundleContentForDiff -Content $Content
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
     }
-    
-    $blocks += ""
-    $blocks += "### §4 — MANUTENÇÃO DE INTEGRIDADE"
-    $blocks += "- Preservar a estrutura de arquivos e código-fonte."
-    $blocks += "- Contratos e identificadores são INTOCÁVEIS."
-    
-    return ($blocks -join "`n")
+}
+
+function Read-NormalizedBundleFile {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return $null }
+
+    $raw = Get-Content $Path -Raw -Encoding UTF8 -ErrorAction Stop
+    return (Normalize-BundleContentForDiff -Content $raw)
+}
+
+function Confirm-IdenticalBundleProceed {
+    param([string]$BundlePath)
+
+    $message = @"
+Conteúdo idêntico detectado.
+
+Arquivo:
+$BundlePath
+
+Deseja prosseguir com a IA mesmo assim?
+"@
+
+    $dialogResult = [System.Windows.Forms.MessageBox]::Show(
+        $message,
+        "Bundle idêntico detectado",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+    )
+
+    return ($dialogResult -eq [System.Windows.Forms.DialogResult]::Yes)
+}
+
+function Resolve-BundlePreflightGate {
+    param(
+        [string]$OfficialBundlePath,
+        [AllowEmptyString()][string]$NewBundleContent
+    )
+
+    $normalizedNew = Normalize-BundleContentForDiff -Content $NewBundleContent
+    $newHash = Get-BundleContentHash -Content $normalizedNew
+
+    $officialExists = Test-Path $OfficialBundlePath
+    $officialNormalized = $null
+    $officialHash = $null
+    $isIdentical = $false
+
+    if ($officialExists) {
+        $officialNormalized = Read-NormalizedBundleFile -Path $OfficialBundlePath
+        $officialHash = Get-BundleContentHash -Content $officialNormalized
+        $isIdentical = ($officialHash -eq $newHash)
+    }
+
+    return [pscustomobject]@{
+        OfficialExists = $officialExists
+        IsIdentical    = $isIdentical
+        NewHash        = $newHash
+        OfficialHash   = $officialHash
+    }
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -3463,6 +3736,7 @@ $btnRun.Add_Click({
     $currentAIProvider    = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
     $currentAIPromptMode  = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbCustom $rbPromptModeCustom
     $currentAIFlowMode    = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
+    $currentExtractionMode = Resolve-ExtractionModeFromChoice -Choice $currentChoice
 
     if (-not $currentChoice) {
         [System.Windows.Forms.MessageBox]::Show("Selecione um modo de extração.", "VibeToolkit",
@@ -3508,6 +3782,7 @@ $btnRun.Add_Click({
     $FilesToProcess  = @($selectedFiles)
     $SendToAI        = $chkSendToAI.Checked
     $CustomSystemPromptFilePath = $null
+    $TempBundlePath = $null
 
     Set-UiBusy -Busy $true
     $logViewer.Clear()
@@ -3529,7 +3804,7 @@ $btnRun.Add_Click({
         Write-UILog -Message "Geração com IA: $(if ($SendToAI) { if ($currentAIPromptMode -eq 'custom') { 'Personalizado' } else { 'Padrão' } } else { 'Desabilitado' })"
         Write-UILog -Message "Fluxo final: $(if ($currentAIFlowMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' })"
 
-        $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -BundleChoice $Choice -ExecutorTargetValue $ExecutorTarget
+        $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode -ExecutorTargetValue $ExecutorTarget
         $FinalContent = $HeaderContent + "`n`n"
         $BlueprintIssues = @()
 
@@ -3614,7 +3889,48 @@ $btnRun.Add_Click({
         Write-UILog -Message "Salvando artefato..."
         $OutputFullPath = Join-Path (Get-Location) $OutputFile
         $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($OutputFullPath, $FinalContent, $Utf8NoBom)
+        $TempBundlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-bundle-" + [System.Guid]::NewGuid().ToString("N") + ".md")
+
+        [System.IO.File]::WriteAllText($TempBundlePath, $FinalContent, $Utf8NoBom)
+
+        $ShouldCallAI = $false
+        $ShouldPersistOfficialBundle = $true
+        $Preflight = $null
+
+        if ($SendToAI) {
+            $Preflight = Resolve-BundlePreflightGate `
+                -OfficialBundlePath $OutputFullPath `
+                -NewBundleContent $FinalContent
+
+            if (-not $Preflight.OfficialExists) {
+                Write-UILog -Message "Bundle oficial inexistente. Persistindo nova versão e liberando IA." -Color $ThemeCyan
+                $ShouldCallAI = $true
+                $ShouldPersistOfficialBundle = $true
+            }
+            elseif (-not $Preflight.IsIdentical) {
+                Write-UILog -Message "Diferença detectada no bundle. Atualizando arquivo oficial e liberando IA." -Color $ThemeCyan
+                $ShouldCallAI = $true
+                $ShouldPersistOfficialBundle = $true
+            }
+            else {
+                Write-UILog -Message "Conteúdo idêntico detectado entre o bundle oficial e o bundle recém-gerado." -Color $ThemePink
+                $ShouldPersistOfficialBundle = $false
+                $ShouldCallAI = Confirm-IdenticalBundleProceed -BundlePath $OutputFullPath
+
+                if ($ShouldCallAI) {
+                    Write-UILog -Message "Usuário autorizou prosseguir com a IA apesar do conteúdo idêntico." -Color $ThemeCyan
+                } else {
+                    Write-UILog -Message "IA cancelada pelo usuário após o pre-flight diff gate." -Color $ThemeSuccess
+                }
+            }
+        }
+
+        if ($ShouldPersistOfficialBundle) {
+            [System.IO.File]::WriteAllText($OutputFullPath, $FinalContent, $Utf8NoBom)
+            Write-UILog -Message "Bundle oficial salvo em: $OutputFullPath" -Color $ThemeSuccess
+        } else {
+            Write-UILog -Message "Bundle oficial preservado sem regravação por não haver diferença de conteúdo." -Color $ThemeSuccess
+        }
 
         $TokenEstimate = [math]::Round($FinalContent.Length / 4)
 
@@ -3635,7 +3951,7 @@ $btnRun.Add_Click({
         if ($Copied) { Write-UILog -Message "Bundle copiado para a área de transferência." -Color $ThemeCyan }
         else         { Write-UILog -Message "Arquivo salvo. Clipboard indisponível." -Color $ThemePink }
 
-        if ($SendToAI) {
+        if ($SendToAI -and $ShouldCallAI) {
             Write-UILog -Message "Chamando agente de IA..." -Color $ThemeCyan
             Write-UILog -Message "Provider primário: $AIProvider | fallback automático ativo." -Color $ThemeCyan
 
@@ -3654,7 +3970,7 @@ $btnRun.Add_Click({
             }
 
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
-            $BundleMode  = if ($Choice -eq '1') { 'full' } elseif ($Choice -eq '2') { 'blueprint' } else { 'manual' }
+            $BundleMode  = $currentExtractionMode
 
             $AgentResult = Invoke-OrchestratorAgent `
                 -AgentScriptPath $AgentScript `
@@ -3664,8 +3980,7 @@ $btnRun.Add_Click({
                 -BundleModeValue $BundleMode `
                 -PrimaryProviderValue $AIProvider `
                 -OutputRouteModeValue $currentAIFlowMode `
-                -CustomSystemPromptFilePath $CustomSystemPromptFilePath `
-                -ExtractionModeValue $BundleMode
+                -CustomSystemPromptFilePath $CustomSystemPromptFilePath
 
             $FinalPromptPath = $null
             if ($AgentResult -and $AgentResult.OutputPath -and (Test-Path $AgentResult.OutputPath)) {
@@ -3698,6 +4013,8 @@ $btnRun.Add_Click({
             }
 
             Write-UILog -Message "$(if ($currentAIFlowMode -eq 'executor') { 'Agora é só colar no seu executor.' } else { 'Agora é só colar no seu orquestrador.' })" -Color $ThemeCyan
+        } elseif ($SendToAI) {
+            Write-UILog -Message "Execução concluída sem chamada da IA." -Color $ThemeSuccess
         } else {
             Write-UILog -Message "Execução concluída sem chamada da IA." -Color $ThemeSuccess
         }
@@ -3709,6 +4026,9 @@ $btnRun.Add_Click({
     } finally {
         if ($CustomSystemPromptFilePath -and (Test-Path $CustomSystemPromptFilePath)) {
             Remove-Item $CustomSystemPromptFilePath -Force -ErrorAction SilentlyContinue
+        }
+        if ($TempBundlePath -and (Test-Path $TempBundlePath)) {
+            Remove-Item $TempBundlePath -Force -ErrorAction SilentlyContinue
         }
         Set-UiBusy -Busy $false
     }
@@ -3724,109 +4044,50 @@ Write-UILog -Message "Pronto. Configure o modo, o executor e energize." -Color $
 
 #### File: .\README.md
 ```text
-# 🚀 VibeToolkit
-**AI Context Synthesizer & Execution Director**
+# VibeToolkit ⚡
 
-O **VibeToolkit** é uma suite de infraestrutura para IA focada em transformar bases de código brutas em um **Bundle de Contexto Estruturado**. Ele resolve o problema da "falta de contexto" ao preparar uma **Source of Truth** (Fonte de Verdade) blindada para orquestradores (ChatGPT, Gemini, Claude) que atuam como **Diretores** para executores agênticos (**AI Studio Apps** ou **Antigravity**).
+O **VibeToolkit** é uma solução de engenharia de prompts e orquestração de LLMs (Large Language Models) desenhada para o fluxo de "vibe coding". Ele automatiza a criação de contextos técnicos de alta densidade, permitindo que IAs atuem como **Diretores** (planeamento) ou **Executores** (implementação direta) com precisão cirúrgica.
 
----
+## 🧠 Filosofia: Orchestrator-Executor
+O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2**, que garante que a saída da IA seja estritamente técnica e compatível com o modo de extração ativo, eliminando alucinações de arquitetura.
 
-## 💎 O Conceito de "Vibe"
-O toolkit não apenas "copia arquivos", ele extrai a **vibe** (arquitetura, padrões, intenções e contratos) do projeto. O output final não é apenas código, mas um documento meta-analítico que ensina a IA subsequente a agir como um Diretor Técnico do seu projeto.
+## 🚀 Funcionalidades Principais
 
----
+* **Modos de Extração Inteligente**:
+    * **FULL**: Mapeamento completo do projeto para visão holística.
+    * **BLUEPRINT (Architect)**: Focado em estruturas, interfaces, contratos e dependências, ideal para grandes bases de código onde o limite de tokens é um desafio.
+    * **SNIPER (Manual)**: Focado apenas em recortes específicos de ficheiros para correções pontuais.
+* **Multi-Provider com Failover**: Integração nativa com **Groq (Llama 3)**, **Gemini 1.5 Pro**, **OpenAI (GPT-4o)** e **Anthropic (Claude 3.5)**. Se um provider falhar ou atingir limites, o sistema transita automaticamente para o próximo da cadeia.
+* **HUD e Integração com Windows**: Interface gráfica via PowerShell para seleção de modos e botão "ENERGIZE" para processamento imediato, com suporte a menu de contexto no botão direito do Windows.
 
-## ✨ Principais Recursos
+## 🛠️ Stack Técnica
+* **Runtime**: Node.js / TypeScript.
+* **Orquestração**: PowerShell (HUD e scripts de automação).
+* **Dependências**: `dotenv` para gestão de chaves e `fs/path` para manipulação de arquivos.
 
-### 🎨 HUD de Controle Visual
-Interface nativa em WinForms (HUD) que centraliza toda a operação. Zero CLI para o fluxo diário, focado em produtividade máxima.
+## 📋 Como Usar
 
-### 🛡️ Smart Chain Multi-Provider (Fallback Dinâmico)
-Sistema resiliente de requisições:
-1.  **Ordem:** Groq → Gemini → OpenAI → Anthropic.
-2.  **Fallback Automático:** Se um provider atingir Rate Limit ou estiver offline, o agente pula para o próximo da cadeia sem perder o progresso.
-3.  **Monitoramento:** Logs em tempo real de latência e saúde de cada provider.
+### Interface Gráfica (HUD)
+1.  Clique com o botão direito na pasta do seu projeto.
+2.  Selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
+3.  No HUD:
+    * Escolha o **Modo de Extração** (Full, Architect ou Sniper).
+    * Selecione o **Fluxo** (Diretor para planeamento ou Executor para código).
+    * Escolha o **Executor Alvo** (ex: AI Studio, Claude, GPT).
+4.  Clique em **ENERGIZE** para copiar o bundle estruturado para o clipboard.
 
-### 🎯 Modos de Extração Cirúrgica
-*   **🔵 Full Vibe:** Contexto integral. Ideal para análise de bugs complexos.
-*   **🟠 Architect:** Apenas estruturas, assinaturas e contratos. Economia agressiva de tokens.
-*   **🔴 Sniper Mode:** Seleção granular de arquivos via checklist visual para correções focadas.
-
-### 🧩 Integração Nativa (Right-Click Magic)
-Acesso instantâneo via **Menu de Contexto do Windows**. Clique com o botão direito em qualquer pasta para iniciar o "Vibing" sem abrir terminais.
-
-### 🧠 Custom System Prompts
-Controle total sobre a geração. Permite injetar instruções específicas (ex: "Foque apenas em refatorar para Hooks" ou "Analise performance de SQL") diretamente na orquestração da IA.
-
----
-
-## 📂 Estrutura do Ecossistema
-
--   `project-bundler.ps1`: O núcleo do HUD e lógica de bundling (PowerShell).
--   `groq-agent.ts`: O motor de IA que estrutura o documento e gerencia os providers.
--   `install-vibe-menu.reg`: Script de registro para integração com o Windows Explorer.
--   `run-vibe-toolkit.vbs`: Helper para execução silenciosa e suave.
--   `.env`: Centralização secreta e segura de credenciais de API.
-
----
-
-## ⚙️ Configuração Rápida
-
-### 1. Requisitos
--   [Node.js](https://nodejs.org/) instalado.
--   [PowerShell 7](https://github.com/PowerShell/PowerShell) (Recomendado para melhor performance).
-
-### 2. Instale as Dependências
-```bash
-npm install
-```
-
-### 3. Credenciais (`.env`)
-Clone o `.env.example` para `.env` e preencha suas chaves:
-```env
-# API Keys (Mínimo uma necessária para o chain funcionar)
-GROQ_API_KEY=gsk_...
-GEMINI_API_KEY=...
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Modelos (Padrões otimizados)
-GROQ_MODEL=llama-3.3-70b-versatile
-GEMINI_MODEL=gemini-1.5-pro
-OPENAI_MODEL=gpt-4o
-ANTHROPIC_MODEL=claude-3-5-sonnet-20240620
-```
-
-### 4. Instale o Menu de Contexto (Opcional)
-Execute o arquivo `install-vibe-menu.reg` para adicionar o "Vibe AI" ao botão direito do seu Windows.
-
----
-
-## 🚀 Como Usar
-
-### Fluxo Padrão (HUD)
-1.  Clique com o botão direito na pasta do projeto e escolha **"Gerar Blueprint / Contexto (Vibe AI)"**.
-2.  No HUD, escolha o **Modo de Extração** (Sniper se for algo específico).
-3.  Selecione o **Executor Alvo** (Onde você vai colar o prompt).
-4.  Clique em **ENERGIZE**.
-5.  O bundle estruturado será copiado para o seu clipboard!
-
-### Versão CLI (Deep Integration)
-Se quiser rodar puramente via script:
+### CLI (Integração Profunda)
 ```powershell
-.\project-bundler.ps1 -Path "C:\caminho\do\meu\projeto"
+.\project-bundler.ps1 -Path "C:\caminho\do\projeto" -RouteMode "executor" -ExtractionMode "full"
 ```
 
----
-
-## 🧠 Princípios de Engenharia
-*   **Predictability:** Markdown padronizado para evitar alucinações de interpretadores de prompt.
-*   **Resilience:** Failover de infraestrutura em nível de API.
-*   **Tokens-Efficiency:** Estratégias de blueprint para reduzir custos e aumentar a janela de contexto.
-*   **Local-First:** Leitura de arquivos local e segura.
+## 🏗️ Estrutura do Projeto
+* `groq-agent.ts`: Core da lógica de comunicação com LLMs e normalização de documentos.
+* `project-bundler.ps1`: Script principal de interface e empacotamento de ficheiros.
+* `patch_agent.js`: Script de suporte para transformações rápidas de contexto.
 
 ---
-*VibeToolkit © 2026 - Engineered for the Agentic Era*
+*VibeToolkit © 2026 — Engineered for the Agentic Era*
 ```
 
 #### File: .\tsconfig.json

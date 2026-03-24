@@ -122,6 +122,30 @@ function Resolve-ChoiceFromUI {
     return $null
 }
 
+function Resolve-ExtractionModeFromChoice {
+    param([string]$Choice)
+    switch ($Choice) {
+        '2' { return 'blueprint' }
+        '3' { return 'sniper' }
+        default { return 'full' }
+    }
+}
+
+function Resolve-DocumentModeFromExtractionMode {
+    param([string]$ExtractionMode)
+    if ($ExtractionMode -eq 'sniper') { return 'manual' }
+    return 'full'
+}
+
+function Get-ExtractionModeLabel {
+    param([string]$ExtractionMode)
+    switch ($ExtractionMode) {
+        'blueprint' { return 'BLUEPRINT' }
+        'sniper' { return 'SNIPER' }
+        default { return 'FULL' }
+    }
+}
+
 function Resolve-AIProviderFromUI {
     param($RbGroq, $RbGemini, $RbOpenAI, $RbAnthropic)
     if ($RbGroq.Checked)      { return "groq" }
@@ -1498,8 +1522,7 @@ function Invoke-OrchestratorAgent {
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
         [string]$OutputRouteModeValue,
-        [string]$CustomSystemPromptFilePath = $null,
-        [string]$ExtractionModeValue = "full"
+        [string]$CustomSystemPromptFilePath = $null
     )
 
     if (-not (Test-Path $AgentScriptPath)) { throw "Script groq-agent.ts não localizado." }
@@ -1520,10 +1543,11 @@ function Invoke-OrchestratorAgent {
     $commandParts = @(
         "npx", "--quiet", "tsx", "`"$AgentScriptPath`"",
         "`"$BundlePath`"", "`"$ProjectNameValue`"", "`"$ExecutorTargetValue`"",
-        "`"$BundleModeValue`"", "`"$PrimaryProviderValue`"", "`"$OutputRouteModeValue`"",
-        (if ($null -ne $CustomSystemPromptFilePath -and $CustomSystemPromptFilePath -ne "") { "`"$CustomSystemPromptFilePath`"" } else { '""' }),
-        "`"$ExtractionModeValue`""
+        "`"$BundleModeValue`"", "`"$PrimaryProviderValue`"", "`"$OutputRouteModeValue`""
     )
+    if (-not [string]::IsNullOrWhiteSpace($CustomSystemPromptFilePath)) {
+        $commandParts += "`"$CustomSystemPromptFilePath`""
+    }
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -1579,94 +1603,208 @@ function Invoke-OrchestratorAgent {
 # ══════════════════════════════════════════════════════════════════
 # PROTOCOL HEADER BUILDER
 # ══════════════════════════════════════════════════════════════════
-function Get-ProtocolHeaderContent {
-    param([string]$RouteMode, [string]$BundleChoice, [string]$ExecutorTargetValue)
-    
-    $extractionMode = if ($BundleChoice -eq '1') { 'full' } elseif ($BundleChoice -eq '2') { 'blueprint' } else { 'sniper' }
-    
-    $blocks = @()
-    $blocks += "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2"
-    $blocks += ""
-    $blocks += "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)"
-    $blocks += "**ZERO-VERBOSITY RULE**:"
-    $blocks += "- Toda saída deve conter EXCLUSIVAMENTE conteúdo técnico de alta densidade."
-    $blocks += "- Nenhuma frase introdutória, de transição, de encerramento ou de cortesia é tolerada."
-    $blocks += ""
-    $blocks += "**TOKEN ECONOMY RULE**:"
-    $blocks += "- Cada token consumido deve carregar valor técnico mensurável."
-    $blocks += "- Priorizar notação compacta: bullet-points, key-value, diffs, blocos de código."
-    
-    $blocks += ""
-    $blocks += "### §1 — PROIBIÇÕES GLOBAIS (HARD-BLOCKED)"
-    $blocks += "As seguintes saídas são BLOQUEADAS em QUALQUER modo. Violação = falha de protocolo."
-    $blocks += "1. Termos de cortesia ou rapport."
-    $blocks += "2. Redundância com o contexto fornecido."
-    $blocks += "3. Explicações de conceitos básicos."
-    $blocks += "4. Meta-comentários sobre a própria resposta."
-    
-    if ($RouteMode -eq 'director') {
-        $blocks += ""
-        $blocks += "### §2 — ESPECIFICAÇÃO DE MODO: DIRETOR"
-        $blocks += "**IDENTIDADE**: Você é o DIRETOR TÉCNICO DE EXECUÇÃO. Você NÃO é a IA executora final."
-        $blocks += "**FUNÇÃO OBRIGATÓRIA**:"
-        $blocks += "- Ler este documento como Source of Truth"
-        $blocks += "- Assimilar o projeto"
-        $blocks += "- Aguardar a solicitação futura do usuário"
-        $blocks += "- Converter a solicitação em um PROMPT DE EXECUÇÃO imperativo e mapeado"
-        $blocks += "- Entregar esse prompt para uma IA executora/agêntica"
-        $blocks += ""
-        $blocks += "**SAÍDA OBRIGATÓRIA**: Prompt estruturado no formato abaixo, sem texto fora do bloco:"
-        $blocks += "````text"
-        $blocks += "## Instruções"
-        $blocks += "CONTEXTO:"
-        $blocks += "- [referências diretas ao projeto, arquivos, contratos afetados]"
-        $blocks += ""
-        $blocks += "OBJETIVO:"
-        $blocks += "[verbo imperativo] + [alvo técnico preciso]"
-        $blocks += ""
-        $blocks += "REGRAS:"
-        $blocks += "- [restrições técnicas derivadas da Source of Truth]"
-        $blocks += ""
-        $blocks += "ENTREGA:"
-        $blocks += "- [artefatos esperados: arquivos, diffs, comandos]"
-        $blocks += ""
-        $blocks += "ADAPTAÇÕES AO PROJETO:"
-        $blocks += "- [particularidades do projeto que o executor DEVE respeitar]"
-        $blocks += "````"
-    } else {
-        $blocks += ""
-        $blocks += "### §2 — ESPECIFICAÇÃO DE MODO: EXECUTOR"
-        $blocks += "**IDENTIDADE**: Você é o SENIOR_ENGINEERING_EXECUTOR."
-        $blocks += "**FUNÇÃO OBRIGATÓRIA**: Executar diretamente a alteração solicitada no código existente."
-    }
-    
-    if ($extractionMode -eq 'blueprint') {
-        $blocks += ""
-        $blocks += "### MODO BLUEPRINT"
-        $blocks += "- O contexto contém majoritariamente assinaturas e interfaces."
-        $blocks += "- Não tente inferir implementações profundas não documentadas."
-    } elseif ($extractionMode -eq 'sniper') {
-        $blocks += ""
-        $blocks += "### MODO SNIPER"
-        $blocks += "- O contexto é um RECORTE PARCIAL cirúrgico."
-        $blocks += "- Respeite os limites do recorte enviado."
-    }
-    
-    $blocks += ""
-    $blocks += "### §3 — REGRA DE CONTEXTO INSUFICIENTE"
-    if ($extractionMode -eq 'full') {
-        $blocks += "Baseie sua resposta no projeto completo fornecido."
-    } else {
-        $blocks += "Em recorte parcial/blueprint: restringir ao escopo visível."
-    }
-    
-    $blocks += ""
-    $blocks += "### §4 — MANUTENÇÃO DE INTEGRIDADE"
-    $blocks += "- Preservar a estrutura de arquivos e código-fonte."
-    $blocks += "- Contratos e identificadores são INTOCÁVEIS."
-    
-    return ($blocks -join "`n")
+function Get-ProtocolSliceSection0 {
+    return @"
+### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)
+- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.
+- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.
+- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.
+"@.Trim()
 }
+
+function Get-ProtocolSliceSection1 {
+    param([string]$RouteMode, [string]$ExtractionMode)
+    return @"
+### §1 — ENQUADRAMENTO OPERACIONAL
+- Rota ativa: $(if ($RouteMode -eq 'executor') { 'DIRETO PARA O EXECUTOR' } else { 'VIA DIRETOR' }).
+- Extração efetiva: $(Get-ExtractionModeLabel -ExtractionMode $ExtractionMode).
+- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
+"@.Trim()
+}
+
+function Get-ProtocolSliceDirectorMode {
+    return @"
+### MODO DIRETOR
+- Converter pedidos futuros do usuário em prompt estruturado de execução técnica.
+- Não implementar a alteração diretamente e não responder com código final.
+- Preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO no template do Diretor.
+"@.Trim()
+}
+
+function Get-ProtocolSliceExecutorMode {
+    return @"
+### MODO EXECUTOR
+- Executar diretamente alterações futuras no código existente com resposta técnica final pronta para uso.
+- Não gerar prompt intermediário, não agir como Diretor e não orquestrar outro agente.
+- Preservar contratos, nomes, comportamento existente e compatibilidade operacional.
+"@.Trim()
+}
+
+function Get-ProtocolSliceBlueprintMode {
+    return @"
+### MODO BLUEPRINT
+- Priorizar estruturas, assinaturas, contratos, dependências e organização do projeto.
+- Não puxar regras de SNIPER nem tratar o documento como recorte manual.
+- Restringir a síntese ao que for compatível com leitura arquitetural/estrutural do bundle.
+"@.Trim()
+}
+
+function Get-ProtocolSliceSniperMode {
+    return @"
+### MODO SNIPER
+- Tratar o documento como recorte parcial/manual derivado de seleção granular de arquivos.
+- Limitar qualquer análise, instrução ou execução ao escopo visível no recorte enviado.
+- Declarar explicitamente lacunas como contexto não visível no recorte enviado.
+"@.Trim()
+}
+
+function Get-ProtocolSliceSection3 {
+    param([string]$RouteMode, [string]$ExtractionMode)
+    $documentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $ExtractionMode
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('### §3 — POLÍTICA DE ESCOPO E CONTEXTO')
+
+    if ($documentMode -eq 'manual') {
+        $lines.Add('- O artefato deve ser tratado como recorte parcial/manual.')
+        $lines.Add('- Qualquer decisão deve permanecer estritamente no escopo visível.')
+        $lines.Add('- Quando faltar contexto, declarar explicitamente a limitação em vez de inferir comportamento ausente.')
+    } else {
+        $lines.Add('- O artefato deve ser tratado como projeto completo contido no bundle gerado.')
+        $lines.Add('- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.')
+        if ($ExtractionMode -eq 'blueprint') {
+            $lines.Add('- Como a extração é BLUEPRINT, priorizar visão estrutural e não puxar regras de SNIPER.')
+        } else {
+            $lines.Add('- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.')
+        }
+    }
+
+    if ($RouteMode -eq 'executor') {
+        $lines.Add('- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor.')
+    } else {
+        $lines.Add('- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor.')
+    }
+
+    return ($lines -join "`n")
+}
+
+function Get-ProtocolSliceSection4 {
+    param([string]$ExecutorTargetValue)
+    return @"
+### §4 — REGRAS FINAIS DE EXECUÇÃO
+- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
+- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
+- Executor alvo de referência: $ExecutorTargetValue.
+"@.Trim()
+}
+
+function Get-ProtocolHeaderContent {
+    param([string]$RouteMode, [string]$ExtractionMode, [string]$ExecutorTargetValue)
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2')
+    $parts.Add((Get-ProtocolSliceSection0))
+    $parts.Add((Get-ProtocolSliceSection1 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
+
+    if ($RouteMode -eq 'executor') {
+        $parts.Add((Get-ProtocolSliceExecutorMode))
+    } else {
+        $parts.Add((Get-ProtocolSliceDirectorMode))
+    }
+
+    if ($ExtractionMode -eq 'blueprint') {
+        $parts.Add((Get-ProtocolSliceBlueprintMode))
+    } elseif ($ExtractionMode -eq 'sniper') {
+        $parts.Add((Get-ProtocolSliceSniperMode))
+    }
+
+    $parts.Add((Get-ProtocolSliceSection3 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
+    $parts.Add((Get-ProtocolSliceSection4 -ExecutorTargetValue $ExecutorTargetValue))
+
+    return (($parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
+}
+
+
+function Normalize-BundleContentForDiff {
+    param([AllowEmptyString()][string]$Content)
+
+    if ($null -eq $Content) { return "" }
+
+    return (($Content -replace "`0", "") -replace "`r`n", "`n").TrimEnd()
+}
+
+function Get-BundleContentHash {
+    param([AllowEmptyString()][string]$Content)
+
+    $normalized = Normalize-BundleContentForDiff -Content $Content
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+    }
+}
+
+function Read-NormalizedBundleFile {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return $null }
+
+    $raw = Get-Content $Path -Raw -Encoding UTF8 -ErrorAction Stop
+    return (Normalize-BundleContentForDiff -Content $raw)
+}
+
+function Confirm-IdenticalBundleProceed {
+    param([string]$BundlePath)
+
+    $message = @"
+Conteúdo idêntico detectado.
+
+Arquivo:
+$BundlePath
+
+Deseja prosseguir com a IA mesmo assim?
+"@
+
+    $dialogResult = [System.Windows.Forms.MessageBox]::Show(
+        $message,
+        "Bundle idêntico detectado",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+    )
+
+    return ($dialogResult -eq [System.Windows.Forms.DialogResult]::Yes)
+}
+
+function Resolve-BundlePreflightGate {
+    param(
+        [string]$OfficialBundlePath,
+        [AllowEmptyString()][string]$NewBundleContent
+    )
+
+    $normalizedNew = Normalize-BundleContentForDiff -Content $NewBundleContent
+    $newHash = Get-BundleContentHash -Content $normalizedNew
+
+    $officialExists = Test-Path $OfficialBundlePath
+    $officialNormalized = $null
+    $officialHash = $null
+    $isIdentical = $false
+
+    if ($officialExists) {
+        $officialNormalized = Read-NormalizedBundleFile -Path $OfficialBundlePath
+        $officialHash = Get-BundleContentHash -Content $officialNormalized
+        $isIdentical = ($officialHash -eq $newHash)
+    }
+
+    return [pscustomobject]@{
+        OfficialExists = $officialExists
+        IsIdentical    = $isIdentical
+        NewHash        = $newHash
+        OfficialHash   = $officialHash
+    }
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 # ENERGIZE BUTTON
@@ -1677,6 +1815,7 @@ $btnRun.Add_Click({
     $currentAIProvider    = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
     $currentAIPromptMode  = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbCustom $rbPromptModeCustom
     $currentAIFlowMode    = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
+    $currentExtractionMode = Resolve-ExtractionModeFromChoice -Choice $currentChoice
 
     if (-not $currentChoice) {
         [System.Windows.Forms.MessageBox]::Show("Selecione um modo de extração.", "VibeToolkit",
@@ -1722,6 +1861,7 @@ $btnRun.Add_Click({
     $FilesToProcess  = @($selectedFiles)
     $SendToAI        = $chkSendToAI.Checked
     $CustomSystemPromptFilePath = $null
+    $TempBundlePath = $null
 
     Set-UiBusy -Busy $true
     $logViewer.Clear()
@@ -1743,7 +1883,7 @@ $btnRun.Add_Click({
         Write-UILog -Message "Geração com IA: $(if ($SendToAI) { if ($currentAIPromptMode -eq 'custom') { 'Personalizado' } else { 'Padrão' } } else { 'Desabilitado' })"
         Write-UILog -Message "Fluxo final: $(if ($currentAIFlowMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' })"
 
-        $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -BundleChoice $Choice -ExecutorTargetValue $ExecutorTarget
+        $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode -ExecutorTargetValue $ExecutorTarget
         $FinalContent = $HeaderContent + "`n`n"
         $BlueprintIssues = @()
 
@@ -1828,7 +1968,48 @@ $btnRun.Add_Click({
         Write-UILog -Message "Salvando artefato..."
         $OutputFullPath = Join-Path (Get-Location) $OutputFile
         $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($OutputFullPath, $FinalContent, $Utf8NoBom)
+        $TempBundlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-bundle-" + [System.Guid]::NewGuid().ToString("N") + ".md")
+
+        [System.IO.File]::WriteAllText($TempBundlePath, $FinalContent, $Utf8NoBom)
+
+        $ShouldCallAI = $false
+        $ShouldPersistOfficialBundle = $true
+        $Preflight = $null
+
+        if ($SendToAI) {
+            $Preflight = Resolve-BundlePreflightGate `
+                -OfficialBundlePath $OutputFullPath `
+                -NewBundleContent $FinalContent
+
+            if (-not $Preflight.OfficialExists) {
+                Write-UILog -Message "Bundle oficial inexistente. Persistindo nova versão e liberando IA." -Color $ThemeCyan
+                $ShouldCallAI = $true
+                $ShouldPersistOfficialBundle = $true
+            }
+            elseif (-not $Preflight.IsIdentical) {
+                Write-UILog -Message "Diferença detectada no bundle. Atualizando arquivo oficial e liberando IA." -Color $ThemeCyan
+                $ShouldCallAI = $true
+                $ShouldPersistOfficialBundle = $true
+            }
+            else {
+                Write-UILog -Message "Conteúdo idêntico detectado entre o bundle oficial e o bundle recém-gerado." -Color $ThemePink
+                $ShouldPersistOfficialBundle = $false
+                $ShouldCallAI = Confirm-IdenticalBundleProceed -BundlePath $OutputFullPath
+
+                if ($ShouldCallAI) {
+                    Write-UILog -Message "Usuário autorizou prosseguir com a IA apesar do conteúdo idêntico." -Color $ThemeCyan
+                } else {
+                    Write-UILog -Message "IA cancelada pelo usuário após o pre-flight diff gate." -Color $ThemeSuccess
+                }
+            }
+        }
+
+        if ($ShouldPersistOfficialBundle) {
+            [System.IO.File]::WriteAllText($OutputFullPath, $FinalContent, $Utf8NoBom)
+            Write-UILog -Message "Bundle oficial salvo em: $OutputFullPath" -Color $ThemeSuccess
+        } else {
+            Write-UILog -Message "Bundle oficial preservado sem regravação por não haver diferença de conteúdo." -Color $ThemeSuccess
+        }
 
         $TokenEstimate = [math]::Round($FinalContent.Length / 4)
 
@@ -1849,7 +2030,7 @@ $btnRun.Add_Click({
         if ($Copied) { Write-UILog -Message "Bundle copiado para a área de transferência." -Color $ThemeCyan }
         else         { Write-UILog -Message "Arquivo salvo. Clipboard indisponível." -Color $ThemePink }
 
-        if ($SendToAI) {
+        if ($SendToAI -and $ShouldCallAI) {
             Write-UILog -Message "Chamando agente de IA..." -Color $ThemeCyan
             Write-UILog -Message "Provider primário: $AIProvider | fallback automático ativo." -Color $ThemeCyan
 
@@ -1868,7 +2049,7 @@ $btnRun.Add_Click({
             }
 
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
-            $BundleMode  = if ($Choice -eq '1') { 'full' } elseif ($Choice -eq '2') { 'blueprint' } else { 'manual' }
+            $BundleMode  = $currentExtractionMode
 
             $AgentResult = Invoke-OrchestratorAgent `
                 -AgentScriptPath $AgentScript `
@@ -1878,8 +2059,7 @@ $btnRun.Add_Click({
                 -BundleModeValue $BundleMode `
                 -PrimaryProviderValue $AIProvider `
                 -OutputRouteModeValue $currentAIFlowMode `
-                -CustomSystemPromptFilePath $CustomSystemPromptFilePath `
-                -ExtractionModeValue $BundleMode
+                -CustomSystemPromptFilePath $CustomSystemPromptFilePath
 
             $FinalPromptPath = $null
             if ($AgentResult -and $AgentResult.OutputPath -and (Test-Path $AgentResult.OutputPath)) {
@@ -1912,6 +2092,8 @@ $btnRun.Add_Click({
             }
 
             Write-UILog -Message "$(if ($currentAIFlowMode -eq 'executor') { 'Agora é só colar no seu executor.' } else { 'Agora é só colar no seu orquestrador.' })" -Color $ThemeCyan
+        } elseif ($SendToAI) {
+            Write-UILog -Message "Execução concluída sem chamada da IA." -Color $ThemeSuccess
         } else {
             Write-UILog -Message "Execução concluída sem chamada da IA." -Color $ThemeSuccess
         }
@@ -1923,6 +2105,9 @@ $btnRun.Add_Click({
     } finally {
         if ($CustomSystemPromptFilePath -and (Test-Path $CustomSystemPromptFilePath)) {
             Remove-Item $CustomSystemPromptFilePath -Force -ErrorAction SilentlyContinue
+        }
+        if ($TempBundlePath -and (Test-Path $TempBundlePath)) {
+            Remove-Item $TempBundlePath -Force -ErrorAction SilentlyContinue
         }
         Set-UiBusy -Busy $false
     }

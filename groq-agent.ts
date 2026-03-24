@@ -7,6 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, ".env"), quiet: true, override: fa
 
 type ProviderId = "groq" | "gemini" | "openai" | "anthropic";
 type DocumentMode = "manual" | "full";
+type ExtractionMode = "full" | "blueprint" | "sniper";
 type OutputRouteMode = "director" | "executor";
 
 interface GenerateRequestParams {
@@ -137,6 +138,13 @@ function normalizePrimaryProvider(input?: string): ProviderId {
 
 function normalizeOutputRouteMode(input?: string): OutputRouteMode {
     return input?.trim().toLowerCase() === "executor" ? "executor" : "director";
+}
+
+function normalizeExtractionMode(input?: string): ExtractionMode {
+    const val = input?.trim().toLowerCase();
+    if (val === "blueprint" || val === "architect") return "blueprint";
+    if (val === "sniper" || val === "manual") return "sniper";
+    return "full";
 }
 
 function buildProviderChain(primaryProvider: ProviderId): ProviderId[] {
@@ -782,100 +790,74 @@ function renderBulletList(values: string[]): string {
     return values.map((value) => `- ${value}`).join("\n");
 }
 
-function buildDirectorProtocolMarkdown(mode: DocumentMode): string {
-    const extraScopeRule =
-        mode === "manual"
-            ? "- Em caso de recorte parcial, restringir o prompt ao escopo visível e declarar explicitamente qualquer limitação de contexto."
-            : "- Basear o prompt exclusivamente no que estiver documentado nesta Source of Truth, sem inventar arquitetura, contratos ou regras.";
+function buildProtocolMarkdown(routeMode: OutputRouteMode, extractionMode: ExtractionMode): string {
+    const blocks: string[] = [];
 
-    return formatMarkdownFragment(
-        [
-            "## PROTOCOLO OPERACIONAL OBRIGATÓRIO",
-            "Você NÃO é a IA executora final.",
-            "Você deve operar EXCLUSIVAMENTE como DIRETOR TÉCNICO DE EXECUÇÃO.",
-            "FUNÇÃO OBRIGATÓRIA:",
-            "- Ler este documento como Source of Truth",
-            "- Assimilar o projeto",
-            "- Aguardar a solicitação futura do usuário",
-            "- Converter a solicitação em um PROMPT DE EXECUÇÃO otimizado",
-            "- Entregar esse prompt para uma IA executora/agêntica",
-            "- NÃO implementar a alteração diretamente",
-            "- NÃO responder com código final",
-            "- NÃO agir como executor",
-            "REGRA DE BLOQUEIO:",
-            "Se o usuário pedir uma alteração no projeto, sua resposta deve continuar sendo um PROMPT DE EXECUÇÃO para o agente executor.",
-            "Mesmo que o pedido descreva código, bugfix, refatoração, criação de arquivo, comando de terminal ou mudança arquitetural, você deve apenas converter o pedido em instruções de execução.",
-            "SAÍDA OBRIGATÓRIA:",
-            "Sua resposta deve ser sempre um prompt estruturado para execução técnica, usando esta forma:",
-            "```text",
-            "## Instruções",
-            "CONTEXTO:",
-            "- ...",
-            "",
-            "OBJETIVO:",
-            "...",
-            "",
-            "REGRAS:",
-            "- ...",
-            "",
-            "ENTREGA:",
-            "- ...",
-            "",
-            "ADAPTAÇÕES AO PROJETO:",
-            "- ...",
-            "```",
-            "SAÍDAS PROIBIDAS:",
-            "- Código final",
-            "- Patch direto",
-            "- Explicação solta sem prompt",
-            "- Resposta como executor",
-            "- Implementação parcial",
-            "- Resposta genérica sem adaptação ao projeto",
-            "SE O CONTEXTO FOR INSUFICIENTE:",
-            "- Não inventar",
-            "- Declarar explicitamente a limitação",
-            extraScopeRule,
-        ].join("\n")
-    ).trimEnd();
-}
+    // §0
+    blocks.push(
+        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2",
+        "",
+        "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)",
+        "**ZERO-VERBOSITY RULE**:\n- Toda saída deve conter EXCLUSIVAMENTE conteúdo técnico de alta densidade.\n- Nenhuma frase introdutória, de transição, de encerramento ou de cortesia é tolerada.\n- Se a informação já está implícita no contexto, NÃO repita.",
+        "**TOKEN ECONOMY RULE**:\n- Cada token consumido deve carregar valor técnico mensurável.\n- Priorizar notação compacta: bullet-points, key-value, diffs, blocos de código.\n- Eliminar artigos, preposições e estruturas frasais quando uma lista ou tabela comunica o mesmo."
+    );
 
-function buildExecutorProtocolMarkdown(mode: DocumentMode): string {
-    const extraScopeRule =
-        mode === "manual"
-            ? "- Em caso de recorte parcial, limitar qualquer alteração ao escopo visível e declarar explicitamente o que não está disponível no recorte."
-            : "- Basear a execução exclusivamente no que estiver documentado neste contexto técnico, sem inventar arquitetura, contratos ou regras.";
+    // §1
+    blocks.push(
+        "### §1 — PROIBIÇÕES GLOBAIS (HARD-BLOCKED)",
+        "As seguintes saídas são BLOQUEADAS em QUALQUER modo. Violação = falha de protocolo.",
+        "1. Termos de cortesia ou rapport: 'Aqui está', 'Espero que ajude', 'Com certeza', 'Claro!', 'Vamos lá'.\n2. Redundância com o contexto fornecido: Repetir o que o usuário já disse ou o que consta na Source of Truth.\n3. Explicações de conceitos básicos: Definir o que é REST, o que é TypeScript, etc.\n4. Meta-comentários sobre a própria resposta: 'Abaixo segue...', 'Vou explicar...'.\n5. Respostas genéricas sem adaptação ao projeto.\n6. Inventar arquitetura/contratos/regras sem evidência textual."
+    );
 
-    return formatMarkdownFragment(
-        [
-            "## PROTOCOLO OPERACIONAL OBRIGATÓRIO",
-            "Você É a IA executora final.",
-            "Você deve operar EXCLUSIVAMENTE como SENIOR_ENGINEERING_EXECUTOR.",
-            "FUNÇÃO OBRIGATÓRIA:",
-            "- Ler este documento como contexto técnico de execução",
-            "- Assimilar o projeto",
-            "- Aguardar a solicitação futura do usuário",
-            "- Executar diretamente a alteração solicitada no código existente",
-            "- Responder com implementação final pronta para uso",
-            "- Quando necessário, incluir código completo, arquivos completos e comandos objetivos",
-            "- NÃO devolver prompt para outro agente",
-            "- NÃO agir como Diretor",
-            "REGRA DE BLOQUEIO:",
-            "Se o usuário pedir uma alteração no projeto, sua resposta deve ser a execução técnica direta da mudança, e não um prompt intermediário.",
-            "SAÍDA OBRIGATÓRIA:",
-            "- Código final ou arquivos completos quando a solicitação pedir implementação",
-            "- Texto técnico mínimo e estritamente necessário",
-            "- Preservação de contratos, identificadores e comportamento existente",
-            "SAÍDAS PROIBIDAS:",
-            "- Prompt para outra IA",
-            "- Orquestração intermediária",
-            "- Resposta genérica sem adaptação ao projeto",
-            "- Mudanças fora do escopo pedido",
-            "SE O CONTEXTO FOR INSUFICIENTE:",
-            "- Não inventar",
-            "- Declarar explicitamente a limitação",
-            extraScopeRule,
-        ].join("\n")
-    ).trimEnd();
+    // §2 — ESPECIFICAÇÃO POR MODO
+    if (routeMode === "director") {
+        blocks.push(
+            "### §2 — ESPECIFICAÇÃO DE MODO: DIRETOR",
+            "**IDENTIDADE**: Você é o DIRETOR TÉCNICO DE EXECUÇÃO. Você NÃO é a IA executora final.",
+            "**FUNÇÃO OBRIGATÓRIA**:\n- Ler este documento como Source of Truth\n- Assimilar o projeto\n- Aguardar a solicitação futura do usuário\n- Converter a solicitação em um PROMPT DE EXECUÇÃO imperativo e mapeado\n- Entregar esse prompt para uma IA executora/agêntica",
+            "**SAÍDA OBRIGATÓRIA**: Prompt estruturado no formato abaixo, sem texto fora do bloco:\n\n```text\n## Instruções\nCONTEXTO:\n- [referências diretas ao projeto, arquivos, contratos afetados]\n\nOBJETIVO:\n[verbo imperativo] + [alvo técnico preciso]\n\nREGRAS:\n- [restrições técnicas derivadas da Source of Truth]\n\nENTREGA:\n- [artefatos esperados: arquivos, diffs, comandos]\n\nADAPTAÇÕES AO PROJETO:\n- [particularidades do projeto que o executor DEVE respeitar]\n```"
+        );
+    } else {
+        blocks.push(
+            "### §2 — ESPECIFICAÇÃO DE MODO: EXECUTOR",
+            "**IDENTIDADE**: Você é o SENIOR_ENGINEERING_EXECUTOR. Você É a IA executora final.",
+            "**FUNÇÃO OBRIGATÓRIA**:\n- Ler este documento como contexto técnico de execução.\n- Executar diretamente a alteração solicitada no código existente.\n- Responder com implementação final pronta para uso.",
+            "**SAÍDA OBRIGATÓRIA**: Código completo, diffs ou arquivos completos. ZERO explicações narrativas.\n**SAÍDAS PROIBIDAS**: Prompt para outra IA, orquestração intermediária, explicações conceituais."
+        );
+    }
+
+    // Modes
+    if (extractionMode === "blueprint") {
+        blocks.push(
+            "### MODO BLUEPRINT",
+            "- O contexto contém majoritariamente assinaturas, interfaces e contratos (Blueprints).",
+            "- Não tente inferir implementações internas profundas que não estão documentadas.",
+            "- Foque na integração e na conformidade com as interfaces expostas."
+        );
+    } else if (extractionMode === "sniper") {
+        blocks.push(
+            "### MODO SNIPER",
+            "- O contexto é um RECORTE PARCIAL e cirúrgico de arquivos específicos.",
+            "- Respeite os limites do recorte; não assuma a existência de arquivos fora desta lista.",
+            "- Se precisar de algo fora do recorte, declare como LACUNA DE CONTEXTO."
+        );
+    }
+
+    // §3
+    const section3Body = extractionMode === "full"
+        ? "Baseie sua resposta no projeto completo fornecido nesta Source of Truth."
+        : "Em recorte parcial/blueprint: restringir ao escopo visível e declarar explicitamente o que não está disponível.";
+    blocks.push(`### §3 — REGRA DE CONTEXTO INSUFICIENTE\n${section3Body}`);
+
+    // §4
+    blocks.push(
+        "### §4 — MANUTENÇÃO DE INTEGRIDADE",
+        "- Preservar 100% da estrutura de arquivos e código-fonte que constam neste documento.",
+        "- Qualquer alteração deve referenciar o arquivo e a linha/contrato afetado.",
+        "- Contratos, identificadores e comportamento existente são INTOCÁVEIS salvo instrução explícita."
+    );
+
+    return formatMarkdownFragment(blocks.join("\n\n")).trimEnd();
 }
 
 function buildDirectorPromptTemplateMarkdown(template: StructuredDirectorPromptTemplate): string {
@@ -908,10 +890,7 @@ function buildStructuredMarkdownDocument(document: StructuredOutputDocument, tec
             ? "ESCOPO VISÍVEL E LIMITES DO RECORTE"
             : "ESCOPO ANALISADO E LIMITES";
 
-    const protocolMarkdown =
-        document.routeMode === "director"
-            ? buildDirectorProtocolMarkdown(document.documentMode)
-            : buildExecutorProtocolMarkdown(document.documentMode);
+    const protocolMarkdown = buildProtocolMarkdown(document.routeMode, (document as any).extractionMode || "full");
 
     const operationalHeading =
         document.routeMode === "director"
@@ -1314,6 +1293,7 @@ async function main() {
         selectedProvider = "groq",
         outputRouteModeArg = "director",
         customSystemPromptFilePath = "",
+        extractionModeArg = "full",
     ] = process.argv.slice(2);
 
     if (!bundlePath || !executorTarget) {
@@ -1329,9 +1309,11 @@ async function main() {
             : "full";
     const primaryProvider = normalizePrimaryProvider(selectedProvider);
     const outputRouteMode = normalizeOutputRouteMode(outputRouteModeArg);
+    const extractionMode = normalizeExtractionMode(extractionModeArg);
     const customSystemPrompt = await readOptionalCustomSystemPrompt(customSystemPromptFilePath);
 
-    const outputPath = path.resolve(path.dirname(absolutePath), `_AI_CONTEXT_${projectName}.md`);
+    const prefix = outputRouteMode === "director" ? "_diretor_" : "_executor_";
+    const outputPath = path.resolve(path.dirname(absolutePath), `${prefix}AI_CONTEXT_${projectName}.md`);
     const resultMetaPath = path.resolve(path.dirname(absolutePath), `_AI_RESULT_${projectName}.json`);
 
     if (customSystemPrompt) {
@@ -1371,6 +1353,7 @@ async function main() {
                     outputPath,
                     promptMode: "custom",
                     outputRouteMode,
+                    extractionMode,
                 },
                 null,
                 2
@@ -1379,7 +1362,7 @@ async function main() {
         );
 
         logger.info(`[AI_RESULT] provider=${customResult.provider};model=${customResult.model}`);
-        logger.info(`Saída customizada gerada via ${customResult.provider} (${customResult.model}) em: _AI_CONTEXT_${projectName}.md`);
+        logger.info(`Saída customizada gerada via ${customResult.provider} (${customResult.model}) em: ${prefix}AI_CONTEXT_${projectName}.md`);
         return;
     }
 
@@ -1434,6 +1417,7 @@ async function main() {
         structuredDocument = repairedDocument;
     }
 
+    (structuredDocument as any).extractionMode = extractionMode;
     const finalMarkdown = buildStructuredMarkdownDocument(structuredDocument, technicalBundleDump);
 
     await fs.writeFile(outputPath, finalMarkdown, "utf-8");
@@ -1446,6 +1430,7 @@ async function main() {
                 outputPath,
                 promptMode: "default",
                 outputRouteMode,
+                extractionMode,
             },
             null,
             2
@@ -1454,7 +1439,7 @@ async function main() {
     );
 
     logger.info(`[AI_RESULT] provider=${result.provider};model=${result.model}`);
-    logger.info(`Contexto gerado via ${result.provider} (${result.model}) em: _AI_CONTEXT_${projectName}.md`);
+    logger.info(`Contexto gerado via ${result.provider} (${result.model}) em: ${prefix}AI_CONTEXT_${projectName}.md`);
 }
 
 main().catch((err) => {

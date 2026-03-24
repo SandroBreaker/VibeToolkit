@@ -1,170 +1,360 @@
-import * as dotenv from "dotenv";
-import { promises as fs } from "fs";
-import * as path from "path";
+import "dotenv/config";
+import fs from "fs/promises";
+import path from "path";
+import process from "process";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
-dotenv.config({ path: path.resolve(__dirname, ".env"), quiet: true, override: false });
-
-type ProviderId = "groq" | "gemini" | "openai" | "anthropic";
-type DocumentMode = "manual" | "full";
 type OutputRouteMode = "director" | "executor";
 type ExtractionMode = "full" | "blueprint" | "sniper";
+type DocumentMode = "full" | "manual";
+type ProviderName = "groq" | "gemini" | "openai" | "anthropic";
+type PromptMode = "default" | "template" | "expertOverride";
 
-interface GenerateRequestParams {
-    model: string;
-    systemContent: string;
-    userPrompt: string;
-    temperature?: number;
-    maxTokens?: number;
+type PromptDepth = "normal" | "deep" | "max";
+type PromptTone = "technical" | "surgical" | "assertive";
+
+interface PromptCustomizationConfig {
+    promptMode: PromptMode;
+    templateId: string | null;
+    objective: string | null;
+    deliveryType: string | null;
+    focusTags: string[];
+    constraints: string[];
+    depth: PromptDepth;
+    tone: PromptTone;
+    additionalInstructions: string | null;
+    expertSystemPrompt: string | null;
 }
 
-interface ProviderAttemptResult {
-    provider: ProviderId;
-    model: string;
-    content: string | null;
-}
-
-interface ProviderConfig {
-    id: ProviderId;
-    displayName: string;
-    model: string;
-    apiKey: string | null;
-}
-
-interface CommonStructuredSections {
-    documentPurpose: string;
-    executiveSummary: string;
-    analyzedScope: string;
-    stackAndDependencies: string;
-    architectureAndOrganization: string;
-    contractsEntitiesAndFlows: string;
-    designRulesAndObservedPatterns: string;
-    regressionRisksAndOperationalCare: string;
-    contextGaps: string;
-    operationalInstructions: string;
-}
-
-interface StructuredDirectorPromptTemplate {
-    context: string[];
+interface PromptTemplatePreset {
+    id: string;
+    label: string;
+    allowedRouteModes: OutputRouteMode[];
+    allowedExtractionModes: ExtractionMode[];
     objective: string;
-    rules: string[];
-    delivery: string[];
-    adaptationNotes: string[];
+    deliveryType: string;
+    focusTags: string[];
+    constraints: string[];
+    systemDelta: string;
+    userDelta: string;
 }
 
-interface StructuredDirectorDocument {
+interface ExecutionMeta {
+    projectName: string;
+    sourceArtifact: string;
+    executorTarget: string;
+    routeMode: OutputRouteMode;
+    generatedAt: string;
+}
+
+interface CommonSections {
+    task: string;
+    objective: string;
+    scope: string[];
+    constraints: string[];
+    acceptanceCriteria: string[];
+}
+
+interface DirectorSections extends CommonSections {
+    technicalContext: string[];
+    technicalChecklist: string[];
+    executionPlan: string[];
+    implementationNotes: string[];
+}
+
+interface ExecutorSections extends CommonSections {
+    targetFiles: string[];
+    implementationRules: string[];
+    deliveryFormat: string[];
+    implementationNotes: string[];
+}
+
+interface DirectorStructuredOutput {
     routeMode: "director";
-    documentTitle: string;
     documentMode: DocumentMode;
-    projectName: string;
-    executorTarget: string;
-    sections: CommonStructuredSections;
-    directorPromptTemplate: StructuredDirectorPromptTemplate;
+    executionMeta: ExecutionMeta;
+    sections: DirectorSections;
 }
 
-interface StructuredExecutorDocument {
+interface ExecutorStructuredOutput {
     routeMode: "executor";
-    documentTitle: string;
     documentMode: DocumentMode;
-    projectName: string;
-    executorTarget: string;
-    sections: CommonStructuredSections;
+    executionMeta: ExecutionMeta;
+    sections: ExecutorSections;
 }
 
-type StructuredOutputDocument = StructuredDirectorDocument | StructuredExecutorDocument;
+type StructuredOutputDocument = DirectorStructuredOutput | ExecutorStructuredOutput;
 
-class ProviderRequestError extends Error {
-    public readonly provider: ProviderId;
-    public readonly status: number | null;
-    public readonly details: string;
-    public readonly retryable: boolean;
+interface ProviderRequestPayload {
+    systemPrompt: string;
+    userPrompt: string;
+    model?: string;
+}
 
-    constructor(provider: ProviderId, message: string, status: number | null = null, details = "", retryable = false) {
+interface ProviderResponse {
+    provider: ProviderName;
+    model: string;
+    content: string;
+}
+
+interface AIClient {
+    readonly name: ProviderName;
+    request(payload: ProviderRequestPayload): Promise<ProviderResponse>;
+}
+
+interface BuildAugmentedPromptBundleParams {
+    projectName: string;
+    technicalBundleDump: string;
+    executorTarget: string;
+    routeMode: OutputRouteMode;
+    mode: DocumentMode;
+    extractionMode: ExtractionMode;
+    promptConfig: PromptCustomizationConfig;
+}
+
+type ProviderErrorType = "AUTH_ERROR" | "RATE_LIMIT" | "NETWORK_ERROR" | "PARSE_ERROR" | "PROVIDER_DOWN" | "CONFIG_ERROR";
+
+class AgentRuntimeError extends Error {
+    readonly status: number;
+    readonly details?: string;
+    readonly retryable: boolean;
+    readonly errorType?: ProviderErrorType;
+
+    constructor(message: string, options?: { status?: number; details?: string; retryable?: boolean; errorType?: ProviderErrorType }) {
         super(message);
-        this.name = "ProviderRequestError";
-        this.provider = provider;
-        this.status = status;
-        this.details = details;
-        this.retryable = retryable;
+        this.name = "AgentRuntimeError";
+        this.status = options?.status ?? 500;
+        this.details = options?.details;
+        this.retryable = options?.retryable ?? false;
+        this.errorType = options?.errorType;
     }
 }
 
-const logger = {
-    info: (message: string) => console.log(`[AI] ${message}`),
-    warn: (message: string) => console.warn(`[AI] ${message}`),
-    error: (message: string, error?: unknown) => {
-        console.error(`[!] ERRO: ${message}`);
-
-        if (!error) return;
-
-        if (error instanceof ProviderRequestError) {
-            const statusText = error.status ? ` (HTTP ${error.status})` : "";
-            console.error(`    Provider: ${error.provider}${statusText}`);
-            if (error.details) {
-                console.error(`    Detalhes técnicos: ${error.details}`);
-            }
-            return;
-        }
-
-        if (error instanceof Error) {
-            console.error(`    Detalhes técnicos: ${error.message}`);
-            return;
-        }
-
-        console.error(`    Detalhes técnicos: ${String(error)}`);
+const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
+    "director.full.diagnostic": {
+        id: "director.full.diagnostic",
+        label: "Director · Diagnostic",
+        allowedRouteModes: ["director"],
+        allowedExtractionModes: ["full", "blueprint", "sniper"],
+        objective: "Produzir diagnóstico técnico com causa raiz, evidências, riscos e critérios de aceitação claros.",
+        deliveryType: "Especificação diagnóstica guiada para Diretor",
+        focusTags: ["root-cause", "logs", "contracts", "regression"],
+        constraints: [
+            "Não alterar o envelope estrutural obrigatório.",
+            "Não inferir fatos fora do bundle.",
+            "Priorizar evidência, causalidade e riscos operacionais."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: diagnóstico técnico via Diretor.",
+            "Aprofunde causalidade, evidências observáveis, riscos de regressão e critérios de aceitação.",
+            "Mantenha intacto o schema JSON, routeMode, extractionMode, parse e repair do pipeline."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: diagnóstico técnico.",
+            "Priorizar causa raiz, sintomas, impactos, riscos e validações objetivas."
+        ].join("\n")
     },
+    "director.full.feature-planning": {
+        id: "director.full.feature-planning",
+        label: "Director · Feature Planning",
+        allowedRouteModes: ["director"],
+        allowedExtractionModes: ["full", "blueprint"],
+        objective: "Planejar implementação de feature com escopo, dependências, riscos e estratégia de entrega.",
+        deliveryType: "Planejamento operacional para Diretor",
+        focusTags: ["feature-scope", "dependencies", "contracts", "delivery-plan"],
+        constraints: [
+            "Não implementar código diretamente.",
+            "Preservar contratos existentes.",
+            "Não criar fluxo executor no lugar do Diretor."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: feature planning via Diretor.",
+            "Priorize escopo, dependências, contratos tocados, riscos e decomposição executável.",
+            "Mantenha intacto o envelope estrutural obrigatório."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: planejamento de feature.",
+            "Destacar etapas, dependências, riscos e estratégia incremental."
+        ].join("\n")
+    },
+    "director.full.architecture-review": {
+        id: "director.full.architecture-review",
+        label: "Director · Architecture Review",
+        allowedRouteModes: ["director"],
+        allowedExtractionModes: ["full", "blueprint"],
+        objective: "Avaliar arquitetura visível, contratos, acoplamentos e pontos críticos do projeto.",
+        deliveryType: "Review arquitetural para Diretor",
+        focusTags: ["architecture", "boundaries", "contracts", "coupling"],
+        constraints: [
+            "Não inventar módulos não visíveis.",
+            "Preservar routeMode e extractionMode ativos.",
+            "Não desligar validação estrutural."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: architecture review via Diretor.",
+            "Aprofunde limites, contratos, organização, acoplamentos e riscos sistêmicos.",
+            "Mantenha JSON, schema, parse e repair intactos."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: revisão arquitetural.",
+            "Priorizar topologia, fronteiras, contratos e impacto sistêmico."
+        ].join("\n")
+    },
+    "director.full.hardening": {
+        id: "director.full.hardening",
+        label: "Director · Hardening",
+        allowedRouteModes: ["director"],
+        allowedExtractionModes: ["full", "blueprint", "sniper"],
+        objective: "Preparar hardening técnico com foco em segurança, robustez e resiliência operacional.",
+        deliveryType: "Plano de hardening para Diretor",
+        focusTags: ["hardening", "security", "resilience", "regression"],
+        constraints: [
+            "Não inferir superfícies não documentadas.",
+            "Não trocar o papel do Diretor.",
+            "Não alterar o schema obrigatório."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: hardening via Diretor.",
+            "Priorize robustez, segurança, fail-safe, riscos e cuidados operacionais.",
+            "Mantenha o pipeline estruturado integralmente ativo."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: hardening.",
+            "Mapear riscos, fragilidades, guardrails e critérios de endurecimento."
+        ].join("\n")
+    },
+    "executor.full.surgical-patch": {
+        id: "executor.full.surgical-patch",
+        label: "Executor · Surgical Patch",
+        allowedRouteModes: ["executor"],
+        allowedExtractionModes: ["full"],
+        objective: "Preparar execução cirúrgica com mínimo impacto colateral e preservação rígida de contratos.",
+        deliveryType: "Contexto técnico para patch cirúrgico",
+        focusTags: ["minimal-scope", "contracts", "safety", "bugfix"],
+        constraints: [
+            "Alterar somente o escopo pedido.",
+            "Preservar nomes, contratos e comportamento existente.",
+            "Não criar papel de Diretor."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: patch cirúrgico via Executor.",
+            "Minimize diff, preserve contratos e trate falhas explicitamente.",
+            "Entregue instruções objetivas e implementáveis."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: patch cirúrgico.",
+            "Priorize alteração mínima, arquivos tocados e critérios claros de validação."
+        ].join("\n")
+    },
+    "executor.full.feature-implementation": {
+        id: "executor.full.feature-implementation",
+        label: "Executor · Feature Implementation",
+        allowedRouteModes: ["executor"],
+        allowedExtractionModes: ["full"],
+        objective: "Preparar implementação completa de feature com integração consistente ao projeto visível.",
+        deliveryType: "Contexto técnico para implementação de feature",
+        focusTags: ["feature", "integration", "contracts", "delivery"],
+        constraints: [
+            "Respeitar stack e padrões existentes.",
+            "Não extrapolar o bundle visível.",
+            "Não gerar papel de Diretor."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: feature implementation via Executor.",
+            "Planeje arquivos tocados, contratos, dependências e passos de entrega prontos para codificação.",
+            "Preserve compatibilidade com o projeto existente."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: implementação de feature.",
+            "Destacar arquivos alvo, integrações, contratos e riscos de regressão."
+        ].join("\n")
+    },
+    "executor.full.safe-refactor": {
+        id: "executor.full.safe-refactor",
+        label: "Executor · Safe Refactor",
+        allowedRouteModes: ["executor"],
+        allowedExtractionModes: ["full"],
+        objective: "Preparar refatoração segura com preservação comportamental, redução de dívida e mínimo risco.",
+        deliveryType: "Contexto técnico para refatoração segura",
+        focusTags: ["refactor", "behavior-preservation", "clarity", "safety"],
+        constraints: [
+            "Preservar comportamento observável.",
+            "Não quebrar contratos públicos.",
+            "Não atuar como Diretor."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: safe refactor via Executor.",
+            "Priorize preservação comportamental, diffs controlados e risco baixo.",
+            "Mapeie claramente arquivos e contratos tocados."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: refatoração segura.",
+            "Destacar invariantes, contratos preservados e plano de alteração controlado."
+        ].join("\n")
+    },
+    "executor.full.regression-fix": {
+        id: "executor.full.regression-fix",
+        label: "Executor · Regression Fix",
+        allowedRouteModes: ["executor"],
+        allowedExtractionModes: ["full"],
+        objective: "Preparar correção de regressão com foco em restauração de comportamento, causa provável e blindagem futura.",
+        deliveryType: "Contexto técnico para correção de regressão",
+        focusTags: ["regression", "bugfix", "root-cause", "safety"],
+        constraints: [
+            "Corrigir sem ampliar escopo desnecessariamente.",
+            "Preservar contratos existentes.",
+            "Não introduzir papel de Diretor."
+        ],
+        systemDelta: [
+            "Especialização operacional ativa: regression fix via Executor.",
+            "Aponte causa provável, superfície tocada, risco de recaída e validação objetiva.",
+            "Entregue instruções prontas para execução técnica."
+        ].join("\n"),
+        userDelta: [
+            "Template operacional: correção de regressão.",
+            "Priorize causa provável, arquivos tocados, proteção contra recaída e validação."
+        ].join("\n")
+    }
 };
 
-function getEnvValue(...keys: string[]): string | null {
-    for (const key of keys) {
-        const value = process.env[key]?.trim();
-        if (value) return value;
+function normalizeProviderName(value: string | undefined | null): ProviderName {
+    switch ((value ?? "").trim().toLowerCase()) {
+        case "groq":
+            return "groq";
+        case "gemini":
+            return "gemini";
+        case "openai":
+            return "openai";
+        case "anthropic":
+            return "anthropic";
+        default:
+            return "groq";
     }
-    return null;
 }
 
-function shouldFallback(status: number | null): boolean {
-    if (status === null) return true;
-    return [400, 401, 402, 403, 404, 408, 409, 422, 429, 500, 502, 503, 504].includes(status);
+function normalizeOutputRouteMode(value: string | undefined | null): OutputRouteMode {
+    const normalized = (value ?? "").trim().toLowerCase();
+    return normalized === "executor" ? "executor" : "director";
 }
 
-function normalizePrimaryProvider(input?: string): ProviderId {
-    const value = (input || "groq").trim().toLowerCase();
-    if (value === "groq" || value === "gemini" || value === "openai" || value === "anthropic") {
-        return value;
-    }
-    return "groq";
-}
-
-function normalizeOutputRouteMode(input?: string): OutputRouteMode {
-    return input?.trim().toLowerCase() === "executor" ? "executor" : "director";
-}
-
-function normalizeExtractionMode(input?: string, bundleFileName = ""): ExtractionMode {
-    const value = (input || "").trim().toLowerCase();
-
-    if (value === "blueprint" || value === "architect" || value === "inteligente") {
+function normalizeExtractionMode(value: string | undefined | null, fileName: string): ExtractionMode {
+    const normalized = (value ?? "").trim().toLowerCase();
+    if (normalized === "blueprint" || normalized === "architect" || normalized === "inteligente") {
         return "blueprint";
     }
-
-    if (value === "sniper" || value === "manual") {
+    if (normalized === "sniper" || normalized === "selective" || normalized === "manual") {
         return "sniper";
     }
-
-    if (value === "full") {
+    if (normalized === "full" || normalized === "copiar tudo" || normalized === "bundler") {
         return "full";
     }
 
-    const normalizedFileName = bundleFileName.trim().toLowerCase();
-
-    if (normalizedFileName.startsWith("_manual__")) {
-        return "sniper";
-    }
-
+    const normalizedFileName = fileName.toLowerCase();
     if (normalizedFileName.startsWith("_inteligente__") || normalizedFileName.startsWith("_blueprint__") || normalizedFileName.startsWith("_architect__")) {
         return "blueprint";
     }
-
+    if (normalizedFileName.startsWith("_manual__") || normalizedFileName.startsWith("_selective__") || normalizedFileName.startsWith("_sniper__")) {
+        return "sniper";
+    }
     return "full";
 }
 
@@ -172,513 +362,391 @@ function resolveDocumentModeFromExtractionMode(extractionMode: ExtractionMode): 
     return extractionMode === "sniper" ? "manual" : "full";
 }
 
-function buildProviderChain(primaryProvider: ProviderId): ProviderId[] {
-    const defaultOrder: ProviderId[] = ["groq", "gemini", "openai", "anthropic"];
-    return [primaryProvider, ...defaultOrder.filter((provider) => provider !== primaryProvider)];
-}
+function parseCliArgs(argv: string[]): Record<string, string> {
+    const args: Record<string, string> = {};
+    for (let i = 0; i < argv.length; i += 1) {
+        const token = argv[i];
+        if (!token.startsWith("--")) {
+            continue;
+        }
 
-function getProviderConfig(provider: ProviderId): ProviderConfig {
-    switch (provider) {
-        case "groq":
-            return {
-                id: "groq",
-                displayName: "Groq",
-                model: getEnvValue("GROQ_MODEL", "VITE_GROQ_MODEL") || "llama-3.3-70b-versatile",
-                apiKey: getEnvValue("GROQ_API_KEY", "VITE_GROQ_API_KEY"),
-            };
-        case "gemini":
-            return {
-                id: "gemini",
-                displayName: "Gemini",
-                model: getEnvValue("GEMINI_MODEL", "GOOGLE_MODEL", "VITE_GEMINI_MODEL") || "gemini-1.5-pro",
-                apiKey: getEnvValue("GEMINI_API_KEY", "GOOGLE_API_KEY", "VITE_GEMINI_API_KEY"),
-            };
-        case "openai":
-            return {
-                id: "openai",
-                displayName: "OpenAI",
-                model: getEnvValue("OPENAI_MODEL", "VITE_OPENAI_MODEL") || "gpt-4o",
-                apiKey: getEnvValue("OPENAI_API_KEY", "VITE_OPENAI_API_KEY"),
-            };
-        case "anthropic":
-            return {
-                id: "anthropic",
-                displayName: "Anthropic",
-                model: getEnvValue("ANTHROPIC_MODEL", "VITE_ANTHROPIC_MODEL") || "claude-3-5-sonnet-20240620",
-                apiKey: getEnvValue("ANTHROPIC_API_KEY", "VITE_ANTHROPIC_API_KEY"),
-            };
+        const key = token.slice(2);
+        const next = argv[i + 1];
+        if (!next || next.startsWith("--")) {
+            args[key] = "true";
+            continue;
+        }
+
+        args[key] = next;
+        i += 1;
     }
+
+    return args;
 }
 
-async function parseErrorResponse(response: Response): Promise<string> {
-    const contentType = response.headers.get("content-type") || "";
-
+async function fileExists(filePath: string): Promise<boolean> {
     try {
-        if (contentType.includes("application/json")) {
-            const json = await response.json();
-            if (typeof json?.error?.message === "string") return json.error.message;
-            if (typeof json?.error === "string") return json.error;
-            if (typeof json?.message === "string") return json.message;
-            return JSON.stringify(json);
-        }
-
-        return (await response.text()).trim() || response.statusText;
+        await fs.access(filePath);
+        return true;
     } catch {
-        return response.statusText || "Falha sem corpo de erro.";
+        return false;
     }
 }
 
-async function requestGroq(config: ProviderConfig, params: GenerateRequestParams): Promise<ProviderAttemptResult> {
-    if (!config.apiKey) {
-        throw new ProviderRequestError(config.id, "Chave Groq ausente.", null, "Defina GROQ_API_KEY.", true);
+async function readTextFile(filePath: string): Promise<string> {
+    return fs.readFile(filePath, "utf-8");
+}
+
+async function writeTextFile(filePath: string, content: string): Promise<void> {
+    await fs.writeFile(filePath, content, "utf-8");
+}
+
+function safeJsonParse<T>(value: string, fallback: T): T {
+    try {
+        return JSON.parse(value) as T;
+    } catch {
+        return fallback;
+    }
+}
+
+function getPromptTemplatePreset(templateId: string | null | undefined): PromptTemplatePreset | null {
+    if (!templateId) {
+        return null;
+    }
+    return PROMPT_TEMPLATE_REGISTRY[templateId] ?? null;
+}
+
+function normalizePromptDepth(value: unknown): PromptDepth {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "deep") {
+        return "deep";
+    }
+    if (normalized === "max" || normalized === "maximum") {
+        return "max";
+    }
+    return "normal";
+}
+
+function normalizePromptTone(value: unknown): PromptTone {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "surgical") {
+        return "surgical";
+    }
+    if (normalized === "assertive") {
+        return "assertive";
+    }
+    return "technical";
+}
+
+function sanitizeStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
     }
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-            model: params.model,
-            temperature: params.temperature ?? 0.1,
-            max_tokens: params.maxTokens ?? 8192,
-            messages: [
-                { role: "system", content: params.systemContent },
-                { role: "user", content: params.userPrompt },
-            ],
-        }),
-    });
+    return value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((item) => item.length > 0);
+}
 
-    if (!response.ok) {
-        throw new ProviderRequestError(
-            config.id,
-            "Erro Groq",
-            response.status,
-            await parseErrorResponse(response),
-            shouldFallback(response.status)
-        );
+function normalizePromptMode(value: unknown): PromptMode {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "template") {
+        return "template";
     }
+    if (normalized === "expertoverride" || normalized === "expert_override" || normalized === "expert-override") {
+        return "expertOverride";
+    }
+    return "default";
+}
 
-    const json = await response.json();
+function buildDefaultPromptCustomizationConfig(
+    routeMode: OutputRouteMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): PromptCustomizationConfig {
+    const objective =
+        routeMode === "director"
+            ? "Gerar documento técnico estruturado de alto sinal para orientar o Executor."
+            : "Gerar contexto técnico estruturado pronto para implementação direta.";
+
+    const deliveryType =
+        routeMode === "director"
+            ? "Especificação operacional estruturada para Diretor"
+            : `Especificação operacional estruturada para Executor (${executorTarget})`;
+
+    const baseConstraints =
+        routeMode === "director"
+            ? [
+                  "Não implementar código diretamente.",
+                  "Não sair do bundle visível.",
+                  "Preservar routeMode e extractionMode."
+              ]
+            : [
+                  "Preservar contratos, nomes e comportamento existente.",
+                  "Não extrapolar o bundle visível.",
+                  "Não assumir papel de Diretor."
+              ];
+
+    const baseTags =
+        routeMode === "director"
+            ? ["director", extractionMode, "structured-output"]
+            : ["executor", extractionMode, executorTarget.toLowerCase(), "structured-output"];
+
     return {
-        provider: config.id,
-        model: params.model,
-        content: json?.choices?.[0]?.message?.content ?? null,
+        promptMode: "default",
+        templateId: null,
+        objective,
+        deliveryType,
+        focusTags: baseTags,
+        constraints: baseConstraints,
+        depth: "normal",
+        tone: "technical",
+        additionalInstructions: null,
+        expertSystemPrompt: null
     };
 }
 
-async function requestGemini(config: ProviderConfig, params: GenerateRequestParams): Promise<ProviderAttemptResult> {
-    if (!config.apiKey) {
-        throw new ProviderRequestError(config.id, "Chave Gemini ausente.", null, "Defina GEMINI_API_KEY.", true);
+function sanitizePromptCustomizationConfig(
+    raw: unknown,
+    routeMode: OutputRouteMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): PromptCustomizationConfig {
+    const fallback = buildDefaultPromptCustomizationConfig(routeMode, extractionMode, executorTarget);
+
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return fallback;
     }
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(params.model)}:generateContent`;
-    const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": config.apiKey,
-        },
-        body: JSON.stringify({
-            system_instruction: { parts: [{ text: params.systemContent }] },
-            contents: [{ role: "user", parts: [{ text: params.userPrompt }] }],
-            generationConfig: {
-                temperature: params.temperature ?? 0.1,
-                maxOutputTokens: params.maxTokens ?? 8192,
-            },
-        }),
-    });
+    const candidate = raw as Record<string, unknown>;
+    const promptMode = normalizePromptMode(candidate.promptMode);
+    const templateId = typeof candidate.templateId === "string" && candidate.templateId.trim().length > 0 ? candidate.templateId.trim() : null;
+    const objective = typeof candidate.objective === "string" && candidate.objective.trim().length > 0 ? candidate.objective.trim() : null;
+    const deliveryType =
+        typeof candidate.deliveryType === "string" && candidate.deliveryType.trim().length > 0
+            ? candidate.deliveryType.trim()
+            : null;
+    const focusTags = sanitizeStringList(candidate.focusTags);
+    const constraints = sanitizeStringList(candidate.constraints);
+    const depth = normalizePromptDepth(candidate.depth);
+    const tone = normalizePromptTone(candidate.tone);
+    const additionalInstructions =
+        typeof candidate.additionalInstructions === "string" && candidate.additionalInstructions.trim().length > 0
+            ? candidate.additionalInstructions.trim()
+            : null;
+    const expertSystemPrompt =
+        typeof candidate.expertSystemPrompt === "string" && candidate.expertSystemPrompt.trim().length > 0
+            ? candidate.expertSystemPrompt.trim()
+            : null;
 
-    if (!response.ok) {
-        throw new ProviderRequestError(
-            config.id,
-            "Erro Gemini",
-            response.status,
-            await parseErrorResponse(response),
-            shouldFallback(response.status)
-        );
-    }
-
-    const json = await response.json();
-    const content =
-        json?.candidates?.[0]?.content?.parts
-            ?.map((part: { text?: string }) => part.text ?? "")
-            .join("") || null;
-
-    return {
-        provider: config.id,
-        model: params.model,
-        content,
+    const config: PromptCustomizationConfig = {
+        promptMode,
+        templateId,
+        objective: objective ?? fallback.objective,
+        deliveryType: deliveryType ?? fallback.deliveryType,
+        focusTags: focusTags.length > 0 ? focusTags : fallback.focusTags,
+        constraints: constraints.length > 0 ? constraints : fallback.constraints,
+        depth,
+        tone,
+        additionalInstructions,
+        expertSystemPrompt
     };
-}
 
-async function requestOpenAI(config: ProviderConfig, params: GenerateRequestParams): Promise<ProviderAttemptResult> {
-    if (!config.apiKey) {
-        throw new ProviderRequestError(config.id, "Chave OpenAI ausente.", null, "Defina OPENAI_API_KEY.", true);
-    }
+    if (config.promptMode === "template") {
+        if (!config.templateId) {
+            throw new Error("promptMode=template exige templateId.");
+        }
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-            model: params.model,
-            temperature: params.temperature ?? 0.1,
-            messages: [
-                { role: "system", content: params.systemContent },
-                { role: "user", content: params.userPrompt },
-            ],
-        }),
-    });
+        const preset = getPromptTemplatePreset(config.templateId);
+        if (!preset) {
+            throw new Error(`Template não encontrado: ${config.templateId}`);
+        }
 
-    if (!response.ok) {
-        throw new ProviderRequestError(
-            config.id,
-            "Erro OpenAI",
-            response.status,
-            await parseErrorResponse(response),
-            shouldFallback(response.status)
-        );
-    }
+        if (!preset.allowedRouteModes.includes(routeMode)) {
+            throw new Error(`Template incompatível com routeMode=${routeMode}: ${config.templateId}`);
+        }
 
-    const json = await response.json();
-    return {
-        provider: config.id,
-        model: params.model,
-        content: json?.choices?.[0]?.message?.content ?? null,
-    };
-}
-
-async function requestAnthropic(config: ProviderConfig, params: GenerateRequestParams): Promise<ProviderAttemptResult> {
-    if (!config.apiKey) {
-        throw new ProviderRequestError(config.id, "Chave Anthropic ausente.", null, "Defina ANTHROPIC_API_KEY.", true);
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-api-key": config.apiKey,
-            "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-            model: params.model,
-            max_tokens: params.maxTokens ?? 8192,
-            system: params.systemContent,
-            messages: [{ role: "user", content: params.userPrompt }],
-        }),
-    });
-
-    if (!response.ok) {
-        throw new ProviderRequestError(
-            config.id,
-            "Erro Anthropic",
-            response.status,
-            await parseErrorResponse(response),
-            shouldFallback(response.status)
-        );
-    }
-
-    const json = await response.json();
-    const content =
-        json?.content
-            ?.filter((item: { type?: string }) => item.type === "text")
-            .map((item: { text?: string }) => item.text ?? "")
-            .join("") || null;
-
-    return {
-        provider: config.id,
-        model: params.model,
-        content,
-    };
-}
-
-async function requestWithProvider(provider: ProviderId, params: GenerateRequestParams): Promise<ProviderAttemptResult> {
-    const config = getProviderConfig(provider);
-
-    switch (provider) {
-        case "groq":
-            return requestGroq(config, params);
-        case "gemini":
-            return requestGemini(config, params);
-        case "openai":
-            return requestOpenAI(config, params);
-        case "anthropic":
-            return requestAnthropic(config, params);
-    }
-}
-
-async function generateContextDocument(
-    params: Omit<GenerateRequestParams, "model">,
-    primaryProvider: ProviderId
-): Promise<ProviderAttemptResult | null> {
-    const providerChain = buildProviderChain(primaryProvider);
-
-    logger.info(`Provider primário: ${primaryProvider} | Fallback: ${providerChain.join(" -> ")}`);
-
-    for (const provider of providerChain) {
-        try {
-            const config = getProviderConfig(provider);
-            logger.info(`Tentando ${config.displayName} (${config.model})...`);
-
-            const result = await requestWithProvider(provider, {
-                ...params,
-                model: config.model,
-            });
-
-            if (!result.content) {
-                throw new ProviderRequestError(provider, "Resposta vazia.", null, "", true);
-            }
-
-            return result;
-        } catch (error) {
-            logger.error(`Falha no provider ${provider}`, error);
-
-            if (error instanceof ProviderRequestError && !error.retryable) {
-                break;
-            }
+        if (!preset.allowedExtractionModes.includes(extractionMode)) {
+            throw new Error(`Template incompatível com extractionMode=${extractionMode}: ${config.templateId}`);
         }
     }
 
-    return null;
-}
-
-function normalizeSourceDump(content: string): string {
-    return content.replace(/\r\n/g, "\n").replace(/\u0000/g, "").trim();
-}
-
-function normalizeBlockText(value: string): string {
-    return value.replace(/\r\n/g, "\n").trim();
-}
-
-function normalizeList(values: string[]): string[] {
-    const seen = new Set<string>();
-    const normalized: string[] = [];
-
-    for (const value of values) {
-        const item = normalizeBlockText(value);
-        if (!item) continue;
-
-        const key = item.toLowerCase();
-        if (seen.has(key)) continue;
-
-        seen.add(key);
-        normalized.push(item);
+    if (config.promptMode === "expertOverride" && !config.expertSystemPrompt) {
+        throw new Error("promptMode=expertOverride exige expertSystemPrompt.");
     }
 
-    return normalized;
-}
-
-function isMarkdownHeadingLine(line: string): boolean {
-    return /^(#{1,6})\s+\S/.test(line);
-}
-
-function isMarkdownFenceLine(line: string): boolean {
-    return /^```/.test(line.trim());
-}
-
-function isMarkdownListLine(line: string): boolean {
-    return /^(\s*[-*+]\s+\S|\s*\d+\.\s+\S)/.test(line);
-}
-
-function shiftEmbeddedHeadingLevel(line: string): string {
-    const match = line.match(/^(#{3,6})(\s+.*)$/);
-    if (!match) {
-        return line;
+    if (config.promptMode === "default") {
+        config.templateId = null;
+        config.expertSystemPrompt = null;
     }
 
-    return `${"#".repeat(match[1].length - 1)}${match[2]}`;
+    return config;
 }
 
-function formatMarkdownFragment(
-    content: string,
-    options: { shiftTechnicalHeadingLevels?: boolean } = {}
+async function readOptionalPromptConfig(
+    promptConfigFilePath: string | undefined,
+    routeMode: OutputRouteMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): Promise<PromptCustomizationConfig> {
+    if (!promptConfigFilePath || promptConfigFilePath.trim().length === 0) {
+        return buildDefaultPromptCustomizationConfig(routeMode, extractionMode, executorTarget);
+    }
+
+    const absolutePath = path.resolve(promptConfigFilePath);
+    if (!(await fileExists(absolutePath))) {
+        return buildDefaultPromptCustomizationConfig(routeMode, extractionMode, executorTarget);
+    }
+
+    const raw = await readTextFile(absolutePath);
+    if (raw.trim().length === 0) {
+        return buildDefaultPromptCustomizationConfig(routeMode, extractionMode, executorTarget);
+    }
+
+    const parsed = safeJsonParse<unknown>(raw, null);
+    if (!parsed) {
+        return buildDefaultPromptCustomizationConfig(routeMode, extractionMode, executorTarget);
+    }
+
+    return sanitizePromptCustomizationConfig(parsed, routeMode, extractionMode, executorTarget);
+}
+
+function buildPromptCustomizationSystemLayer(
+    routeMode: OutputRouteMode,
+    extractionMode: ExtractionMode,
+    promptConfig: PromptCustomizationConfig
 ): string {
-    const normalized = normalizeBlockText(content);
+    const layers: string[] = [
+        "## CUSTOM PROMPT LAYER — STRICT ENFORCEMENT",
+        `ROUTE_MODE_LOCK=${routeMode}`,
+        `EXTRACTION_MODE_LOCK=${extractionMode}`,
+        `PROMPT_MODE=${promptConfig.promptMode}`,
+        `DEPTH=${promptConfig.depth}`,
+        `TONE=${promptConfig.tone}`,
+        "É proibido desligar JSON, schema obrigatório, parse estruturado, repair estruturado, routeMode ou extractionMode."
+    ];
 
-    if (!normalized) {
-        return "\n";
+    if (promptConfig.objective) {
+        layers.push(`OBJECTIVE_OVERRIDE=${promptConfig.objective}`);
     }
 
-    const sourceLines = normalized.split("\n");
-    const output: string[] = [];
-    let inFence = false;
-    let insideList = false;
-
-    const pushBlankLine = () => {
-        if (output.length > 0 && output[output.length - 1] !== "") {
-            output.push("");
-        }
-    };
-
-    for (const rawLine of sourceLines) {
-        let line = rawLine.replace(/[ \t]+$/g, "");
-
-        if (!inFence && options.shiftTechnicalHeadingLevels) {
-            line = shiftEmbeddedHeadingLevel(line);
-        }
-
-        const trimmed = line.trim();
-
-        if (trimmed === "") {
-            if (inFence) {
-                output.push("");
-            } else {
-                insideList = false;
-                pushBlankLine();
-            }
-            continue;
-        }
-
-        if (isMarkdownFenceLine(line)) {
-            if (!inFence) {
-                pushBlankLine();
-            }
-
-            output.push(line);
-            inFence = !inFence;
-            insideList = false;
-
-            if (!inFence) {
-                output.push("");
-            }
-
-            continue;
-        }
-
-        if (inFence) {
-            output.push(line);
-            continue;
-        }
-
-        if (isMarkdownHeadingLine(line)) {
-            pushBlankLine();
-            output.push(line);
-            output.push("");
-            insideList = false;
-            continue;
-        }
-
-        const isListLine = isMarkdownListLine(line);
-
-        if (isListLine && !insideList) {
-            pushBlankLine();
-        }
-
-        if (!isListLine && insideList) {
-            pushBlankLine();
-        }
-
-        output.push(line);
-        insideList = isListLine;
+    if (promptConfig.deliveryType) {
+        layers.push(`DELIVERY_TYPE_OVERRIDE=${promptConfig.deliveryType}`);
     }
 
-    while (output.length > 0 && output[output.length - 1] === "") {
-        output.pop();
+    if (promptConfig.focusTags.length > 0) {
+        layers.push(`FOCUS_TAGS=${promptConfig.focusTags.join(", ")}`);
     }
 
-    return `${output.join("\n")}\n`;
+    if (promptConfig.constraints.length > 0) {
+        layers.push("CONSTRAINT_OVERRIDES:");
+        for (const item of promptConfig.constraints) {
+            layers.push(`- ${item}`);
+        }
+    }
+
+    if (promptConfig.promptMode === "template" && promptConfig.templateId) {
+        const preset = getPromptTemplatePreset(promptConfig.templateId);
+        if (preset) {
+            layers.push(`TEMPLATE_ID=${preset.id}`);
+            layers.push(`TEMPLATE_LABEL=${preset.label}`);
+            layers.push("TEMPLATE_SYSTEM_DELTA_BEGIN");
+            layers.push(preset.systemDelta);
+            layers.push("TEMPLATE_SYSTEM_DELTA_END");
+        }
+    }
+
+    if (promptConfig.additionalInstructions) {
+        layers.push("ADDITIONAL_SYSTEM_GUIDANCE_BEGIN");
+        layers.push(promptConfig.additionalInstructions);
+        layers.push("ADDITIONAL_SYSTEM_GUIDANCE_END");
+    }
+
+    if (promptConfig.promptMode === "expertOverride" && promptConfig.expertSystemPrompt) {
+        layers.push("EXPERT_SYSTEM_OVERRIDE_BEGIN");
+        layers.push(promptConfig.expertSystemPrompt);
+        layers.push("EXPERT_SYSTEM_OVERRIDE_END");
+    }
+
+    return layers.join("\n");
 }
 
-function normalizeMarkdownHeadingHierarchy(content: string, fallbackTitle: string): string {
-    const normalized = normalizeBlockText(content);
+function buildPromptCustomizationUserLayer(promptConfig: PromptCustomizationConfig): string {
+    const lines: string[] = ["## PROMPT CUSTOMIZATION CONTEXT"];
 
-    if (!normalized) {
-        return `# ${fallbackTitle}\n`;
+    if (promptConfig.objective) {
+        lines.push(`- Objetivo focal: ${promptConfig.objective}`);
     }
 
-    const sourceLines = normalized.split("\n");
-    const output: string[] = [];
-    let inFence = false;
-    let sawFirstNonEmptyLine = false;
-    let previousHeadingLevel = 0;
+    if (promptConfig.deliveryType) {
+        lines.push(`- Entrega focal: ${promptConfig.deliveryType}`);
+    }
 
-    for (const rawLine of sourceLines) {
-        let line = rawLine.replace(/[ \t]+$/g, "");
-        const trimmed = line.trim();
+    if (promptConfig.focusTags.length > 0) {
+        lines.push(`- Tags de foco: ${promptConfig.focusTags.join(", ")}`);
+    }
 
-        if (!sawFirstNonEmptyLine && trimmed !== "") {
-            sawFirstNonEmptyLine = true;
-
-            if (!isMarkdownHeadingLine(line)) {
-                output.push(`# ${fallbackTitle}`);
-                output.push("");
-                previousHeadingLevel = 1;
-            }
+    if (promptConfig.constraints.length > 0) {
+        lines.push("- Restrições adicionais:");
+        for (const item of promptConfig.constraints) {
+            lines.push(`  - ${item}`);
         }
+    }
 
-        if (isMarkdownFenceLine(line)) {
-            output.push(line);
-            inFence = !inFence;
-            continue;
-        }
-
-        if (!inFence) {
-            const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-            if (headingMatch) {
-                const originalLevel = headingMatch[1].length;
-                const text = headingMatch[2].trim();
-
-                if (text) {
-                    const normalizedLevel =
-                        previousHeadingLevel === 0 ? 1 : Math.min(originalLevel, previousHeadingLevel + 1);
-
-                    line = `${"#".repeat(normalizedLevel)} ${text}`;
-                    previousHeadingLevel = normalizedLevel;
+    if (promptConfig.promptMode === "template" && promptConfig.templateId) {
+        const preset = getPromptTemplatePreset(promptConfig.templateId);
+        if (preset) {
+            lines.push(`- Template ativo: ${preset.label}`);
+            if (preset.userDelta.trim().length > 0) {
+                lines.push("- Especialização do template:");
+                for (const row of preset.userDelta.split("\n")) {
+                    lines.push(`  - ${row}`);
                 }
             }
         }
-
-        output.push(line);
     }
 
-    if (!sawFirstNonEmptyLine) {
-        return `# ${fallbackTitle}\n`;
-    }
-
-    return output.join("\n");
-}
-
-function normalizeCustomMarkdownOutput(content: string, projectName: string): string {
-    const withSafeHierarchy = normalizeMarkdownHeadingHierarchy(content, `Contexto Técnico - ${projectName}`);
-    return formatMarkdownFragment(withSafeHierarchy).trimEnd() + "\n";
-}
-
-function getFirstMatchIndex(content: string, patterns: RegExp[]): number | null {
-    for (const pattern of patterns) {
-        const match = pattern.exec(content);
-        if (match?.index !== undefined) {
-            return match.index;
+    if (promptConfig.additionalInstructions) {
+        lines.push("- Instruções adicionais do operador:");
+        for (const row of promptConfig.additionalInstructions.split("\n")) {
+            lines.push(`  - ${row}`);
         }
     }
 
-    return null;
+    lines.push(`- Profundidade desejada: ${promptConfig.depth}`);
+    lines.push(`- Tom desejado: ${promptConfig.tone}`);
+
+    return lines.join("\n");
 }
 
-function extractTechnicalBundleDump(rawBundleDump: string): string {
-    const normalized = normalizeSourceDump(rawBundleDump);
+function getCurrentTimestampIso(): string {
+    return new Date().toISOString();
+}
 
-    const technicalSectionIndex = getFirstMatchIndex(normalized, [
-        /^### 0\. ANALYSIS SCOPE$/m,
-        /^### 1\. TECH STACK$/m,
-        /^### 1\. PROJECT STRUCTURE$/m,
-        /^### 2\. PROJECT STRUCTURE$/m,
-        /^### 2\. SOURCE FILES$/m,
-    ]);
+function normalizeWhitespace(value: string): string {
+    return value.replace(/\r\n/g, "\n").trim();
+}
 
-    if (technicalSectionIndex !== null) {
-        return normalized.slice(technicalSectionIndex).trim();
+function escapeMarkdown(value: string): string {
+    return value.replace(/\\/g, "\\\\");
+}
+
+function ensureParagraphs(items: string[]): string[] {
+    return items.map((item) => item.trim()).filter((item) => item.length > 0);
+}
+
+function dedupePreserveOrder(values: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const value of values) {
+        const normalized = value.trim();
+        if (normalized.length === 0 || seen.has(normalized)) {
+            continue;
+        }
+        seen.add(normalized);
+        result.push(normalized);
     }
-
-    const modeHeadingIndex = getFirstMatchIndex(normalized, [/^## MODO [^\n]+$/m]);
-    if (modeHeadingIndex !== null) {
-        return normalized.slice(modeHeadingIndex).trim();
-    }
-
-    return normalized;
+    return result;
 }
 
 function extractJsonCandidate(content: string): string | null {
@@ -703,116 +771,181 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isStringArray(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every(isNonEmptyString);
+    return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-function parseCommonSections(sections: Record<string, unknown>): CommonStructuredSections {
-    const requiredKeys: Array<keyof CommonStructuredSections> = [
-        "documentPurpose",
-        "executiveSummary",
-        "analyzedScope",
-        "stackAndDependencies",
-        "architectureAndOrganization",
-        "contractsEntitiesAndFlows",
-        "designRulesAndObservedPatterns",
-        "regressionRisksAndOperationalCare",
-        "contextGaps",
-        "operationalInstructions",
-    ];
+function parseCommonSections(rawSections: Record<string, unknown>): CommonSections {
+    const task = isNonEmptyString(rawSections.task) ? rawSections.task.trim() : "";
+    const objective = isNonEmptyString(rawSections.objective) ? rawSections.objective.trim() : "";
+    const scope = isStringArray(rawSections.scope) ? ensureParagraphs(rawSections.scope) : [];
+    const constraints = isStringArray(rawSections.constraints) ? ensureParagraphs(rawSections.constraints) : [];
+    const acceptanceCriteria = isStringArray(rawSections.acceptanceCriteria)
+        ? ensureParagraphs(rawSections.acceptanceCriteria)
+        : [];
 
-    for (const key of requiredKeys) {
-        if (!isNonEmptyString(sections[key])) {
-            throw new Error(`Seção obrigatória ausente ou vazia: ${key}.`);
-        }
+    if (task.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.task", { status: 422 });
+    }
+
+    if (objective.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.objective", { status: 422 });
+    }
+
+    if (scope.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.scope", { status: 422 });
+    }
+
+    if (constraints.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.constraints", { status: 422 });
+    }
+
+    if (acceptanceCriteria.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.acceptanceCriteria", { status: 422 });
     }
 
     return {
-        documentPurpose: normalizeBlockText(sections.documentPurpose as string),
-        executiveSummary: normalizeBlockText(sections.executiveSummary as string),
-        analyzedScope: normalizeBlockText(sections.analyzedScope as string),
-        stackAndDependencies: normalizeBlockText(sections.stackAndDependencies as string),
-        architectureAndOrganization: normalizeBlockText(sections.architectureAndOrganization as string),
-        contractsEntitiesAndFlows: normalizeBlockText(sections.contractsEntitiesAndFlows as string),
-        designRulesAndObservedPatterns: normalizeBlockText(sections.designRulesAndObservedPatterns as string),
-        regressionRisksAndOperationalCare: normalizeBlockText(sections.regressionRisksAndOperationalCare as string),
-        contextGaps: normalizeBlockText(sections.contextGaps as string),
-        operationalInstructions: normalizeBlockText(sections.operationalInstructions as string),
+        task,
+        objective,
+        scope,
+        constraints,
+        acceptanceCriteria
     };
 }
 
-function parseStructuredDocument(rawContent: string, outputRouteMode: OutputRouteMode): StructuredOutputDocument {
-    const candidate = extractJsonCandidate(rawContent);
-    if (!candidate) {
-        throw new Error("A resposta da IA não contém JSON extraível.");
+function parseStructuredDocument(payload: unknown): StructuredOutputDocument {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new AgentRuntimeError("Payload estruturado inválido: objeto raiz ausente.", { status: 422 });
     }
 
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(candidate);
-    } catch (error) {
-        throw new Error(`JSON inválido retornado pela IA: ${error instanceof Error ? error.message : String(error)}`);
+    const root = payload as Record<string, unknown>;
+    const routeMode = root.routeMode;
+    const documentMode = root.documentMode;
+    const executionMeta = root.executionMeta;
+    const sections = root.sections;
+
+    if (routeMode !== "director" && routeMode !== "executor") {
+        throw new AgentRuntimeError("Campo obrigatório inválido: routeMode", { status: 422 });
     }
 
-    if (typeof parsed !== "object" || parsed === null) {
-        throw new Error("Payload estruturado inválido: raiz não é um objeto.");
+    if (documentMode !== "full" && documentMode !== "manual") {
+        throw new AgentRuntimeError("Campo obrigatório inválido: documentMode", { status: 422 });
     }
 
-    const payload = parsed as Record<string, unknown>;
-    const sections = payload.sections as Record<string, unknown> | undefined;
-
-    if (payload.routeMode !== outputRouteMode) {
-        throw new Error(`routeMode inválido. Esperado: ${outputRouteMode}.`);
+    if (!executionMeta || typeof executionMeta !== "object" || Array.isArray(executionMeta)) {
+        throw new AgentRuntimeError("Campo obrigatório inválido: executionMeta", { status: 422 });
     }
 
-    if (!isNonEmptyString(payload.documentTitle)) throw new Error("Campo obrigatório ausente: documentTitle.");
-    if (payload.documentMode !== "manual" && payload.documentMode !== "full") throw new Error("Campo obrigatório inválido: documentMode.");
-    if (!isNonEmptyString(payload.projectName)) throw new Error("Campo obrigatório ausente: projectName.");
-    if (!isNonEmptyString(payload.executorTarget)) throw new Error("Campo obrigatório ausente: executorTarget.");
-    if (!sections || typeof sections !== "object") throw new Error("Campo obrigatório ausente: sections.");
+    if (!sections || typeof sections !== "object" || Array.isArray(sections)) {
+        throw new AgentRuntimeError("Campo obrigatório inválido: sections", { status: 422 });
+    }
 
-    const parsedSections = parseCommonSections(sections);
+    const executionMetaRecord = executionMeta as Record<string, unknown>;
+    const parsedExecutionMeta: ExecutionMeta = {
+        projectName: isNonEmptyString(executionMetaRecord.projectName) ? executionMetaRecord.projectName.trim() : "",
+        sourceArtifact: isNonEmptyString(executionMetaRecord.sourceArtifact)
+            ? executionMetaRecord.sourceArtifact.trim()
+            : "",
+        executorTarget: isNonEmptyString(executionMetaRecord.executorTarget)
+            ? executionMetaRecord.executorTarget.trim()
+            : "",
+        routeMode,
+        generatedAt: isNonEmptyString(executionMetaRecord.generatedAt) ? executionMetaRecord.generatedAt.trim() : ""
+    };
 
-    if (outputRouteMode === "director") {
-        const promptTemplate = payload.directorPromptTemplate as Record<string, unknown> | undefined;
-        if (!promptTemplate || typeof promptTemplate !== "object") {
-            throw new Error("Campo obrigatório ausente: directorPromptTemplate.");
+    if (parsedExecutionMeta.projectName.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: executionMeta.projectName", { status: 422 });
+    }
+
+    if (parsedExecutionMeta.sourceArtifact.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: executionMeta.sourceArtifact", { status: 422 });
+    }
+
+    if (parsedExecutionMeta.executorTarget.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: executionMeta.executorTarget", { status: 422 });
+    }
+
+    if (parsedExecutionMeta.generatedAt.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: executionMeta.generatedAt", { status: 422 });
+    }
+
+    const parsedCommonSections = parseCommonSections(sections as Record<string, unknown>);
+    const rawSections = sections as Record<string, unknown>;
+
+    if (routeMode === "director") {
+        const technicalContext = isStringArray(rawSections.technicalContext) ? ensureParagraphs(rawSections.technicalContext) : [];
+        const technicalChecklist = isStringArray(rawSections.technicalChecklist)
+            ? ensureParagraphs(rawSections.technicalChecklist)
+            : [];
+        const executionPlan = isStringArray(rawSections.executionPlan) ? ensureParagraphs(rawSections.executionPlan) : [];
+        const implementationNotes = isStringArray(rawSections.implementationNotes)
+            ? ensureParagraphs(rawSections.implementationNotes)
+            : [];
+
+        if (technicalContext.length === 0) {
+            throw new AgentRuntimeError("Campo obrigatório ausente: sections.technicalContext", { status: 422 });
         }
 
-        if (!isStringArray(promptTemplate.context)) throw new Error("Campo obrigatório inválido: directorPromptTemplate.context.");
-        if (!isNonEmptyString(promptTemplate.objective)) throw new Error("Campo obrigatório inválido: directorPromptTemplate.objective.");
-        if (!isStringArray(promptTemplate.rules)) throw new Error("Campo obrigatório inválido: directorPromptTemplate.rules.");
-        if (!isStringArray(promptTemplate.delivery)) throw new Error("Campo obrigatório inválido: directorPromptTemplate.delivery.");
-        if (!isStringArray(promptTemplate.adaptationNotes)) throw new Error("Campo obrigatório inválido: directorPromptTemplate.adaptationNotes.");
+        if (technicalChecklist.length === 0) {
+            throw new AgentRuntimeError("Campo obrigatório ausente: sections.technicalChecklist", { status: 422 });
+        }
+
+        if (executionPlan.length === 0) {
+            throw new AgentRuntimeError("Campo obrigatório ausente: sections.executionPlan", { status: 422 });
+        }
 
         return {
             routeMode: "director",
-            documentTitle: normalizeBlockText(payload.documentTitle),
-            documentMode: payload.documentMode,
-            projectName: normalizeBlockText(payload.projectName),
-            executorTarget: normalizeBlockText(payload.executorTarget),
-            sections: parsedSections,
-            directorPromptTemplate: {
-                context: normalizeList(promptTemplate.context as string[]),
-                objective: normalizeBlockText(promptTemplate.objective as string),
-                rules: normalizeList(promptTemplate.rules as string[]),
-                delivery: normalizeList(promptTemplate.delivery as string[]),
-                adaptationNotes: normalizeList(promptTemplate.adaptationNotes as string[]),
-            },
+            documentMode,
+            executionMeta: parsedExecutionMeta,
+            sections: {
+                ...parsedCommonSections,
+                technicalContext,
+                technicalChecklist,
+                executionPlan,
+                implementationNotes
+            }
         };
+    }
+
+    const targetFiles = isStringArray(rawSections.targetFiles) ? ensureParagraphs(rawSections.targetFiles) : [];
+    const implementationRules = isStringArray(rawSections.implementationRules)
+        ? ensureParagraphs(rawSections.implementationRules)
+        : [];
+    const deliveryFormat = isStringArray(rawSections.deliveryFormat) ? ensureParagraphs(rawSections.deliveryFormat) : [];
+    const implementationNotes = isStringArray(rawSections.implementationNotes)
+        ? ensureParagraphs(rawSections.implementationNotes)
+        : [];
+
+    if (targetFiles.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.targetFiles", { status: 422 });
+    }
+
+    if (implementationRules.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.implementationRules", { status: 422 });
+    }
+
+    if (deliveryFormat.length === 0) {
+        throw new AgentRuntimeError("Campo obrigatório ausente: sections.deliveryFormat", { status: 422 });
     }
 
     return {
         routeMode: "executor",
-        documentTitle: normalizeBlockText(payload.documentTitle),
-        documentMode: payload.documentMode,
-        projectName: normalizeBlockText(payload.projectName),
-        executorTarget: normalizeBlockText(payload.executorTarget),
-        sections: parsedSections,
+        documentMode,
+        executionMeta: parsedExecutionMeta,
+        sections: {
+            ...parsedCommonSections,
+            targetFiles,
+            implementationRules,
+            deliveryFormat,
+            implementationNotes
+        }
     };
 }
 
-function renderBulletList(values: string[]): string {
-    return values.map((value) => `- ${value}`).join("\n");
+function renderBulletedMarkdown(items: string[]): string {
+    return ensureParagraphs(items)
+        .map((item) => `- ${escapeMarkdown(item)}`)
+        .join("\n");
 }
 
 function getExtractionModeLabel(extractionMode: ExtractionMode): string {
@@ -826,163 +959,184 @@ function getExtractionModeLabel(extractionMode: ExtractionMode): string {
     }
 }
 
-function buildProtocolSliceSection0(): string {
-    return formatMarkdownFragment(
-        [
-            "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)",
-            "- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.",
-            "- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.",
-            "- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.",
-        ].join("\n")
-    ).trimEnd();
-}
-
 function buildProtocolSliceSection1(outputRouteMode: OutputRouteMode, extractionMode: ExtractionMode): string {
-    return formatMarkdownFragment(
-        [
-            "### §1 — ENQUADRAMENTO OPERACIONAL",
-            `- Rota ativa: ${outputRouteMode === "director" ? "VIA DIRETOR" : "DIRETO PARA O EXECUTOR"}.`,
-            `- Extração efetiva: ${getExtractionModeLabel(extractionMode)}.`,
-            "- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.",
-        ].join("\n")
-    ).trimEnd();
+    return [
+        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2",
+        "",
+        "### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)",
+        "- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.",
+        "- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.",
+        "- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.",
+        "",
+        "### §1 — ENQUADRAMENTO OPERACIONAL",
+        `- Rota ativa: ${outputRouteMode === "director" ? "VIA DIRETOR" : "DIRETO PARA EXECUTOR"}.`,
+        `- Extração efetiva: ${getExtractionModeLabel(extractionMode)}.`,
+        "- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional."
+    ].join("\n");
 }
 
-function buildProtocolSliceDirectorMode(): string {
-    return formatMarkdownFragment(
-        [
-            "### MODO DIRETOR (OPTIMIZED v2.1)",
-            "- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações \"zero-gap\" para o Executor.",
-            "- **DNA do Output:** Técnico, imperativo, denso e orientado a \"Differential Delivery\".",
-            "- **Template Obrigatório de Saída:**",
-            "    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.",
-            "    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.",
-            "    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.",
-            "    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.",
-            "    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).",
-            "    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.",
-            "- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.",
-        ].join("\n")
-    ).trimEnd();
+function buildProtocolSliceFullMode(): string {
+    return [
+        "### MODO FULL",
+        "- Escopo contextual máximo dentro do bundle visível.",
+        "- Preservar contratos, dependências e topologia observável.",
+        "- Proibido introduzir regras de BLUEPRINT ou SNIPER fora do contexto aplicável."
+    ].join("\n");
 }
-
-
-function buildProtocolSliceExecutorMode(): string {
-    return formatMarkdownFragment(
-        [
-            "### MODO EXECUTOR (OPTIMIZED v2.1)",
-            "- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.",
-            "- **DNA do Output:** Strict \"Zero-Yap\". Proibido saudações, explicações verbais, resumos pós-código ou validações de sentimentos. A entrega é o código.",
-            "- **Regras de Entrega Técnica:**",
-            "    1. **Precisão Cirúrgica:** Modificar APENAS o escopo solicitado. Manter o restante do arquivo, formatação, indentação e contratos estritamente intocados.",
-            "    2. **Formatação de Saída:** O código gerado DEVE estar contido em blocos Markdown válidos (ex: ```typescript), precedidos EXCLUSIVAMENTE pelo caminho/nome do arquivo afetado.",
-            "    3. **Fail-Safe de Contexto:** Se o bundle não contiver contexto ou dependências suficientes para uma implementação segura e testável, ABORTAR a geração de código e retornar um erro técnico listando os arquivos faltantes.",
-            "    4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.",
-        ].join("\n")
-    ).trimEnd();
-}
-
 
 function buildProtocolSliceBlueprintMode(): string {
-    return formatMarkdownFragment(
-        [
-            "### MODO BLUEPRINT",
-            "- Priorizar estruturas, assinaturas, contratos, dependências e organização do projeto.",
-            "- Não puxar regras de SNIPER nem tratar o documento como recorte manual.",
-            "- Restringir a síntese ao que for compatível com leitura arquitetural/estrutural do bundle.",
-        ].join("\n")
-    ).trimEnd();
+    return [
+        "### MODO BLUEPRINT",
+        "- Priorizar arquitetura visível, contratos, interfaces, dependências e topologia.",
+        "- Não fingir leitura integral de implementações não contidas no artefato.",
+        "- Proibido introduzir blocos de FULL ou SNIPER que contradigam a extração ativa."
+    ].join("\n");
 }
 
 function buildProtocolSliceSniperMode(): string {
-    return formatMarkdownFragment(
-        [
-            "### MODO SNIPER",
-            "- Tratar o documento como recorte parcial/manual derivado de seleção granular de arquivos.",
-            "- Limitar qualquer análise, instrução ou execução ao escopo visível no recorte enviado.",
-            "- Declarar explicitamente lacunas como contexto não visível no recorte enviado.",
-        ].join("\n")
-    ).trimEnd();
+    return [
+        "### MODO SNIPER",
+        "- Atuar somente sobre o recorte manual efetivamente selecionado.",
+        "- Não extrapolar para arquivos, fluxos ou módulos não incluídos no recorte.",
+        "- Preservar precisão cirúrgica e compatibilidade com o projeto visível."
+    ].join("\n");
 }
 
-function buildProtocolSliceSection3(
-    documentMode: DocumentMode,
-    extractionMode: ExtractionMode,
-    outputRouteMode: OutputRouteMode
-): string {
-    const lines = ["### §3 — POLÍTICA DE ESCOPO E CONTEXTO"];
+function buildProtocolSliceSection3(documentMode: DocumentMode, extractionMode: ExtractionMode, routeMode: OutputRouteMode): string {
+    const lines: string[] = [
+        routeMode === "director" ? "### MODO DIRETOR (OPTIMIZED v2.1)" : "### MODO EXECUTOR (OPTIMIZED v2.1)"
+    ];
 
-    if (documentMode === "manual") {
-        lines.push("- O artefato deve ser tratado como recorte parcial/manual.");
-        lines.push("- Qualquer decisão deve permanecer estritamente no escopo visível.");
-        lines.push("- Quando faltar contexto, declarar explicitamente a limitação em vez de inferir comportamento ausente.");
-    } else {
-        lines.push("- O artefato deve ser tratado como projeto completo contido no bundle gerado.");
-        lines.push("- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.");
-
+    if (routeMode === "director") {
+        lines.push("- **Função:** Atuar como camada de inteligência analítica que processa inputs e gera especificações zero-gap para o Executor.");
+        lines.push("- **DNA do Output:** Técnico, imperativo, denso e estruturado.");
         if (extractionMode === "blueprint") {
             lines.push("- Como a extração é BLUEPRINT, priorizar visão estrutural e não puxar regras de SNIPER.");
+        } else if (extractionMode === "sniper") {
+            lines.push("- Como a extração é SNIPER, limitar análise ao recorte manual visível.");
         } else {
             lines.push("- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.");
         }
+    } else {
+        lines.push("- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.");
+        lines.push("- **DNA do Output:** Strict Zero-Yap. Proibido atuar como Diretor.");
+        if (documentMode === "manual") {
+            lines.push("- O documento final deve manter precisão compatível com recorte manual.");
+        }
+        if (extractionMode === "blueprint") {
+            lines.push("- A extração é BLUEPRINT: privilegiar contratos, interfaces e pontos de injeção sem fingir leitura integral.");
+        } else if (extractionMode === "sniper") {
+            lines.push("- A extração é SNIPER: alterar somente o recorte manual documentado.");
+        } else {
+            lines.push("- A extração é FULL: operar com o contexto total visível do bundle.");
+        }
     }
 
-    lines.push(
-        outputRouteMode === "director"
-            ? "- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor."
-            : "- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor."
-    );
-
-    return formatMarkdownFragment(lines.join("\n")).trimEnd();
-}
-
-function buildProtocolSliceSection4(executorTarget: string): string {
-    return formatMarkdownFragment(
-        [
-            "### §4 — REGRAS FINAIS DE EXECUÇÃO",
-            "- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.",
-            "- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.",
-            `- Executor alvo de referência: ${executorTarget}.`,
-        ].join("\n")
-    ).trimEnd();
+    return lines.join("\n");
 }
 
 function buildProtocolMarkdown(document: StructuredOutputDocument, extractionMode: ExtractionMode): string {
-    const blocks = [
-        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2",
-        buildProtocolSliceSection0(),
+    return [
         buildProtocolSliceSection1(document.routeMode, extractionMode),
-        document.routeMode === "director" ? buildProtocolSliceDirectorMode() : buildProtocolSliceExecutorMode(),
-        extractionMode === "blueprint" ? buildProtocolSliceBlueprintMode() : extractionMode === "sniper" ? buildProtocolSliceSniperMode() : "",
-        buildProtocolSliceSection3(document.documentMode, extractionMode, document.routeMode),
-        buildProtocolSliceSection4(document.executorTarget),
-    ].filter(Boolean);
-
-    return formatMarkdownFragment(blocks.join("\n\n")).trimEnd();
+        "",
+        extractionMode === "full" ? buildProtocolSliceFullMode() : extractionMode === "blueprint" ? buildProtocolSliceBlueprintMode() : buildProtocolSliceSniperMode(),
+        "",
+        buildProtocolSliceSection3(document.documentMode, extractionMode, document.routeMode)
+    ]
+        .filter((part) => part.trim().length > 0)
+        .join("\n\n");
 }
 
-function buildDirectorPromptTemplateMarkdown(template: StructuredDirectorPromptTemplate): string {
-    return formatMarkdownFragment(
-        [
-            "```text",
-            "## Instruções",
-            "CONTEXTO:",
-            renderBulletList(template.context),
-            "",
-            "OBJETIVO:",
-            template.objective,
-            "",
-            "REGRAS:",
-            renderBulletList(template.rules),
-            "",
-            "ENTREGA:",
-            renderBulletList(template.delivery),
-            "",
-            "ADAPTAÇÕES AO PROJETO:",
-            renderBulletList(template.adaptationNotes),
-            "```",
-        ].join("\n")
-    ).trimEnd();
+function buildExecutionMetaMarkdown(meta: ExecutionMeta): string {
+    return [
+        "## EXECUTION META",
+        "",
+        `- Projeto: ${escapeMarkdown(meta.projectName)}`,
+        `- Artefato fonte: ${escapeMarkdown(meta.sourceArtifact)}`,
+        `- Executor alvo: ${escapeMarkdown(meta.executorTarget)}`,
+        `- Route mode: ${escapeMarkdown(meta.routeMode)}`,
+        `- Gerado em: ${escapeMarkdown(meta.generatedAt)}`
+    ].join("\n");
+}
+
+function buildDirectorPromptTemplateMarkdown(document: DirectorStructuredOutput): string {
+    const sections = document.sections;
+    return [
+        "# TASK",
+        "",
+        escapeMarkdown(sections.task),
+        "",
+        "## 1. CONTEXTO TÉCNICO",
+        "",
+        renderBulletedMarkdown(sections.technicalContext),
+        "",
+        "## 2. OBJETIVO PRIMÁRIO",
+        "",
+        escapeMarkdown(sections.objective),
+        "",
+        "## 3. ESCOPO",
+        "",
+        renderBulletedMarkdown(sections.scope),
+        "",
+        "## 4. RESTRIÇÕES GLOBAIS (STRICT ADHERENCE)",
+        "",
+        renderBulletedMarkdown(sections.constraints),
+        "",
+        "## 5. CHECKLIST TÉCNICO",
+        "",
+        renderBulletedMarkdown(sections.technicalChecklist),
+        "",
+        "## 6. PLANO DE EXECUÇÃO",
+        "",
+        renderBulletedMarkdown(sections.executionPlan),
+        "",
+        "## 7. CRITÉRIOS DE ACEITAÇÃO",
+        "",
+        renderBulletedMarkdown(sections.acceptanceCriteria),
+        ...(sections.implementationNotes.length > 0
+            ? ["", "## 8. NOTAS DE IMPLEMENTAÇÃO", "", renderBulletedMarkdown(sections.implementationNotes)]
+            : [])
+    ].join("\n");
+}
+
+function buildExecutorPromptTemplateMarkdown(document: ExecutorStructuredOutput): string {
+    const sections = document.sections;
+    return [
+        "# TASK",
+        "",
+        escapeMarkdown(sections.task),
+        "",
+        "## 1. OBJETIVO PRIMÁRIO",
+        "",
+        escapeMarkdown(sections.objective),
+        "",
+        "## 2. ARQUIVOS-ALVO",
+        "",
+        renderBulletedMarkdown(sections.targetFiles),
+        "",
+        "## 3. ESCOPO",
+        "",
+        renderBulletedMarkdown(sections.scope),
+        "",
+        "## 4. REGRAS DE IMPLEMENTAÇÃO",
+        "",
+        renderBulletedMarkdown(sections.implementationRules),
+        "",
+        "## 5. RESTRIÇÕES GLOBAIS (STRICT ADHERENCE)",
+        "",
+        renderBulletedMarkdown(sections.constraints),
+        "",
+        "## 6. FORMATO DE ENTREGA",
+        "",
+        renderBulletedMarkdown(sections.deliveryFormat),
+        "",
+        "## 7. CRITÉRIOS DE ACEITAÇÃO",
+        "",
+        renderBulletedMarkdown(sections.acceptanceCriteria),
+        ...(sections.implementationNotes.length > 0
+            ? ["", "## 8. NOTAS DE IMPLEMENTAÇÃO", "", renderBulletedMarkdown(sections.implementationNotes)]
+            : [])
+    ].join("\n");
 }
 
 function buildStructuredMarkdownDocument(
@@ -990,79 +1144,32 @@ function buildStructuredMarkdownDocument(
     technicalBundleDump: string,
     extractionMode: ExtractionMode
 ): string {
-    const analyzedScopeTitle =
-        document.documentMode === "manual"
-            ? "ESCOPO VISÍVEL E LIMITES DO RECORTE"
-            : "ESCOPO ANALISADO E LIMITES";
-
     const protocolMarkdown = buildProtocolMarkdown(document, extractionMode);
-    const operationalHeading =
+    const executionMetaMarkdown = buildExecutionMetaMarkdown(document.executionMeta);
+    const promptTemplateMarkdown =
         document.routeMode === "director"
-            ? "## DIRETRIZES OPERACIONAIS PARA O DIRETOR"
-            : "## DIRETRIZES OPERACIONAIS PARA O EXECUTOR";
+            ? buildDirectorPromptTemplateMarkdown(document as DirectorStructuredOutput)
+            : buildExecutorPromptTemplateMarkdown(document as ExecutorStructuredOutput);
 
-    const formattedTechnicalBundleDump = formatMarkdownFragment(technicalBundleDump).trimEnd();
-
-    const blocks: string[] = [
-        `# ${document.documentTitle}`,
-        "",
-        `> Projeto: ${document.projectName}`,
-        `> Executor alvo: ${document.executorTarget}`,
-        `> Modo do documento: ${document.documentMode === "manual" ? "recorte parcial" : "projeto completo"}.`,
-        `> Modo de extração: ${getExtractionModeLabel(extractionMode)}.`,
-        "",
+    return [
         protocolMarkdown,
         "",
-        "## FINALIDADE DO DOCUMENTO",
-        document.sections.documentPurpose,
+        executionMetaMarkdown,
         "",
-        "## RESUMO EXECUTIVO",
-        document.sections.executiveSummary,
+        "## SOURCE OF TRUTH",
         "",
-        `## ${analyzedScopeTitle}`,
-        document.sections.analyzedScope,
+        `> Modo de extração: ${getExtractionModeLabel(extractionMode)}.`,
+        `> Route mode: ${document.routeMode}.`,
+        `> Document mode: ${document.documentMode}.`,
         "",
-        "## STACK, DEPENDÊNCIAS E TECNOLOGIAS OBSERVADAS",
-        document.sections.stackAndDependencies,
+        promptTemplateMarkdown,
         "",
-        "## ARQUITETURA E ORGANIZAÇÃO",
-        document.sections.architectureAndOrganization,
+        "## BUNDLE VISÍVEL",
         "",
-        "## CONTRATOS, ENTIDADES, INTERFACES E FLUXOS",
-        document.sections.contractsEntitiesAndFlows,
-        "",
-        "## REGRAS DE DESIGN E PADRÕES OBSERVADOS",
-        document.sections.designRulesAndObservedPatterns,
-        "",
-        "## RISCOS DE REGRESSÃO E CUIDADOS OPERACIONAIS",
-        document.sections.regressionRisksAndOperationalCare,
-        "",
-        "## LACUNAS DE CONTEXTO",
-        document.sections.contextGaps,
-        "",
-        operationalHeading,
-        document.sections.operationalInstructions,
-    ];
-
-    if (document.routeMode === "director") {
-        blocks.push(
-            "",
-            "## TEMPLATE DE PROMPT OTIMIZADO PARA O DIRETOR",
-            "",
-            buildDirectorPromptTemplateMarkdown(document.directorPromptTemplate)
-        );
-    }
-
-    blocks.push(
-        "",
-        "---",
-        "",
-        "## ESTRUTURA E CÓDIGO",
-        "",
-        formattedTechnicalBundleDump
-    );
-
-    return formatMarkdownFragment(blocks.join("\n")).trimEnd() + "\n";
+        "```text",
+        normalizeWhitespace(technicalBundleDump),
+        "```"
+    ].join("\n");
 }
 
 function buildExtractionModeScopeInstruction(extractionMode: ExtractionMode): string {
@@ -1070,24 +1177,20 @@ function buildExtractionModeScopeInstruction(extractionMode: ExtractionMode): st
         case "blueprint":
             return [
                 "A extração efetiva é BLUEPRINT (Architect).",
-                "O bundle representa o projeto completo contido no artefato enviado, mas a síntese deve priorizar estruturas, assinaturas, contratos, dependências e organização.",
-                "Não trate o conteúdo como recorte manual e não puxe regras de SNIPER.",
+                "Foque em arquitetura visível, contratos, interfaces, dependências, topologia e pontos de integração.",
+                "Não fingir leitura integral de implementações fora do recorte visível."
             ].join(" ");
         case "sniper":
             return [
-                "A extração efetiva é SNIPER (Manual).",
-                "O bundle representa um RECORTE PARCIAL do projeto.",
-                "Mapeie exclusivamente o que estiver visível.",
-                "Não inferir módulos, contratos, arquivos, fluxos ou responsabilidades não presentes.",
-                "Quando faltar contexto, declarar explicitamente que não está visível no recorte.",
+                "A extração efetiva é SNIPER (manual/selective).",
+                "Responda apenas com base no recorte manual incluído.",
+                "Não extrapole para arquivos ou fluxos fora do recorte."
             ].join(" ");
         default:
             return [
                 "A extração efetiva é FULL.",
-                "O bundle representa o projeto completo contido no artefato enviado.",
-                "Baseie-se exclusivamente no material fornecido.",
-                "Não invente arquitetura, comportamento ou responsabilidades sem evidência textual.",
-                "Não inclua regras de BLUEPRINT nem de SNIPER fora do contexto aplicável.",
+                "Use o contexto integral visível no bundle.",
+                "Não inclua regras de BLUEPRINT nem de SNIPER fora do contexto aplicável."
             ].join(" ");
     }
 }
@@ -1096,21 +1199,21 @@ function buildExtractionModeRequirements(extractionMode: ExtractionMode): string
     switch (extractionMode) {
         case "blueprint":
             return [
-                "A extração efetiva é BLUEPRINT (Architect).",
-                "Priorizar estruturas, assinaturas, contratos, dependências e organização.",
-                "Não puxar regras de sniper/manual e não tratar o bundle como recorte parcial.",
+                "Priorizar arquitetura, interfaces, contratos e acoplamentos.",
+                "Não presumir detalhes de implementação não visíveis.",
+                "Não inserir blocos ou regras de SNIPER no protocolo final."
             ];
         case "sniper":
             return [
-                "A extração efetiva é SNIPER (Manual).",
-                "Tratar o bundle como recorte parcial/manual e manter o escopo fechado ao conteúdo visível.",
-                "Declarar explicitamente lacunas como contexto não visível no recorte enviado.",
+                "Atuar exclusivamente no recorte manual.",
+                "Não extrapolar para módulos fora do artefato selecionado.",
+                "Preservar precisão cirúrgica e compatibilidade contextual."
             ];
         default:
             return [
-                "A extração efetiva é FULL.",
-                "Tratar o bundle como projeto completo do artefato enviado.",
-                "Não inserir blocos ou regras de BLUEPRINT/SNIPER no protocolo final.",
+                "Usar o contexto integral visível no bundle.",
+                "Preservar contratos, dependências e topologia observável.",
+                "Não inserir blocos ou regras de BLUEPRINT/SNIPER no protocolo final."
             ];
     }
 }
@@ -1123,51 +1226,19 @@ function buildDirectorStructuredSystemPrompt(
     const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
 
     return [
-        "Você é um ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE IA.",
-        `Gere uma Source of Truth técnica destinada ao executor ${executorTarget}, no fluxo VIA DIRETOR.`,
+        "Você atua EXCLUSIVAMENTE como DIRETOR TÉCNICO DE EXECUÇÃO.",
+        "Sua função é transformar o bundle visível em uma especificação operacional zero-gap para o Executor.",
+        "Saída obrigatória em JSON estrito, sem markdown, comentários ou texto fora do objeto.",
+        "O JSON final deve obedecer exatamente o schema solicitado.",
+        "É proibido misturar papel de Executor, implementar código ou sair do artefato visível.",
         scopeInstruction,
-        "A Source of Truth deve preparar uma IA subsequente para assumir a persona de Diretor.",
-        "O Diretor deve assimilar o projeto, aguardar o pedido futuro do usuário e então gerar um prompt otimizado para um agente executor com capacidades agênticas.",
         "A composição final do protocolo em markdown será feita por slices determinísticos compatíveis com routeMode + extractionMode.",
-        "Na seção directorPromptTemplate, o valor principal é a ESTRUTURA TÓPICA.",
-        "Preserve obrigatoriamente os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO.",
-        "RETORNE EXCLUSIVAMENTE JSON VÁLIDO.",
-        "NÃO use markdown.",
-        "NÃO use comentários.",
-        "NÃO use crases.",
-        "NÃO inclua texto antes ou depois do JSON.",
-        "Use EXATAMENTE este schema:",
-        JSON.stringify(
-            {
-                routeMode: "director",
-                documentTitle: "string",
-                documentMode: mode,
-                projectName: "string",
-                executorTarget,
-                sections: {
-                    documentPurpose: "string",
-                    executiveSummary: "string",
-                    analyzedScope: "string",
-                    stackAndDependencies: "string",
-                    architectureAndOrganization: "string",
-                    contractsEntitiesAndFlows: "string",
-                    designRulesAndObservedPatterns: "string",
-                    regressionRisksAndOperationalCare: "string",
-                    contextGaps: "string",
-                    operationalInstructions: "string",
-                },
-                directorPromptTemplate: {
-                    context: ["string"],
-                    objective: "string",
-                    rules: ["string"],
-                    delivery: ["string"],
-                    adaptationNotes: ["string"],
-                },
-            },
-            null,
-            2
-        ),
-    ].join("\n\n");
+        `O executor alvo informado é: ${executorTarget}.`,
+        `O documentMode externo é: ${mode}.`,
+        "Preencha todos os campos obrigatórios com alto sinal técnico.",
+        "Não use placeholders vazios.",
+        "Não omita listas obrigatórias."
+    ].join("\n");
 }
 
 function buildExecutorStructuredSystemPrompt(
@@ -1178,43 +1249,77 @@ function buildExecutorStructuredSystemPrompt(
     const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
 
     return [
-        "Você é um ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE IA.",
-        `Gere um CONTEXTO TÉCNICO DE EXECUÇÃO destinado diretamente ao executor ${executorTarget}, no fluxo DIRETO PARA O EXECUTOR.`,
+        "Você atua EXCLUSIVAMENTE como ENGINE EXECUTOR DE IMPLEMENTAÇÃO.",
+        "Sua função é converter o bundle visível em contexto técnico operacional pronto para implementação direta.",
+        "Saída obrigatória em JSON estrito, sem markdown, comentários ou texto fora do objeto.",
+        "O JSON final deve obedecer exatamente o schema solicitado.",
+        "É proibido agir como Diretor, orquestrar outras IAs ou fugir do bundle visível.",
         scopeInstruction,
-        "O documento deve preparar a IA subsequente para operar diretamente como SENIOR_ENGINEERING_EXECUTOR.",
-        "O objetivo não é criar Diretor nem prompt intermediário.",
-        "O documento deve permitir execução direta de alterações futuras no código.",
         "A composição final do protocolo em markdown será feita por slices determinísticos compatíveis com routeMode + extractionMode.",
-        "RETORNE EXCLUSIVAMENTE JSON VÁLIDO.",
-        "NÃO use markdown.",
-        "NÃO use comentários.",
-        "NÃO use crases.",
-        "NÃO inclua texto antes ou depois do JSON.",
-        "Use EXATAMENTE este schema:",
-        JSON.stringify(
+        `O executor alvo informado é: ${executorTarget}.`,
+        `O documentMode externo é: ${mode}.`,
+        "Preencha todos os campos obrigatórios com precisão operacional.",
+        "Não use placeholders vazios.",
+        "Não omita listas obrigatórias."
+    ].join("\n");
+}
+
+function buildStructuredOutputJsonSchema(routeMode: OutputRouteMode, mode: DocumentMode): string {
+    if (routeMode === "director") {
+        return JSON.stringify(
             {
-                routeMode: "executor",
-                documentTitle: "string",
+                routeMode: "director",
                 documentMode: mode,
-                projectName: "string",
-                executorTarget,
-                sections: {
-                    documentPurpose: "string",
-                    executiveSummary: "string",
-                    analyzedScope: "string",
-                    stackAndDependencies: "string",
-                    architectureAndOrganization: "string",
-                    contractsEntitiesAndFlows: "string",
-                    designRulesAndObservedPatterns: "string",
-                    regressionRisksAndOperationalCare: "string",
-                    contextGaps: "string",
-                    operationalInstructions: "string",
+                executionMeta: {
+                    projectName: "<string>",
+                    sourceArtifact: "<string>",
+                    executorTarget: "<string>",
+                    routeMode: "director",
+                    generatedAt: "<ISO8601>"
                 },
+                sections: {
+                    task: "<string>",
+                    objective: "<string>",
+                    scope: ["<string>"],
+                    constraints: ["<string>"],
+                    acceptanceCriteria: ["<string>"],
+                    technicalContext: ["<string>"],
+                    technicalChecklist: ["<string>"],
+                    executionPlan: ["<string>"],
+                    implementationNotes: ["<string — opcional>"]
+                }
             },
             null,
             2
-        ),
-    ].join("\n\n");
+        );
+    }
+
+    return JSON.stringify(
+        {
+            routeMode: "executor",
+            documentMode: mode,
+            executionMeta: {
+                projectName: "<string>",
+                sourceArtifact: "<string>",
+                executorTarget: "<string>",
+                routeMode: "executor",
+                generatedAt: "<ISO8601>"
+            },
+            sections: {
+                task: "<string>",
+                objective: "<string>",
+                targetFiles: ["<string>"],
+                scope: ["<string>"],
+                implementationRules: ["<string>"],
+                constraints: ["<string>"],
+                deliveryFormat: ["<string>"],
+                acceptanceCriteria: ["<string>"],
+                implementationNotes: ["<string — opcional>"]
+            }
+        },
+        null,
+        2
+    );
 }
 
 function buildDirectorStructuredUserPrompt(
@@ -1227,21 +1332,26 @@ function buildDirectorStructuredUserPrompt(
     return [
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
+        "ROUTE_MODE: director",
         `DOCUMENT_MODE: ${mode}`,
         `EXTRACTION_MODE: ${extractionMode}`,
         "",
-        "Requisitos obrigatórios:",
-        "- O fluxo é VIA DIRETOR.",
-        "- A seção directorPromptTemplate deve preservar os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO.",
-        "- O valor principal do template é a sua estrutura tópica, não um texto fixo literal.",
-        "- O template deve servir como matriz operacional para o Diretor converter pedidos futuros em prompt de execução.",
-        "- O prompt final do Diretor deve ser voltado para um agente executor que cria/edita arquivos, roda comandos, aplica mudanças e valida resultados.",
-        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
-        "- Preservar contratos, identificadores, comportamento existente e evitar impacto colateral.",
-        "- Considere apenas as seções técnicas do bundle. Ignore qualquer cabeçalho instrucional anterior ao conteúdo técnico.",
+        "Gere um JSON estrito obedecendo exatamente o schema abaixo.",
+        "Não escreva markdown.",
+        "Não escreva comentários.",
+        "Não use texto fora do objeto JSON.",
         "",
-        "BUNDLE TÉCNICO:",
-        technicalBundleDump,
+        "REGRAS OPERACIONAIS:",
+        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
+        "- Não inventar módulos, contratos ou comportamentos fora do bundle.",
+        "- Não misturar papel de Executor.",
+        "- Especificação deve ser operacional, densa e pronta para consumo do Executor.",
+        "",
+        "SCHEMA JSON OBRIGATÓRIO:",
+        buildStructuredOutputJsonSchema("director", mode),
+        "",
+        "BUNDLE VISÍVEL:",
+        technicalBundleDump
     ].join("\n");
 }
 
@@ -1255,345 +1365,647 @@ function buildExecutorStructuredUserPrompt(
     return [
         `PROJECT_NAME: ${projectName}`,
         `EXECUTOR_TARGET: ${executorTarget}`,
+        "ROUTE_MODE: executor",
         `DOCUMENT_MODE: ${mode}`,
         `EXTRACTION_MODE: ${extractionMode}`,
         "",
-        "Requisitos obrigatórios:",
-        "- O fluxo é DIRETO PARA O EXECUTOR.",
-        "- O documento deve preparar a IA subsequente para executar diretamente mudanças futuras no código.",
-        "- Não criar Diretor, não criar prompt intermediário e não orientar outro agente.",
+        "Gere um JSON estrito obedecendo exatamente o schema abaixo.",
+        "Não escreva markdown.",
+        "Não escreva comentários.",
+        "Não use texto fora do objeto JSON.",
+        "",
+        "REGRAS OPERACIONAIS:",
         ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
-        "- Preservar contratos, identificadores, comportamento existente e evitar impacto colateral.",
-        "- Considere apenas as seções técnicas do bundle. Ignore qualquer cabeçalho instrucional anterior ao conteúdo técnico.",
+        "- Não inventar arquivos fora do bundle.",
+        "- Não agir como Diretor.",
+        "- Conteúdo deve ser operacional e pronto para implementação direta.",
         "",
-        "BUNDLE TÉCNICO:",
-        technicalBundleDump,
+        "SCHEMA JSON OBRIGATÓRIO:",
+        buildStructuredOutputJsonSchema("executor", mode),
+        "",
+        "BUNDLE VISÍVEL:",
+        technicalBundleDump
     ].join("\n");
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
-
-    try {
-        await fs.access(filePath);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-async function readOptionalCustomSystemPrompt(customSystemPromptFilePath?: string): Promise<string | null> {
-    if (!customSystemPromptFilePath?.trim()) {
-        return null;
-    }
-
-    const absoluteCustomPromptPath = path.resolve(process.cwd(), customSystemPromptFilePath.trim());
-
-    if (!(await fileExists(absoluteCustomPromptPath))) {
-        throw new Error(`Arquivo de systemPrompt customizado não encontrado: ${absoluteCustomPromptPath}`);
-    }
-
-    const content = normalizeSourceDump(await fs.readFile(absoluteCustomPromptPath, "utf-8"));
-    return content || null;
-}
-
-function buildCustomUserPrompt(
-    projectName: string,
-    executorTarget: string,
-    mode: DocumentMode,
-    extractionMode: ExtractionMode,
-    technicalBundleDump: string,
-    outputRouteMode: OutputRouteMode
-): string {
+function buildRepairPrompt(routeMode: OutputRouteMode, mode: DocumentMode, extractionMode: ExtractionMode): string {
     return [
-        `PROJECT_NAME: ${projectName}`,
-        `EXECUTOR_TARGET: ${executorTarget}`,
+        "Sua última resposta não pôde ser interpretada como JSON válido ou violou o schema obrigatório.",
+        "Reemita apenas o objeto JSON corrigido.",
+        "Não inclua markdown, explicações, comentários ou texto extra.",
+        `ROUTE_MODE: ${routeMode}`,
         `DOCUMENT_MODE: ${mode}`,
         `EXTRACTION_MODE: ${extractionMode}`,
-        `OUTPUT_ROUTE_MODE: ${outputRouteMode}`,
-        "",
-        "Você está operando em MODO PERSONALIZADO.",
-        "Use o bundle técnico abaixo como contexto integral de trabalho.",
-        "Respeite rigidamente a combinação de routeMode + extractionMode informada.",
-        "Ignore qualquer instrução estrutural padrão do modo default e siga exclusivamente o systemPrompt customizado recebido.",
-        "",
-        "BUNDLE TÉCNICO:",
-        technicalBundleDump,
+        "Respeite rigorosamente o schema obrigatório e preserve o alto sinal técnico."
     ].join("\n");
 }
 
-async function repairStructuredPayload(
-    rawContent: string,
-    projectName: string,
-    executorTarget: string,
-    mode: DocumentMode,
-    extractionMode: ExtractionMode,
-    outputRouteMode: OutputRouteMode,
-    primaryProvider: ProviderId
-): Promise<StructuredOutputDocument | null> {
-    const repairSystemPrompt =
-        outputRouteMode === "director"
-            ? [
-                  "Converta a resposta abaixo para JSON VÁLIDO seguindo EXATAMENTE o schema solicitado.",
-                  "Não invente fatos fora do texto de origem.",
-                  "Na seção directorPromptTemplate, preserve obrigatoriamente os tópicos CONTEXTO, OBJETIVO, REGRAS, ENTREGA e ADAPTAÇÕES AO PROJETO.",
-                  "Respeite a combinação externa de routeMode + extractionMode já definida no pipeline.",
-                  "Não use markdown.",
-                  "Não use comentários.",
-                  "Não use crases.",
-                  "Retorne somente JSON.",
-              ].join("\n")
-            : [
-                  "Converta a resposta abaixo para JSON VÁLIDO seguindo EXATAMENTE o schema solicitado.",
-                  "Não invente fatos fora do texto de origem.",
-                  "O fluxo é DIRETO PARA O EXECUTOR.",
-                  "Respeite a combinação externa de routeMode + extractionMode já definida no pipeline.",
-                  "Não crie Diretor, não crie prompt intermediário e não adicione seções fora do schema.",
-                  "Não use markdown.",
-                  "Não use comentários.",
-                  "Não use crases.",
-                  "Retorne somente JSON.",
-              ].join("\n");
+function validateForbiddenPatterns(content: string): void {
+    const forbiddenPatterns: RegExp[] = [
+        /```/,
+        /<script/i,
+        /ignorar\s+routeMode/i,
+        /ignore\s+routeMode/i,
+        /ignorar\s+extractionMode/i,
+        /ignore\s+extractionMode/i
+    ];
 
-    const repairSchema =
-        outputRouteMode === "director"
-            ? {
-                  routeMode: "director",
-                  documentTitle: "string",
-                  documentMode: mode,
-                  projectName,
-                  executorTarget,
-                  sections: {
-                      documentPurpose: "string",
-                      executiveSummary: "string",
-                      analyzedScope: "string",
-                      stackAndDependencies: "string",
-                      architectureAndOrganization: "string",
-                      contractsEntitiesAndFlows: "string",
-                      designRulesAndObservedPatterns: "string",
-                      regressionRisksAndOperationalCare: "string",
-                      contextGaps: "string",
-                      operationalInstructions: "string",
-                  },
-                  directorPromptTemplate: {
-                      context: ["string"],
-                      objective: "string",
-                      rules: ["string"],
-                      delivery: ["string"],
-                      adaptationNotes: ["string"],
-                  },
-              }
-            : {
-                  routeMode: "executor",
-                  documentTitle: "string",
-                  documentMode: mode,
-                  projectName,
-                  executorTarget,
-                  sections: {
-                      documentPurpose: "string",
-                      executiveSummary: "string",
-                      analyzedScope: "string",
-                      stackAndDependencies: "string",
-                      architectureAndOrganization: "string",
-                      contractsEntitiesAndFlows: "string",
-                      designRulesAndObservedPatterns: "string",
-                      regressionRisksAndOperationalCare: "string",
-                      contextGaps: "string",
-                      operationalInstructions: "string",
-                  },
-              };
-
-    const repairUserPrompt = [
-        `PROJECT_NAME: ${projectName}`,
-        `EXECUTOR_TARGET: ${executorTarget}`,
-        `DOCUMENT_MODE: ${mode}`,
-        `EXTRACTION_MODE: ${extractionMode}`,
-        `OUTPUT_ROUTE_MODE: ${outputRouteMode}`,
-        "",
-        "Schema obrigatório:",
-        JSON.stringify(repairSchema, null, 2),
-        "",
-        "Conteúdo bruto a reparar:",
-        rawContent,
-    ].join("\n");
-
-    const repaired = await generateContextDocument(
-        {
-            systemContent: repairSystemPrompt,
-            userPrompt: repairUserPrompt,
-            temperature: 0,
-            maxTokens: 8192,
-        },
-        primaryProvider
-    );
-
-    if (!repaired?.content) {
-        return null;
-    }
-
-    try {
-        return parseStructuredDocument(repaired.content, outputRouteMode);
-    } catch {
-        return null;
-    }
-}
-
-async function main() {
-
-    const [
-        bundlePath,
-        projectName,
-        executorTarget,
-        bundleMode = "full",
-        selectedProvider = "groq",
-        outputRouteModeArg = "director",
-        customSystemPromptFilePath = "",
-    ] = process.argv.slice(2);
-
-    if (!bundlePath || !executorTarget) {
-        process.exit(1);
-    }
-
-    const absolutePath = path.resolve(process.cwd(), bundlePath);
-    const rawBundleDump = normalizeSourceDump(await fs.readFile(absolutePath, "utf-8"));
-    const technicalBundleDump = extractTechnicalBundleDump(rawBundleDump);
-    const extractionMode = normalizeExtractionMode(bundleMode, path.basename(absolutePath));
-    const mode: DocumentMode = resolveDocumentModeFromExtractionMode(extractionMode);
-    const primaryProvider = normalizePrimaryProvider(selectedProvider);
-    const outputRouteMode = normalizeOutputRouteMode(outputRouteModeArg);
-    const customSystemPrompt = await readOptionalCustomSystemPrompt(customSystemPromptFilePath);
-
-    const prefix = outputRouteMode === "director" ? "_diretor_" : "_executor_";
-    const outputPath = path.resolve(path.dirname(absolutePath), `${prefix}AI_CONTEXT_${projectName}.md`);
-    const resultMetaPath = path.resolve(path.dirname(absolutePath), `_AI_RESULT_${projectName}.json`);
-
-    if (customSystemPrompt) {
-        logger.info(`Modo customizado ativo: usando systemPrompt definido pelo HUD (${outputRouteMode}).`);
-
-        const customUserPrompt = buildCustomUserPrompt(
-            projectName,
-            executorTarget,
-            mode,
-            extractionMode,
-            technicalBundleDump,
-            outputRouteMode
-        );
-
-        const customResult = await generateContextDocument(
-            {
-                systemContent: customSystemPrompt,
-                userPrompt: customUserPrompt,
-                temperature: 0.1,
-                maxTokens: 8192,
-            },
-            primaryProvider
-        );
-
-        if (!customResult?.content) {
-            process.exit(1);
+    for (const pattern of forbiddenPatterns) {
+        if (pattern.test(content)) {
+            throw new AgentRuntimeError("Resposta do provider contém padrão proibido.", {
+                status: 422,
+                details: `Pattern bloqueado: ${pattern.toString()}`
+            });
         }
+    }
+}
 
-        const finalCustomOutput = normalizeCustomMarkdownOutput(customResult.content, projectName);
-
-        await fs.writeFile(outputPath, finalCustomOutput, "utf-8");
-        await fs.writeFile(
-            resultMetaPath,
-            JSON.stringify(
-                {
-                    provider: customResult.provider,
-                    model: customResult.model,
-                    outputPath,
-                    promptMode: "custom",
-                    outputRouteMode,
-                    extractionMode,
-                },
-                null,
-                2
-            ),
-            "utf-8"
-        );
-
-        logger.info(`[AI_RESULT] provider=${customResult.provider};model=${customResult.model}`);
-        logger.info(`Saída customizada gerada via ${customResult.provider} (${customResult.model}) em: ${prefix}AI_CONTEXT_${projectName}.md`);
-        return;
+function mergePromptConfigWithTemplatePreset(config: PromptCustomizationConfig): PromptCustomizationConfig {
+    if (config.promptMode !== "template" || !config.templateId) {
+        return config;
     }
 
-    const systemPrompt =
-        outputRouteMode === "director"
+    const preset = getPromptTemplatePreset(config.templateId);
+    if (!preset) {
+        return config;
+    }
+
+    return {
+        ...config,
+        objective: config.objective ?? preset.objective,
+        deliveryType: config.deliveryType ?? preset.deliveryType,
+        focusTags: dedupePreserveOrder([...preset.focusTags, ...config.focusTags]),
+        constraints: dedupePreserveOrder([...preset.constraints, ...config.constraints])
+    };
+}
+
+function buildAugmentedPromptBundle({
+    projectName,
+    technicalBundleDump,
+    executorTarget,
+    routeMode,
+    mode,
+    extractionMode,
+    promptConfig
+}: BuildAugmentedPromptBundleParams): ProviderRequestPayload {
+    const hydratedConfig = mergePromptConfigWithTemplatePreset(promptConfig);
+
+    const baseSystemPrompt =
+        routeMode === "director"
             ? buildDirectorStructuredSystemPrompt(mode, extractionMode, executorTarget)
             : buildExecutorStructuredSystemPrompt(mode, extractionMode, executorTarget);
 
-    const userPrompt =
-        outputRouteMode === "director"
+    const baseUserPrompt =
+        routeMode === "director"
             ? buildDirectorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump)
             : buildExecutorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump);
 
-    const result = await generateContextDocument(
-        {
-            systemContent: systemPrompt,
-            userPrompt,
-            temperature: 0.1,
-            maxTokens: 8192,
-        },
-        primaryProvider
-    );
+    const customSystemLayer = buildPromptCustomizationSystemLayer(routeMode, extractionMode, hydratedConfig);
+    const customUserLayer = buildPromptCustomizationUserLayer(hydratedConfig);
 
-    if (!result?.content) {
-        process.exit(1);
+    return {
+        systemPrompt: [baseSystemPrompt, "", customSystemLayer].join("\n"),
+        userPrompt: [customUserLayer, "", baseUserPrompt].join("\n")
+    };
+}
+
+class GroqClient implements AIClient {
+    readonly name: ProviderName = "groq";
+    private readonly apiKey: string;
+    private readonly model: string;
+
+    constructor(apiKey: string, model: string) {
+        this.apiKey = apiKey;
+        this.model = model;
     }
 
-    let structuredDocument: StructuredOutputDocument;
+    async request(payload: ProviderRequestPayload): Promise<ProviderResponse> {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${this.apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: payload.model ?? this.model,
+                temperature: 0.2,
+                messages: [
+                    { role: "system", content: payload.systemPrompt },
+                    { role: "user", content: payload.userPrompt }
+                ]
+            })
+        });
 
-    try {
-        structuredDocument = parseStructuredDocument(result.content, outputRouteMode);
-    } catch (parseError) {
-        logger.warn(
-            `Saída fora do schema na primeira tentativa. Iniciando reparo estrutural. Motivo: ${
-                parseError instanceof Error ? parseError.message : String(parseError)
-            }`
-        );
-
-        const repairedDocument = await repairStructuredPayload(
-            result.content,
-            projectName,
-            executorTarget,
-            mode,
-            extractionMode,
-            outputRouteMode,
-            primaryProvider
-        );
-
-        if (!repairedDocument) {
-            throw new Error("Não foi possível obter uma saída estruturalmente válida após reparo.");
+        if (!response.ok) {
+            const details = await response.text();
+            throw new AgentRuntimeError("Falha ao consultar Groq.", {
+                status: response.status,
+                details
+            });
         }
 
-        structuredDocument = repairedDocument;
+        const data = (await response.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+            model?: string;
+        };
+
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (!content) {
+            throw new AgentRuntimeError("Groq retornou conteúdo vazio.", { status: 502 });
+        }
+
+        return {
+            provider: "groq",
+            model: data.model ?? this.model,
+            content
+        };
     }
+}
+
+class GeminiClient implements AIClient {
+    readonly name: ProviderName = "gemini";
+    private readonly apiKey: string;
+    private readonly model: string;
+
+    constructor(apiKey: string, model: string) {
+        this.apiKey = apiKey;
+        this.model = model;
+    }
+
+    async request(payload: ProviderRequestPayload): Promise<ProviderResponse> {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            payload.model ?? this.model
+        )}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                generationConfig: {
+                    temperature: 0.2
+                },
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                text: [payload.systemPrompt, "", payload.userPrompt].join("\n")
+                            }
+                        ]
+                    }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const details = await response.text();
+            throw new AgentRuntimeError("Falha ao consultar Gemini.", {
+                status: response.status,
+                details
+            });
+        }
+
+        const data = (await response.json()) as {
+            candidates?: Array<{
+                content?: {
+                    parts?: Array<{ text?: string }>;
+                };
+            }>;
+            modelVersion?: string;
+        };
+
+        const content = data.candidates?.[0]?.content?.parts?.map((item) => item.text ?? "").join("").trim();
+        if (!content) {
+            throw new AgentRuntimeError("Gemini retornou conteúdo vazio.", { status: 502 });
+        }
+
+        return {
+            provider: "gemini",
+            model: data.modelVersion ?? this.model,
+            content
+        };
+    }
+}
+
+class OpenAIClient implements AIClient {
+    readonly name: ProviderName = "openai";
+    private readonly apiKey: string;
+    private readonly model: string;
+
+    constructor(apiKey: string, model: string) {
+        this.apiKey = apiKey;
+        this.model = model;
+    }
+
+    async request(payload: ProviderRequestPayload): Promise<ProviderResponse> {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${this.apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: payload.model ?? this.model,
+                temperature: 0.2,
+                messages: [
+                    { role: "system", content: payload.systemPrompt },
+                    { role: "user", content: payload.userPrompt }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const details = await response.text();
+            throw new AgentRuntimeError("Falha ao consultar OpenAI.", {
+                status: response.status,
+                details
+            });
+        }
+
+        const data = (await response.json()) as {
+            choices?: Array<{ message?: { content?: string } }>;
+            model?: string;
+        };
+
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (!content) {
+            throw new AgentRuntimeError("OpenAI retornou conteúdo vazio.", { status: 502 });
+        }
+
+        return {
+            provider: "openai",
+            model: data.model ?? this.model,
+            content
+        };
+    }
+}
+
+class AnthropicClient implements AIClient {
+    readonly name: ProviderName = "anthropic";
+    private readonly apiKey: string;
+    private readonly model: string;
+
+    constructor(apiKey: string, model: string) {
+        this.apiKey = apiKey;
+        this.model = model;
+    }
+
+    async request(payload: ProviderRequestPayload): Promise<ProviderResponse> {
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+                "x-api-key": this.apiKey,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: payload.model ?? this.model,
+                max_tokens: 4096,
+                temperature: 0.2,
+                system: payload.systemPrompt,
+                messages: [{ role: "user", content: payload.userPrompt }]
+            })
+        });
+
+        if (!response.ok) {
+            const details = await response.text();
+            throw new AgentRuntimeError("Falha ao consultar Anthropic.", {
+                status: response.status,
+                details
+            });
+        }
+
+        const data = (await response.json()) as {
+            content?: Array<{ type?: string; text?: string }>;
+            model?: string;
+        };
+
+        const content = data.content?.filter((item) => item.type === "text").map((item) => item.text ?? "").join("").trim();
+        if (!content) {
+            throw new AgentRuntimeError("Anthropic retornou conteúdo vazio.", { status: 502 });
+        }
+
+        return {
+            provider: "anthropic",
+            model: data.model ?? this.model,
+            content
+        };
+    }
+}
+
+function getEnvValue(keys: string[]): string | null {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (typeof value === "string" && value.trim().length > 0) {
+            return value.trim();
+        }
+    }
+    return null;
+}
+
+function createClient(provider: ProviderName, modelOverride?: string): AIClient {
+    switch (provider) {
+        case "gemini": {
+            const apiKey = getEnvValue(["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
+            if (!apiKey) {
+                throw new AgentRuntimeError("GEMINI_API_KEY/GOOGLE_API_KEY não configurada.", { 
+                    status: 401, 
+                    errorType: "AUTH_ERROR" 
+                });
+            }
+            return new GeminiClient(apiKey, modelOverride ?? "gemini-1.5-pro");
+        }
+        case "openai": {
+            const apiKey = getEnvValue(["OPENAI_API_KEY"]);
+            if (!apiKey) {
+                throw new AgentRuntimeError("OPENAI_API_KEY não configurada.", { 
+                    status: 401, 
+                    errorType: "AUTH_ERROR" 
+                });
+            }
+            return new OpenAIClient(apiKey, modelOverride ?? "gpt-4o");
+        }
+        case "anthropic": {
+            const apiKey = getEnvValue(["ANTHROPIC_API_KEY"]);
+            if (!apiKey) {
+                throw new AgentRuntimeError("ANTHROPIC_API_KEY não configurada.", { 
+                    status: 401, 
+                    errorType: "AUTH_ERROR" 
+                });
+            }
+            return new AnthropicClient(apiKey, modelOverride ?? "claude-3-5-sonnet-20240620");
+        }
+        case "groq":
+        default: {
+            const apiKey = getEnvValue(["GROQ_API_KEY"]);
+            if (!apiKey) {
+                throw new AgentRuntimeError("GROQ_API_KEY não configurada.", { 
+                    status: 401, 
+                    errorType: "AUTH_ERROR" 
+                });
+            }
+            return new GroqClient(apiKey, modelOverride ?? "llama-3.3-70b-versatile");
+        }
+    }
+}
+
+function classifyError(error: unknown): { status: number; errorType: ProviderErrorType; message: string } {
+    if (error instanceof AgentRuntimeError) {
+        return { 
+            status: error.status, 
+            errorType: error.errorType ?? "PROVIDER_DOWN", 
+            message: error.message 
+        };
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    const lowMessage = message.toLowerCase();
+
+    if (lowMessage.includes("401") || lowMessage.includes("unauthorized") || lowMessage.includes("403") || lowMessage.includes("forbidden") || lowMessage.includes("invalid api key")) {
+        return { status: 401, errorType: "AUTH_ERROR", message };
+    }
+    if (lowMessage.includes("429") || lowMessage.includes("rate limit") || lowMessage.includes("too many requests")) {
+        return { status: 429, errorType: "RATE_LIMIT", message };
+    }
+    if (lowMessage.includes("econnreset") || lowMessage.includes("enetunreach") || lowMessage.includes("timeout") || lowMessage.includes("fetch failed") || lowMessage.includes("dns")) {
+        return { status: 503, errorType: "NETWORK_ERROR", message };
+    }
+    if (lowMessage.includes("500") || lowMessage.includes("502") || lowMessage.includes("503") || lowMessage.includes("504")) {
+        return { status: 502, errorType: "PROVIDER_DOWN", message };
+    }
+
+    return { status: 500, errorType: "PROVIDER_DOWN", message };
+}
+
+function buildProviderChain(primary: ProviderName): ProviderName[] {
+    const allProviders: ProviderName[] = ["groq", "gemini", "openai", "anthropic"];
+    return [primary, ...allProviders.filter((item) => item !== primary)];
+}
+
+async function tryProviderChain(
+    primaryProvider: ProviderName,
+    payload: ProviderRequestPayload,
+    modelOverride?: string
+): Promise<ProviderResponse> {
+    const chain = buildProviderChain(primaryProvider);
+    const logDetails: string[] = [];
+    const errorObjects: AgentRuntimeError[] = [];
+
+    for (const provider of chain) {
+        try {
+            const client = createClient(provider, modelOverride);
+            const response = await client.request(payload);
+            return response;
+        } catch (error) {
+            const classified = classifyError(error);
+            const brief = `${provider.toUpperCase()}: [${classified.errorType}] ${classified.message}`;
+            logDetails.push(brief);
+            
+            // Log observability in stderr for HUD capture
+            console.error(`    Skipping ${provider}: ${classified.errorType} (Status ${classified.status})`);
+            
+            errorObjects.push(new AgentRuntimeError(classified.message, {
+                status: classified.status,
+                errorType: classified.errorType,
+                details: brief
+            }));
+        }
+    }
+
+    // Preserve the "best" error to define exit code status
+    // Priority: AUTH_ERROR > RATE_LIMIT > PROVIDER_DOWN > NETWORK_ERROR
+    const priority: ProviderErrorType[] = ["AUTH_ERROR", "RATE_LIMIT", "PROVIDER_DOWN", "NETWORK_ERROR"];
+    let bestError = errorObjects[0];
+
+    for (const pType of priority) {
+        const found = errorObjects.find(e => e.errorType === pType);
+        if (found) {
+            bestError = found;
+            break;
+        }
+    }
+
+    throw new AgentRuntimeError("Falha em toda a cadeia de providers.", {
+        status: bestError?.status ?? 502,
+        errorType: bestError?.errorType ?? "PROVIDER_DOWN",
+        details: logDetails.join(" | ")
+    });
+}
+
+async function repairStructuredPayload(
+    content: string,
+    routeMode: OutputRouteMode,
+    mode: DocumentMode,
+    extractionMode: ExtractionMode,
+    primaryProvider: ProviderName,
+    modelOverride?: string
+): Promise<StructuredOutputDocument> {
+    const candidate = extractJsonCandidate(content);
+    if (!candidate) {
+        throw new AgentRuntimeError("Nenhum JSON candidato encontrado na resposta do provider.", { status: 422 });
+    }
+
+    try {
+        validateForbiddenPatterns(candidate);
+        const parsed = safeJsonParse<unknown>(candidate, null);
+        return parseStructuredDocument(parsed);
+    } catch {
+        const repairPayload: ProviderRequestPayload = {
+            systemPrompt: buildRepairPrompt(routeMode, mode, extractionMode),
+            userPrompt: candidate
+        };
+
+        const repaired = await tryProviderChain(primaryProvider, repairPayload, modelOverride);
+        const repairedCandidate = extractJsonCandidate(repaired.content);
+        if (!repairedCandidate) {
+            throw new AgentRuntimeError("Repair falhou: JSON candidato ausente.", { status: 422 });
+        }
+
+        validateForbiddenPatterns(repairedCandidate);
+        const repairedParsed = safeJsonParse<unknown>(repairedCandidate, null);
+        return parseStructuredDocument(repairedParsed);
+    }
+}
+
+async function main(): Promise<void> {
+    const args = parseCliArgs(process.argv.slice(2));
+
+    const bundlePath = args.bundlePath ?? args.bundle ?? args.input;
+    if (!bundlePath) {
+        throw new AgentRuntimeError("Parâmetro obrigatório ausente: --bundlePath", { status: 400 });
+    }
+
+    const provider = normalizeProviderName(args.provider);
+    const modelOverride = args.model;
+    const executorTarget = (args.executorTarget ?? "AI Studio Apps").trim();
+    const promptConfigFilePath = args.promptConfigFilePath;
+    const explicitProjectName = args.projectName;
+    const explicitOutputPath = args.outputPath;
+    const explicitResultMetaPath = args.resultMetaPath;
+    const explicitRouteMode = args.routeMode ? normalizeOutputRouteMode(args.routeMode) : null;
+
+    const absolutePath = path.resolve(bundlePath);
+    const sourceArtifactName = path.basename(absolutePath);
+    const technicalBundleDump = await readTextFile(absolutePath);
+
+    const inferredProjectName =
+        explicitProjectName?.trim() ||
+        sourceArtifactName
+            .replace(/^_+(Diretor|Executor)_/i, "")
+            .replace(/^_+(BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)/i, "")
+            .replace(/\.md$/i, "");
+
+    const bundleMode =
+        args.extractionMode ??
+        args.mode ??
+        (sourceArtifactName.toLowerCase().includes("inteligente") || sourceArtifactName.toLowerCase().includes("blueprint")
+            ? "blueprint"
+            : sourceArtifactName.toLowerCase().includes("manual") || sourceArtifactName.toLowerCase().includes("selective")
+            ? "sniper"
+            : "full");
+
+    const extractionMode = normalizeExtractionMode(bundleMode, path.basename(absolutePath));
+    const mode: DocumentMode = resolveDocumentModeFromExtractionMode(extractionMode);
+    const outputRouteMode = explicitRouteMode ?? (sourceArtifactName.toLowerCase().includes("_executor_") ? "executor" : "director");
+
+    const promptConfig = await readOptionalPromptConfig(promptConfigFilePath, outputRouteMode, extractionMode, executorTarget);
+
+    console.error(
+        `Pipeline estruturado ativo | routeMode=${outputRouteMode} | extractionMode=${extractionMode} | promptMode=${promptConfig.promptMode}`
+    );
+
+    const promptPayload = buildAugmentedPromptBundle({
+        projectName: inferredProjectName,
+        technicalBundleDump,
+        executorTarget,
+        routeMode: outputRouteMode,
+        mode,
+        extractionMode,
+        promptConfig
+    });
+
+    const providerResponse = await tryProviderChain(provider, promptPayload, modelOverride);
+    const structuredDocument = await repairStructuredPayload(
+        providerResponse.content,
+        outputRouteMode,
+        mode,
+        extractionMode,
+        provider,
+        modelOverride
+    );
 
     const finalMarkdown = buildStructuredMarkdownDocument(structuredDocument, technicalBundleDump, extractionMode);
 
-    await fs.writeFile(outputPath, finalMarkdown, "utf-8");
-    await fs.writeFile(
-        resultMetaPath,
+    const outputBaseDir = path.dirname(absolutePath);
+    const routePrefix = outputRouteMode === "director" ? "_diretor_AI_CONTEXT_" : "_executor_AI_CONTEXT_";
+    const fallbackOutputPath = path.join(outputBaseDir, `${routePrefix}${inferredProjectName}.md`);
+    const finalOutputPath = explicitOutputPath ? path.resolve(explicitOutputPath) : fallbackOutputPath;
+
+    const fallbackResultMetaPath = path.join(
+        outputBaseDir,
+        `${outputRouteMode === "director" ? "_diretor_AI_RESULT_" : "_executor_AI_RESULT_"}${inferredProjectName}.json`
+    );
+    const finalResultMetaPath = explicitResultMetaPath ? path.resolve(explicitResultMetaPath) : fallbackResultMetaPath;
+
+    await writeTextFile(finalOutputPath, finalMarkdown);
+
+    const resultMeta = {
+        ok: true,
+        provider: providerResponse.provider,
+        model: providerResponse.model,
+        routeMode: outputRouteMode,
+        extractionMode,
+        documentMode: mode,
+        promptMode: promptConfig.promptMode,
+        templateId: promptConfig.templateId,
+        hasAdditionalInstructions: Boolean(promptConfig.additionalInstructions),
+        hasExpertOverride: Boolean(promptConfig.expertSystemPrompt),
+        outputPath: finalOutputPath,
+        bundlePath: absolutePath,
+        generatedAt: getCurrentTimestampIso()
+    };
+
+    await writeTextFile(finalResultMetaPath, JSON.stringify(resultMeta, null, 2));
+
+    // FIX (bug 5): emit structured marker on stdout so PowerShell can parse provider/model
+    // without relying solely on the result JSON file on disk.
+    process.stdout.write(
+        `[AI_RESULT] provider=${providerResponse.provider};model=${providerResponse.model}\n`
+    );
+
+    process.stdout.write(
         JSON.stringify(
             {
-                provider: result.provider,
-                model: result.model,
-                outputPath,
-                promptMode: "default",
-                outputRouteMode,
+                ok: true,
+                outputPath: finalOutputPath,
+                resultMetaPath: finalResultMetaPath,
+                provider: providerResponse.provider,
+                model: providerResponse.model,
+                routeMode: outputRouteMode,
                 extractionMode,
+                promptMode: promptConfig.promptMode,
+                templateId: promptConfig.templateId
             },
             null,
             2
-        ),
-        "utf-8"
+        )
     );
-
-    logger.info(`[AI_RESULT] provider=${result.provider};model=${result.model}`);
-    logger.info(`Contexto gerado via ${result.provider} (${result.model}) em: ${prefix}AI_CONTEXT_${projectName}.md`);
 }
 
-main().catch((err) => {
-    logger.error("Falha fatal", err);
-    process.exit(1);
+main().catch((error) => {
+    const status = error instanceof AgentRuntimeError ? error.status : 500;
+    const message = error instanceof Error ? error.message : String(error);
+    const details = error instanceof AgentRuntimeError ? error.details : undefined;
+
+    if (details) {
+        console.error(`[!] ERRO: ${message}`);
+        console.error(`    Detalhes técnicos: ${details}`);
+    } else {
+        console.error(`[!] ERRO: ${message}`);
+    }
+
+    // FIX (bug 3): differentiate exit codes — auth failures = 1, server/parse errors = 2
+    process.exit(status === 401 || status === 403 ? 1 : 2);
 });

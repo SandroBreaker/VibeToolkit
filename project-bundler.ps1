@@ -79,6 +79,17 @@ $ProviderDefaultModels = @{
     anthropic = "claude-3-5-sonnet-20240620"
 }
 
+$TemplateOptions = @(
+    [pscustomobject]@{ Id = "director.full.diagnostic"; Name = "[Diretor] Diagnóstico Root Cause" },
+    [pscustomobject]@{ Id = "director.full.feature-planning"; Name = "[Diretor] Feature Planning" },
+    [pscustomobject]@{ Id = "director.full.architecture-review"; Name = "[Diretor] Architecture Review" },
+    [pscustomobject]@{ Id = "director.full.hardening"; Name = "[Diretor] Security Hardening" },
+    [pscustomobject]@{ Id = "executor.full.surgical-patch"; Name = "[Executor] Surgical Patch" },
+    [pscustomobject]@{ Id = "executor.full.feature-implementation"; Name = "[Executor] Feature Implementation" },
+    [pscustomobject]@{ Id = "executor.full.safe-refactor"; Name = "[Executor] Safe Refactor" },
+    [pscustomobject]@{ Id = "executor.full.regression-fix"; Name = "[Executor] Regression Fix" }
+)
+
 function Test-IsGeneratedArtifactFileName {
     param([string]$FileName)
     if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
@@ -115,10 +126,11 @@ if ($FoundFiles.Count -eq 0) {
 
 # ── UI resolve helpers ────────────────────────────────────────────
 function Resolve-ChoiceFromUI {
-    param($RbFull, $RbArchitect, $RbSniper)
-    if ($RbFull.Checked)     { return '1' }
-    if ($RbArchitect.Checked){ return '2' }
-    if ($RbSniper.Checked)   { return '3' }
+    param($RbFull, $RbArchitect, $RbSniper, $RbTxtExport)
+    if ($RbFull.Checked)      { return '1' }
+    if ($RbArchitect.Checked) { return '2' }
+    if ($RbSniper.Checked)    { return '3' }
+    if ($RbTxtExport.Checked) { return '4' }
     return $null
 }
 
@@ -135,6 +147,164 @@ function Resolve-DocumentModeFromExtractionMode {
     param([string]$ExtractionMode)
     if ($ExtractionMode -eq 'sniper') { return 'manual' }
     return 'full'
+}
+
+function New-TxtExportOutputDirectory {
+    param(
+        [string]$BaseDirectory,
+        [string]$ProjectNameValue
+    )
+
+    $rootName = "_TXT_EXPORT__${ProjectNameValue}"
+    $candidate = Join-Path $BaseDirectory $rootName
+    $suffix = 2
+
+    while (Test-Path $candidate) {
+        $candidate = Join-Path $BaseDirectory ("{0}__{1}" -f $rootName, $suffix)
+        $suffix++
+    }
+
+    [System.IO.Directory]::CreateDirectory($candidate) | Out-Null
+    return $candidate
+}
+
+function Convert-SourceFileToTxtExportName {
+    param(
+        [string]$FullPath,
+        [string]$ProjectRootPath
+    )
+
+    $fullPathResolved = [System.IO.Path]::GetFullPath($FullPath)
+    $projectRootResolved = [System.IO.Path]::GetFullPath($ProjectRootPath)
+    $relativePath = $null
+
+    $getRelativePathMethod = [System.IO.Path].GetMethod("GetRelativePath", [type[]]@([string], [string]))
+    if ($null -ne $getRelativePathMethod) {
+        $relativePath = [System.IO.Path]::GetRelativePath($projectRootResolved, $fullPathResolved)
+    } else {
+        $basePathForUri = $projectRootResolved
+        if (-not $basePathForUri.EndsWith([System.IO.Path]::DirectorySeparatorChar) -and -not $basePathForUri.EndsWith([System.IO.Path]::AltDirectorySeparatorChar)) {
+            $basePathForUri += [System.IO.Path]::DirectorySeparatorChar
+        }
+
+        $projectRootUri = New-Object System.Uri($basePathForUri)
+        $fullPathUri = New-Object System.Uri($fullPathResolved)
+
+        if ($projectRootUri.IsBaseOf($fullPathUri)) {
+            $relativePath = [System.Uri]::UnescapeDataString($projectRootUri.MakeRelativeUri($fullPathUri).ToString())
+            $relativePath = $relativePath -replace '/', [string][System.IO.Path]::DirectorySeparatorChar
+        } else {
+            $relativePath = $fullPathResolved
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($relativePath) -or $relativePath -eq ".") {
+        $relativePath = [System.IO.Path]::GetFileName($fullPathResolved)
+    }
+
+    $safeName = $relativePath `
+        -replace '^[\/\.]+', '' `
+        -replace '[\/]+', '__' `
+        -replace '[:*?"<>|]', '_'
+
+    if ([string]::IsNullOrWhiteSpace($safeName)) {
+        $safeName = [System.IO.Path]::GetFileName($fullPathResolved)
+    }
+
+    return "${safeName}.txt"
+}
+
+function Test-IsLikelyBinaryFile {
+    param([string]$FilePath)
+
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($FilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $buffer = New-Object byte[] 4096
+        $read = $stream.Read($buffer, 0, $buffer.Length)
+
+        if ($read -le 0) {
+            return $false
+        }
+
+        for ($i = 0; $i -lt $read; $i++) {
+            if ($buffer[$i] -eq 0) {
+                return $true
+            }
+        }
+
+        return $false
+    } finally {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+    }
+}
+
+function Read-TextContentForTxtExport {
+    param([string]$FilePath)
+
+    $reader = $null
+    try {
+        $reader = New-Object System.IO.StreamReader($FilePath, $true)
+        return $reader.ReadToEnd()
+    } finally {
+        if ($null -ne $reader) {
+            $reader.Dispose()
+        }
+    }
+}
+
+function Export-OperationFilesToTxtDirectory {
+    param(
+        [object[]]$Files,
+        [string]$ProjectRootPath,
+        [string]$BaseOutputDirectory,
+        [string]$ProjectNameValue
+    )
+
+    $utf8NoBomLocal = New-Object System.Text.UTF8Encoding($false)
+    $outputDirectory = New-TxtExportOutputDirectory -BaseDirectory $BaseOutputDirectory -ProjectNameValue $ProjectNameValue
+    $exportedFiles = New-Object System.Collections.Generic.List[string]
+    $skippedFiles = New-Object System.Collections.Generic.List[string]
+
+    foreach ($sourceFile in $Files) {
+        try {
+            $sourcePath = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
+            if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path $sourcePath -PathType Leaf)) {
+                Write-UILog -Message "TXT Export ignorado: arquivo não encontrado -> $sourcePath" -Color $ThemeWarn
+                $skippedFiles.Add([string]$sourcePath) | Out-Null
+                continue
+            }
+
+            $resolvedSource = (Resolve-Path $sourcePath).Path
+
+            if (Test-IsLikelyBinaryFile -FilePath $resolvedSource) {
+                Write-UILog -Message "TXT Export ignorado: arquivo binário/incompatível -> $resolvedSource" -Color $ThemeWarn
+                $skippedFiles.Add($resolvedSource) | Out-Null
+                continue
+            }
+
+            $content = Read-TextContentForTxtExport -FilePath $resolvedSource
+            $targetName = Convert-SourceFileToTxtExportName -FullPath $resolvedSource -ProjectRootPath $ProjectRootPath
+            $targetPath = Join-Path $outputDirectory $targetName
+
+            [System.IO.File]::WriteAllText($targetPath, $content, $utf8NoBomLocal)
+            $exportedFiles.Add($targetPath) | Out-Null
+
+            Write-UILog -Message "TXT gerado: $targetName" -Color $ThemeCyan
+        } catch {
+            $failedPath = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
+            Write-UILog -Message "Falha ao exportar TXT: $failedPath :: $($_.Exception.Message)" -Color $ThemePink
+            $skippedFiles.Add([string]$failedPath) | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        OutputDirectory = $outputDirectory
+        ExportedFiles   = $exportedFiles
+        SkippedFiles    = $skippedFiles
+    }
 }
 
 function Get-ExtractionModeLabel {
@@ -156,8 +326,9 @@ function Resolve-AIProviderFromUI {
 }
 
 function Resolve-AIPromptModeFromUI {
-    param($RbDefault, $RbCustom)
-    if ($RbCustom.Checked) { return "custom" }
+    param($RbDefault, $RbTemplate, $RbExpert)
+    if ($RbTemplate.Checked) { return "template" }
+    if ($RbExpert.Checked) { return "expert" }
     return "default"
 }
 
@@ -521,7 +692,7 @@ $panelMode = New-Object System.Windows.Forms.GroupBox
 $panelMode.Text = "Modo de Extração"
 $panelMode.ForeColor = $ThemeCyan
 $panelMode.BackColor = $ThemePanel
-$panelMode.Size = New-Object System.Drawing.Size(395, 192)
+$panelMode.Size = New-Object System.Drawing.Size(395, 238)
 $panelMode.Location = New-Object System.Drawing.Point(18, 84)
 $panelMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $panelMode.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
@@ -568,14 +739,37 @@ $rbSniper.Location = New-Object System.Drawing.Point(18, 126)
 $rbSniper.Size = New-Object System.Drawing.Size(330, 24)
 $panelMode.Controls.Add($rbSniper)
 
-# Separator
+$lblSniper = New-Object System.Windows.Forms.Label
+$lblSniper.Text = "Recorte manual com foco cirúrgico."
+$lblSniper.ForeColor = $ThemeMuted; $lblSniper.BackColor = $ThemePanel
+$lblSniper.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblSniper.AutoSize = $true
+$lblSniper.Location = New-Object System.Drawing.Point(38, 150)
+$panelMode.Controls.Add($lblSniper)
+
+$rbTxtExport = New-Object System.Windows.Forms.RadioButton
+$rbTxtExport.Text = "TXT Export — pasta com arquivos separados"
+$rbTxtExport.ForeColor = $ThemeText; $rbTxtExport.BackColor = $ThemePanel
+$rbTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbTxtExport.Location = New-Object System.Drawing.Point(18, 172)
+$rbTxtExport.Size = New-Object System.Drawing.Size(350, 24)
+$panelMode.Controls.Add($rbTxtExport)
+
+$lblTxtExport = New-Object System.Windows.Forms.Label
+$lblTxtExport.Text = "Cria nova pasta e salva cada arquivo da operação em .txt."
+$lblTxtExport.ForeColor = $ThemeMuted; $lblTxtExport.BackColor = $ThemePanel
+$lblTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblTxtExport.AutoSize = $true
+$lblTxtExport.Location = New-Object System.Drawing.Point(38, 196)
+$panelMode.Controls.Add($lblTxtExport)
+
 $lblModeSep = New-Object System.Windows.Forms.Label
 $lblModeSep.Text = "EXECUTOR ALVO"
 $lblModeSep.ForeColor = $ThemeMuted
 $lblModeSep.BackColor = $ThemePanel
 $lblModeSep.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
 $lblModeSep.AutoSize = $true
-$lblModeSep.Location = New-Object System.Drawing.Point(18, 160)
+$lblModeSep.Location = New-Object System.Drawing.Point(18, 218)
 $panelMode.Controls.Add($lblModeSep)
 
 $cmbExecutorInline = New-Object System.Windows.Forms.ComboBox
@@ -583,7 +777,7 @@ $cmbExecutorInline.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDow
 $cmbExecutorInline.BackColor = $ThemePanelAlt
 $cmbExecutorInline.ForeColor = $ThemeText
 $cmbExecutorInline.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$cmbExecutorInline.Location = New-Object System.Drawing.Point(130, 155)
+$cmbExecutorInline.Location = New-Object System.Drawing.Point(130, 213)
 $cmbExecutorInline.Size = New-Object System.Drawing.Size(220, 26)
 [void]$cmbExecutorInline.Items.Add("AI Studio Apps")
 [void]$cmbExecutorInline.Items.Add("Antigravity")
@@ -636,7 +830,6 @@ $rbAnthropic.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $rbAnthropic.Location = New-Object System.Drawing.Point(312, 56); $rbAnthropic.Size = New-Object System.Drawing.Size(88, 24)
 $panelProvider.Controls.Add($rbAnthropic)
 
-# Provider chain progress bar (dots)
 $pnlProviderChain = New-Object System.Windows.Forms.Panel
 $pnlProviderChain.BackColor = $ThemePanel
 $pnlProviderChain.Location = New-Object System.Drawing.Point(18, 90)
@@ -707,7 +900,6 @@ $lblFallbackHint.AutoSize = $true
 $lblFallbackHint.Location = New-Object System.Drawing.Point(18, 142)
 $panelProvider.Controls.Add($lblFallbackHint)
 
-# NOVA: linha informativa "Gerar com IA" para ativar provider
 $lblProviderDisabled = New-Object System.Windows.Forms.Label
 $lblProviderDisabled.Text = "Ative 'Gerar com IA' abaixo para usar o orquestrador."
 $lblProviderDisabled.ForeColor = $ThemeWarn
@@ -719,7 +911,7 @@ $lblProviderDisabled.Visible = $true
 $panelProvider.Controls.Add($lblProviderDisabled)
 
 # ══════════════════════════════════════════════════════════════════
-# STATUS BAR (tokens · arquivos · projeto · ENERGIZE)
+# STATUS BAR
 # ══════════════════════════════════════════════════════════════════
 $panelStatus = New-Object System.Windows.Forms.Panel
 $panelStatus.BackColor = $ThemePanelAlt
@@ -760,7 +952,7 @@ $btnRun.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.F
 $panelStatus.Controls.Add($btnRun)
 
 # ══════════════════════════════════════════════════════════════════
-# SNIPER PANEL (accordion: search + chips + tree)
+# SNIPER PANEL
 # ══════════════════════════════════════════════════════════════════
 $panelSniper = New-Object System.Windows.Forms.GroupBox
 $panelSniper.Text = "Preview de Arquivos — Sniper Mode"
@@ -773,7 +965,6 @@ $panelSniper.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Wind
 $panelSniper.Visible = $false
 $form.Controls.Add($panelSniper)
 
-# Search box
 $txtSniperSearch = New-Object System.Windows.Forms.TextBox
 $txtSniperSearch.BackColor = $ThemePanelAlt
 $txtSniperSearch.ForeColor = $ThemeMuted
@@ -792,7 +983,6 @@ $lblSniperHint.AutoSize = $true
 $lblSniperHint.Location = New-Object System.Drawing.Point(380, 30)
 $panelSniper.Controls.Add($lblSniperHint)
 
-# Quick actions toolbar
 $sniperToolbar = New-Object System.Windows.Forms.Panel
 $sniperToolbar.BackColor = $ThemePanel
 $sniperToolbar.Location = New-Object System.Drawing.Point(18, 56)
@@ -819,7 +1009,6 @@ $btnSelectAll   = New-SniperButton -Text "✔ Tudo"   -X 0   -Width 72
 $btnDeselectAll = New-SniperButton -Text "✘ Nenhum" -X 76  -Width 80
 $sniperToolbar.Controls.AddRange(@($btnSelectAll, $btnDeselectAll))
 
-# Extension chips panel
 $lblChipsLabel = New-Object System.Windows.Forms.Label
 $lblChipsLabel.Text = "EXT:"
 $lblChipsLabel.ForeColor = $ThemeMuted; $lblChipsLabel.BackColor = $ThemePanel
@@ -859,7 +1048,6 @@ foreach ($ext in $uniqueExtensions) {
     $x += $chipWidth + 4
 }
 
-# TreeView
 $treeFiles = New-Object System.Windows.Forms.TreeView
 $treeFiles.CheckBoxes = $true
 $treeFiles.BackColor = $ThemePanelAlt
@@ -873,7 +1061,6 @@ $treeFiles.ShowLines = $true; $treeFiles.ShowPlusMinus = $true
 $treeFiles.ShowNodeToolTips = $true; $treeFiles.HideSelection = $false
 $panelSniper.Controls.Add($treeFiles)
 
-# Populate tree
 foreach ($file in $FoundFiles) {
     $relPath = (Resolve-Path -Path $file.FullName -Relative).TrimStart('.').TrimStart('\').TrimStart('/')
     $parts = $relPath -split '[/\\]'
@@ -905,7 +1092,6 @@ $lblFileCount.AutoSize = $true
 $lblFileCount.Location = New-Object System.Drawing.Point(18, 252)
 $panelSniper.Controls.Add($lblFileCount)
 
-# ── Tree helpers ──────────────────────────────────────────────────
 function Get-AllFileNodes {
     param($Nodes)
     foreach ($node in $Nodes) {
@@ -1023,7 +1209,7 @@ $btnDeselectAll.Add_Click({
 })
 
 # ══════════════════════════════════════════════════════════════════
-# CHECKBOX: GERAR COM IA
+# CHECKBOX: GERAR COM IA E FLUXO FINAL
 # ══════════════════════════════════════════════════════════════════
 $chkSendToAI = New-Object System.Windows.Forms.CheckBox
 $chkSendToAI.Text = "Gerar o Prompt Final com IA ao concluir"
@@ -1034,9 +1220,6 @@ $chkSendToAI.Location = New-Object System.Drawing.Point(18, 336)
 $chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $form.Controls.Add($chkSendToAI)
 
-# ══════════════════════════════════════════════════════════════════
-# PANEL: FLUXO FINAL / GERAÇÃO COM IA
-# ══════════════════════════════════════════════════════════════════
 $panelAIPromptMode = New-Object System.Windows.Forms.GroupBox
 $panelAIPromptMode.Text = "Fluxo Final / Geração com IA"
 $panelAIPromptMode.ForeColor = $ThemePink
@@ -1081,7 +1264,7 @@ $lblAIFlowHint.Location = New-Object System.Drawing.Point(18, 76)
 $panelAIPromptMode.Controls.Add($lblAIFlowHint)
 
 $lblAIPromptMode = New-Object System.Windows.Forms.Label
-$lblAIPromptMode.Text = "SYSTEMPROMPT"
+$lblAIPromptMode.Text = "MODO DE CUSTOMIZAÇÃO"
 $lblAIPromptMode.ForeColor = $ThemeCyan; $lblAIPromptMode.BackColor = $ThemePanel
 $lblAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
 $lblAIPromptMode.AutoSize = $true
@@ -1090,42 +1273,100 @@ $lblAIPromptMode.Visible = $false
 $panelAIPromptMode.Controls.Add($lblAIPromptMode)
 
 $rbPromptModeDefault = New-Object System.Windows.Forms.RadioButton
-$rbPromptModeDefault.Text = "Modo padrão"
+$rbPromptModeDefault.Text = "Default"
 $rbPromptModeDefault.ForeColor = $ThemeText; $rbPromptModeDefault.BackColor = $ThemePanel
 $rbPromptModeDefault.Font = New-Object System.Drawing.Font("Segoe UI", 10)
 $rbPromptModeDefault.Location = New-Object System.Drawing.Point(18, 118)
-$rbPromptModeDefault.Size = New-Object System.Drawing.Size(140, 24)
+$rbPromptModeDefault.Size = New-Object System.Drawing.Size(100, 24)
 $rbPromptModeDefault.Checked = $true
 $rbPromptModeDefault.Visible = $false
 $panelAIPromptMode.Controls.Add($rbPromptModeDefault)
 
-$rbPromptModeCustom = New-Object System.Windows.Forms.RadioButton
-$rbPromptModeCustom.Text = "Modo personalizado"
-$rbPromptModeCustom.ForeColor = $ThemeText; $rbPromptModeCustom.BackColor = $ThemePanel
-$rbPromptModeCustom.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbPromptModeCustom.Location = New-Object System.Drawing.Point(180, 118)
-$rbPromptModeCustom.Size = New-Object System.Drawing.Size(180, 24)
-$rbPromptModeCustom.Visible = $false
-$panelAIPromptMode.Controls.Add($rbPromptModeCustom)
+$rbPromptModeTemplate = New-Object System.Windows.Forms.RadioButton
+$rbPromptModeTemplate.Text = "Template"
+$rbPromptModeTemplate.ForeColor = $ThemeText; $rbPromptModeTemplate.BackColor = $ThemePanel
+$rbPromptModeTemplate.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbPromptModeTemplate.Location = New-Object System.Drawing.Point(130, 118)
+$rbPromptModeTemplate.Size = New-Object System.Drawing.Size(120, 24)
+$rbPromptModeTemplate.Visible = $false
+$panelAIPromptMode.Controls.Add($rbPromptModeTemplate)
 
-$lblAIPromptModeHint = New-Object System.Windows.Forms.Label
-$lblAIPromptModeHint.Text = "Modo padrão usa o fluxo nativo. Personalizado envia o systemPrompt abaixo."
-$lblAIPromptModeHint.ForeColor = $ThemeMuted; $lblAIPromptModeHint.BackColor = $ThemePanel
-$lblAIPromptModeHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
-$lblAIPromptModeHint.AutoSize = $true
-$lblAIPromptModeHint.Location = New-Object System.Drawing.Point(18, 144)
-$lblAIPromptModeHint.Visible = $false
-$panelAIPromptMode.Controls.Add($lblAIPromptModeHint)
+$rbPromptModeExpert = New-Object System.Windows.Forms.RadioButton
+$rbPromptModeExpert.Text = "Expert Override"
+$rbPromptModeExpert.ForeColor = $ThemeText; $rbPromptModeExpert.BackColor = $ThemePanel
+$rbPromptModeExpert.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbPromptModeExpert.Location = New-Object System.Drawing.Point(260, 118)
+$rbPromptModeExpert.Size = New-Object System.Drawing.Size(180, 24)
+$rbPromptModeExpert.Visible = $false
+$panelAIPromptMode.Controls.Add($rbPromptModeExpert)
 
-$lblCustomSystemPrompt = New-Object System.Windows.Forms.Label
-$lblCustomSystemPrompt.Text = "SystemPrompt personalizado"
-$lblCustomSystemPrompt.ForeColor = $ThemeCyan; $lblCustomSystemPrompt.BackColor = $ThemePanel
-$lblCustomSystemPrompt.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
-$lblCustomSystemPrompt.AutoSize = $true
-$lblCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 170)
-$lblCustomSystemPrompt.Visible = $false
-$panelAIPromptMode.Controls.Add($lblCustomSystemPrompt)
+# ---- CAMPOS DO MODO TEMPLATE ----
+$pnlTemplateFields = New-Object System.Windows.Forms.Panel
+$pnlTemplateFields.BackColor = $ThemePanel
+$pnlTemplateFields.Location = New-Object System.Drawing.Point(18, 146)
+$pnlTemplateFields.Size = New-Object System.Drawing.Size(788, 164)
+$pnlTemplateFields.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$pnlTemplateFields.Visible = $false
+$panelAIPromptMode.Controls.Add($pnlTemplateFields)
 
+function Add-TemplateFieldLabel {
+    param([string]$Text, [int]$X, [int]$Y)
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = $Text
+    $lbl.ForeColor = $ThemeMuted; $lbl.BackColor = $ThemePanel
+    $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+    $lbl.AutoSize = $true
+    $lbl.Location = New-Object System.Drawing.Point($X, $Y)
+    $pnlTemplateFields.Controls.Add($lbl)
+}
+
+function Add-TemplateFieldTextBox {
+    param([int]$X, [int]$Y, [int]$W)
+    $txt = New-Object System.Windows.Forms.TextBox
+    $txt.BackColor = $ThemePanelAlt; $txt.ForeColor = $ThemeText
+    $txt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $txt.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $txt.Location = New-Object System.Drawing.Point($X, $Y)
+    $txt.Size = New-Object System.Drawing.Size($W, 23)
+    $pnlTemplateFields.Controls.Add($txt)
+    return $txt
+}
+
+Add-TemplateFieldLabel -Text "Template:" -X 0 -Y 3
+$cmbTemplateId = New-Object System.Windows.Forms.ComboBox
+$cmbTemplateId.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$cmbTemplateId.BackColor = $ThemePanelAlt; $cmbTemplateId.ForeColor = $ThemeText
+$cmbTemplateId.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$cmbTemplateId.Location = New-Object System.Drawing.Point(64, 0)
+$cmbTemplateId.Size = New-Object System.Drawing.Size(320, 23)
+foreach ($opt in $TemplateOptions) { [void]$cmbTemplateId.Items.Add($opt.Name) }
+if ($cmbTemplateId.Items.Count -gt 0) { $cmbTemplateId.SelectedIndex = 0 }
+$pnlTemplateFields.Controls.Add($cmbTemplateId)
+
+Add-TemplateFieldLabel -Text "Objetivo:" -X 0 -Y 35
+$txtTemplateObjective = Add-TemplateFieldTextBox -X 64 -Y 32 -W 320
+
+Add-TemplateFieldLabel -Text "Entrega:" -X 400 -Y 35
+$txtTemplateDelivery = Add-TemplateFieldTextBox -X 456 -Y 32 -W 320
+
+Add-TemplateFieldLabel -Text "Tags:" -X 0 -Y 67
+$txtTemplateFocus = Add-TemplateFieldTextBox -X 64 -Y 64 -W 320
+
+Add-TemplateFieldLabel -Text "Restrições:" -X 400 -Y 67
+$txtTemplateConstraints = Add-TemplateFieldTextBox -X 468 -Y 64 -W 308
+
+Add-TemplateFieldLabel -Text "Instruções:" -X 0 -Y 99
+$txtTemplateAdditional = New-Object System.Windows.Forms.TextBox
+$txtTemplateAdditional.Multiline = $true; $txtTemplateAdditional.AcceptsReturn = $true
+$txtTemplateAdditional.BackColor = $ThemePanelAlt; $txtTemplateAdditional.ForeColor = $ThemeText
+$txtTemplateAdditional.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$txtTemplateAdditional.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$txtTemplateAdditional.Location = New-Object System.Drawing.Point(64, 96)
+$txtTemplateAdditional.Size = New-Object System.Drawing.Size(712, 60)
+$txtTemplateAdditional.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+$pnlTemplateFields.Controls.Add($txtTemplateAdditional)
+
+# ---- CAMPO DO MODO EXPERT ----
 $txtCustomSystemPrompt = New-Object System.Windows.Forms.TextBox
 $txtCustomSystemPrompt.Multiline = $true; $txtCustomSystemPrompt.AcceptsReturn = $true
 $txtCustomSystemPrompt.AcceptsTab = $true
@@ -1133,7 +1374,7 @@ $txtCustomSystemPrompt.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
 $txtCustomSystemPrompt.BackColor = $ThemePanelAlt; $txtCustomSystemPrompt.ForeColor = $ThemeText
 $txtCustomSystemPrompt.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $txtCustomSystemPrompt.Font = New-Object System.Drawing.Font("Consolas", 9)
-$txtCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 192)
+$txtCustomSystemPrompt.Location = New-Object System.Drawing.Point(18, 146)
 $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size(788, 86)
 $txtCustomSystemPrompt.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $txtCustomSystemPrompt.Visible = $false
@@ -1245,18 +1486,26 @@ function Update-ProviderStatus {
 # ══════════════════════════════════════════════════════════════════
 function Update-AIPromptModeUi {
     $promptVisible = $chkSendToAI.Checked
-    $customVisible = $promptVisible -and $rbPromptModeCustom.Checked
+    $tplVis = $promptVisible -and $rbPromptModeTemplate.Checked
+    $expVis = $promptVisible -and $rbPromptModeExpert.Checked
 
     $lblAIPromptMode.Visible      = $promptVisible
     $rbPromptModeDefault.Visible  = $promptVisible
-    $rbPromptModeCustom.Visible   = $promptVisible
-    $lblAIPromptModeHint.Visible  = $promptVisible
-    $lblCustomSystemPrompt.Visible = $customVisible
-    $txtCustomSystemPrompt.Visible = $customVisible
+    $rbPromptModeTemplate.Visible = $promptVisible
+    $rbPromptModeExpert.Visible   = $promptVisible
 
-    if ($customVisible)      { $panelAIPromptMode.Height = 292 }
-    elseif ($promptVisible)  { $panelAIPromptMode.Height = 168 }
-    else                     { $panelAIPromptMode.Height = 92  }
+    $pnlTemplateFields.Visible = $tplVis
+    $txtCustomSystemPrompt.Visible = $expVis
+
+    if ($tplVis) {
+        $panelAIPromptMode.Height = 320
+    } elseif ($expVis) {
+        $panelAIPromptMode.Height = 246
+    } elseif ($promptVisible) {
+        $panelAIPromptMode.Height = 156
+    } else {
+        $panelAIPromptMode.Height = 92
+    }
 
     Update-ProviderStatus
     Update-ResponsiveLayout
@@ -1284,7 +1533,6 @@ function Update-ResponsiveLayout {
     $leftWidth   = [int][Math]::Floor(($usableWidth - $colGap) / 2)
     $rightWidth  = [int]($usableWidth - $leftWidth - $colGap)
 
-    # Row 1: mode + provider
     $panelMode.Location = New-Object System.Drawing.Point($leftGap, $topContentY)
     $panelMode.Size     = New-Object System.Drawing.Size($leftWidth, $panelHeight)
 
@@ -1299,16 +1547,13 @@ function Update-ResponsiveLayout {
     $lblFallbackHint.MaximumSize     = New-Object System.Drawing.Size($innerProviderW, 0)
     $lblProviderDisabled.MaximumSize = New-Object System.Drawing.Size($innerProviderW, 0)
 
-    # Status bar
     $statusY = [int]($topContentY + $panelHeight + 8)
     $panelStatus.Location = New-Object System.Drawing.Point($leftGap, $statusY)
     $panelStatus.Size     = New-Object System.Drawing.Size($usableWidth, $statusH)
     $btnRun.Location      = New-Object System.Drawing.Point(($panelStatus.Width - $btnRun.Width - 8), 7)
 
-    # Sniper (accordion)
     $sniperTop = [int]($statusY + $statusH + 8)
     $desiredSniperH = 290
-    $minSniperH     = 160
 
     if ($panelSniper.Visible) {
         $panelSniper.Location = New-Object System.Drawing.Point($leftGap, $sniperTop)
@@ -1330,28 +1575,31 @@ function Update-ResponsiveLayout {
 
     $aiPanelTop  = [int]($chkY + 32)
     $promptVis   = $chkSendToAI.Checked
-    $customVis   = $promptVis -and $rbPromptModeCustom.Checked
-    $aiPanelH    = if ($customVis) { 292 } elseif ($promptVis) { 168 } else { 92 }
+    $tplVis      = $promptVis -and $rbPromptModeTemplate.Checked
+    $expVis      = $promptVis -and $rbPromptModeExpert.Checked
+    
+    $aiPanelH    = if ($tplVis) { 320 } elseif ($expVis) { 246 } elseif ($promptVis) { 156 } else { 92 }
 
     $panelAIPromptMode.Location = New-Object System.Drawing.Point($leftGap, $aiPanelTop)
     $panelAIPromptMode.Size     = New-Object System.Drawing.Size($usableWidth, $aiPanelH)
 
     $innerAI = [int][Math]::Max(140, ($panelAIPromptMode.Width - 36))
-    $lblAIFlowHint.MaximumSize      = New-Object System.Drawing.Size($innerAI, 0)
-    $lblAIPromptModeHint.MaximumSize = New-Object System.Drawing.Size($innerAI, 0)
-    if ($customVis) { $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size($innerAI, 86) }
+    $lblAIFlowHint.MaximumSize = New-Object System.Drawing.Size($innerAI, 0)
+    
+    if ($expVis) { $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size($innerAI, 86) }
+    if ($tplVis) { 
+        $pnlTemplateFields.Size = New-Object System.Drawing.Size($innerAI, 164)
+        $txtTemplateAdditional.Size = New-Object System.Drawing.Size([int]($innerAI - 76), 60)
+    }
 
-    # Progress
     $progressY = [int]($panelAIPromptMode.Bottom + 8)
     $progressBar.Location = New-Object System.Drawing.Point($leftGap, $progressY)
     $progressBar.Size     = New-Object System.Drawing.Size($usableWidth, $progressH)
 
-    # Log header + viewer
     $logHeaderY = [int]($progressY + $progressH + 6)
     $panelLogHeader.Location = New-Object System.Drawing.Point($leftGap, $logHeaderY)
     $panelLogHeader.Size     = New-Object System.Drawing.Size($usableWidth, $logHeaderH)
 
-    # Reposition log header buttons to right edge
     $cmbLogFilter.Location   = New-Object System.Drawing.Point(($panelLogHeader.Width - 250), 5)
     $btnCopyLog.Location     = New-Object System.Drawing.Point(($panelLogHeader.Width - 148), 4)
     $btnExpandLog.Location   = New-Object System.Drawing.Point(($panelLogHeader.Width - 84), 4)
@@ -1396,10 +1644,12 @@ function Set-SniperLayout {
 $rbSniper.Add_CheckedChanged({ Set-SniperLayout -Visible $rbSniper.Checked; Update-StatusBar })
 $rbFull.Add_CheckedChanged({ if ($rbFull.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
 $rbArchitect.Add_CheckedChanged({ if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
+$rbTxtExport.Add_CheckedChanged({ if ($rbTxtExport.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
 
 $chkSendToAI.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbPromptModeDefault.Add_CheckedChanged({ Update-AIPromptModeUi })
-$rbPromptModeCustom.Add_CheckedChanged({ Update-AIPromptModeUi })
+$rbPromptModeTemplate.Add_CheckedChanged({ Update-AIPromptModeUi })
+$rbPromptModeExpert.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbAIFlowDirector.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbAIFlowExecutor.Add_CheckedChanged({ Update-AIPromptModeUi })
 
@@ -1483,7 +1733,7 @@ $btnCopyLog.Add_Click({
     $text = ($script:LogEntries | ForEach-Object { "[$($_.Timestamp)] $($_.Message)" }) -join "`r`n"
     try {
         $text | Set-Clipboard
-        Write-UILog -Message "Log copiado para a área de transferência." -Color $ThemeSuccess
+        Write-UILog -Message "Log copiado para a área de clipboard." -Color $ThemeSuccess
     } catch {
         Write-UILog -Message "Não foi possível copiar o log." -Color $ThemePink
     }
@@ -1522,7 +1772,7 @@ function Invoke-OrchestratorAgent {
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
         [string]$OutputRouteModeValue,
-        [string]$CustomSystemPromptFilePath = $null
+        [string]$CustomPromptConfigPath = $null
     )
 
     if (-not (Test-Path $AgentScriptPath)) { throw "Script groq-agent.ts não localizado." }
@@ -1540,14 +1790,40 @@ function Invoke-OrchestratorAgent {
         Write-UILog -Message $Line -Color $DefaultColor
     }.GetNewClosure()
 
+    $bundleParent = Split-Path $BundlePath -Parent
+    $routeToken = if ($OutputRouteModeValue -eq 'executor') { 'executor' } else { 'diretor' }
+    $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?',''
+    $resultMetaPath = Join-Path $bundleParent ("_{0}_AI_RESULT_{1}.json" -f $routeToken, $normalizedProjectName)
+
     $commandParts = @(
-        "npx", "--quiet", "tsx", "`"$AgentScriptPath`"",
-        "`"$BundlePath`"", "`"$ProjectNameValue`"", "`"$ExecutorTargetValue`"",
-        "`"$BundleModeValue`"", "`"$PrimaryProviderValue`"", "`"$OutputRouteModeValue`""
+        "npx",
+        "--quiet",
+        "tsx",
+        "`"$AgentScriptPath`"",
+        "--bundlePath",
+        "`"$BundlePath`"",
+        "--projectName",
+        "`"$ProjectNameValue`"",
+        "--executorTarget",
+        "`"$ExecutorTargetValue`"",
+        "--extractionMode",
+        "`"$BundleModeValue`"",
+        "--provider",
+        "`"$PrimaryProviderValue`"",
+        "--routeMode",
+        "`"$OutputRouteModeValue`"",
+        "--resultMetaPath",
+        "`"$resultMetaPath`""
     )
-    if (-not [string]::IsNullOrWhiteSpace($CustomSystemPromptFilePath)) {
-        $commandParts += "`"$CustomSystemPromptFilePath`""
+
+    if (-not [string]::IsNullOrWhiteSpace($CustomPromptConfigPath)) {
+        $commandParts += "--promptConfigFilePath"
+        $commandParts += "`"$CustomPromptConfigPath`""
     }
+
+    Write-UILog -Message "Host de execução do agente: cmd.exe /c" -Color $ThemeCyan
+    Write-UILog -Message "Entrypoint do agente: npx --quiet tsx $([System.IO.Path]::GetFileName($AgentScriptPath))" -Color $ThemeCyan
+    Write-UILog -Message "Provider alvo: $PrimaryProviderValue | Bundle: $([System.IO.Path]::GetFileName($BundlePath))" -Color $ThemeCyan
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -1558,46 +1834,58 @@ function Invoke-OrchestratorAgent {
     $process.StartInfo.CreateNoWindow = $true
     $process.StartInfo.RedirectStandardOutput = $true
     $process.StartInfo.RedirectStandardError  = $true
-    $process.StartInfo.EnvironmentVariables["DOTENV_CONFIG_SILENT"]    = "true"
+    $process.StartInfo.EnvironmentVariables["DOTENV_CONFIG_SILENT"] = "true"
     $process.StartInfo.EnvironmentVariables["npm_config_update_notifier"] = "false"
-    $process.StartInfo.EnvironmentVariables["NO_UPDATE_NOTIFIER"]      = "1"
+    $process.StartInfo.EnvironmentVariables["NO_UPDATE_NOTIFIER"] = "1"
 
     if (-not $process.Start()) { throw "Falha ao iniciar o processo do agente de IA." }
 
     while (-not $process.HasExited) {
         while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-        while ($process.StandardError.Peek()  -ge 0) { & $handleAgentLine $process.StandardError.ReadLine()  $ThemePink }
+        while ($process.StandardError.Peek() -ge 0)  { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 100
     }
+
     $process.WaitForExit()
+
     while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-    while ($process.StandardError.Peek()  -ge 0) { & $handleAgentLine $process.StandardError.ReadLine()  $ThemePink }
+    while ($process.StandardError.Peek() -ge 0)  { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
 
-    if ($process.ExitCode -ne 0) { throw "groq-agent.ts finalizou com código $($process.ExitCode)." }
+    if ($process.ExitCode -ne 0) {
+        throw "groq-agent.ts finalizou com código $($process.ExitCode)."
+    }
 
-    # groq-agent.ts escreve sem prefixo de rota (_AI_RESULT_X.json).
-    # Tenta o nome prefixado primeiro; se nao existir, tenta o nome nativo do agent.
-    $bundleDir = Split-Path $BundlePath -Parent
-    $candidateResultPaths = @(
-        (Join-Path $bundleDir (Get-AIResultOutputFileName -ProjectNameValue $ProjectNameValue -RouteMode $OutputRouteModeValue)),
-        (Join-Path $bundleDir "_AI_RESULT_${ProjectNameValue}.json")
-    )
+    $resultMetaPathFromDisk = $null
+    if (Test-Path $resultMetaPath) {
+        $resultMetaPathFromDisk = $resultMetaPath
+    }
 
-    foreach ($candidatePath in $candidateResultPaths) {
-        if (Test-Path $candidatePath) {
-            try {
-                $resultMeta = Get-Content $candidatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-                return [pscustomobject]@{
-                    WinnerProvider = if ($resultMeta.provider) { [string]$resultMeta.provider } else { $winner.Provider }
-                    WinnerModel    = if ($resultMeta.model)    { [string]$resultMeta.model    } else { $winner.Model    }
-                    OutputPath     = if ($resultMeta.outputPath) { [string]$resultMeta.outputPath } else { $null }
-                }
-            } catch {}
+    if ($resultMetaPathFromDisk) {
+        try {
+            $meta = Get-Content $resultMetaPathFromDisk -Raw -Encoding UTF8 | ConvertFrom-Json
+            return [pscustomobject]@{
+                OutputPath      = $meta.outputPath
+                ResultMetaPath  = $resultMetaPathFromDisk
+                WinnerProvider  = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
+                WinnerModel     = if ($winner.Model) { $winner.Model } else { $meta.model }
+            }
+        } catch {
+            return [pscustomobject]@{
+                OutputPath      = $null
+                ResultMetaPath  = $resultMetaPathFromDisk
+                WinnerProvider  = $winner.Provider
+                WinnerModel     = $winner.Model
+            }
         }
     }
 
-    return [pscustomobject]@{ WinnerProvider = $winner.Provider; WinnerModel = $winner.Model; OutputPath = $null }
+    return [pscustomobject]@{
+        OutputPath      = $null
+        ResultMetaPath  = $null
+        WinnerProvider  = $winner.Provider
+        WinnerModel     = $winner.Model
+    }
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -1638,7 +1926,6 @@ function Get-ProtocolSliceDirectorMode {
 "@.Trim()
 }
 
-
 function Get-ProtocolSliceExecutorMode {
     return @"
 ### MODO EXECUTOR (OPTIMIZED v2.1)
@@ -1651,7 +1938,6 @@ function Get-ProtocolSliceExecutorMode {
     4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.
 "@.Trim()
 }
-
 
 function Get-ProtocolSliceBlueprintMode {
     return @"
@@ -1736,22 +2022,17 @@ function Get-ProtocolHeaderContent {
     return (($parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
 }
 
-
 function Normalize-BundleContentForDiff {
     param([AllowEmptyString()][string]$Content)
-
     if ($null -eq $Content) { return "" }
-
     return (($Content -replace "`0", "") -replace "`r`n", "`n").TrimEnd()
 }
 
 function Get-BundleContentHash {
     param([AllowEmptyString()][string]$Content)
-
     $normalized = Normalize-BundleContentForDiff -Content $Content
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
-
     try {
         return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
     } finally {
@@ -1761,16 +2042,13 @@ function Get-BundleContentHash {
 
 function Read-NormalizedBundleFile {
     param([string]$Path)
-
     if (-not (Test-Path $Path)) { return $null }
-
     $raw = Get-Content $Path -Raw -Encoding UTF8 -ErrorAction Stop
     return (Normalize-BundleContentForDiff -Content $raw)
 }
 
 function Confirm-IdenticalBundleProceed {
     param([string]$BundlePath)
-
     $message = @"
 Conteúdo idêntico detectado.
 
@@ -1779,14 +2057,11 @@ $BundlePath
 
 Deseja prosseguir com a IA mesmo assim?
 "@
-
     $dialogResult = [System.Windows.Forms.MessageBox]::Show(
-        $message,
-        "Bundle idêntico detectado",
+        $message, "Bundle idêntico detectado",
         [System.Windows.Forms.MessageBoxButtons]::YesNo,
         [System.Windows.Forms.MessageBoxIcon]::Warning
     )
-
     return ($dialogResult -eq [System.Windows.Forms.DialogResult]::Yes)
 }
 
@@ -1795,7 +2070,6 @@ function Resolve-BundlePreflightGate {
         [string]$OfficialBundlePath,
         [AllowEmptyString()][string]$NewBundleContent
     )
-
     $normalizedNew = Normalize-BundleContentForDiff -Content $NewBundleContent
     $newHash = Get-BundleContentHash -Content $normalizedNew
 
@@ -1818,16 +2092,15 @@ function Resolve-BundlePreflightGate {
     }
 }
 
-
 # ══════════════════════════════════════════════════════════════════
 # ENERGIZE BUTTON
 # ══════════════════════════════════════════════════════════════════
 $btnRun.Add_Click({
-    $currentChoice        = Resolve-ChoiceFromUI -RbFull $rbFull -RbArchitect $rbArchitect -RbSniper $rbSniper
+    $currentChoice         = Resolve-ChoiceFromUI -RbFull $rbFull -RbArchitect $rbArchitect -RbSniper $rbSniper -RbTxtExport $rbTxtExport
     $currentExecutorTarget = $cmbExecutorInline.SelectedItem
-    $currentAIProvider    = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
-    $currentAIPromptMode  = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbCustom $rbPromptModeCustom
-    $currentAIFlowMode    = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
+    $currentAIProvider     = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
+    $currentAIPromptMode   = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbTemplate $rbPromptModeTemplate -RbExpert $rbPromptModeExpert
+    $currentAIFlowMode     = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
     $currentExtractionMode = Resolve-ExtractionModeFromChoice -Choice $currentChoice
 
     if (-not $currentChoice) {
@@ -1845,8 +2118,8 @@ $btnRun.Add_Click({
             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
     }
-    if ($chkSendToAI.Checked -and $currentAIPromptMode -eq "custom" -and [string]::IsNullOrWhiteSpace($txtCustomSystemPrompt.Text)) {
-        [System.Windows.Forms.MessageBox]::Show("No modo personalizado, preencha o systemPrompt da IA.", "VibeToolkit",
+    if ($chkSendToAI.Checked -and $currentAIPromptMode -eq "expert" -and [string]::IsNullOrWhiteSpace($txtCustomSystemPrompt.Text)) {
+        [System.Windows.Forms.MessageBox]::Show("No modo Expert Override, preencha as diretrizes do especialista.", "VibeToolkit",
             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
         return
     }
@@ -1873,8 +2146,8 @@ $btnRun.Add_Click({
     $AIProvider      = $currentAIProvider
     $FilesToProcess  = @($selectedFiles)
     $SendToAI        = $chkSendToAI.Checked
-    $CustomSystemPromptFilePath = $null
-    $TempBundlePath = $null
+    $TempPromptConfigPath = $null
+    $TempBundlePath  = $null
 
     Set-UiBusy -Busy $true
     $logViewer.Clear()
@@ -1883,7 +2156,7 @@ $btnRun.Add_Click({
     try {
         Write-UILog -Message "HUD energizado." -Color $ThemeCyan
         Write-UILog -Message "Projeto: $ProjectName"
-        Write-UILog -Message "Modo: $(if ($Choice -eq '1') { 'Full Vibe' } elseif ($Choice -eq '2') { 'Architect' } else { 'Sniper' })"
+        Write-UILog -Message "Modo: $(if ($Choice -eq '1') { 'Full Vibe' } elseif ($Choice -eq '2') { 'Architect' } elseif ($Choice -eq '3') { 'Sniper' } else { 'TXT Export' })"
         Write-UILog -Message "Executor alvo: $ExecutorTarget"
         if ($SendToAI) { Write-UILog -Message "IA primária: $AIProvider" -Color $ThemeCyan }
         Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
@@ -1893,8 +2166,33 @@ $btnRun.Add_Click({
                 Write-UILog -Message "Sniper: $($unselectedFiles.Count) arquivo(s) não selecionado(s) serão anexados em modo Bundler." -Color $ThemeCyan
             }
         }
-        Write-UILog -Message "Geração com IA: $(if ($SendToAI) { if ($currentAIPromptMode -eq 'custom') { 'Personalizado' } else { 'Padrão' } } else { 'Desabilitado' })"
+        Write-UILog -Message "Geração com IA: $(if ($SendToAI) { $currentAIPromptMode } else { 'Desabilitado' })"
         Write-UILog -Message "Fluxo final: $(if ($currentAIFlowMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' })"
+
+        $IsTxtExportMode = ($Choice -eq '4')
+
+        if ($IsTxtExportMode) {
+            Write-UILog -Message "Iniciando Modo TXT Export..." -Color $ThemeCyan
+
+            if ($SendToAI) {
+                Write-UILog -Message "Modo TXT Export ignora chamada de IA por desenho." -Color $ThemeWarn
+            }
+
+            $TxtExportResult = Export-OperationFilesToTxtDirectory `
+                -Files $FilesToProcess `
+                -ProjectRootPath (Get-Location).Path `
+                -BaseOutputDirectory (Get-Location).Path `
+                -ProjectNameValue $ProjectName
+
+            Write-UILog -Message "Pasta de saída: $($TxtExportResult.OutputDirectory)" -Color $ThemeSuccess
+            Write-UILog -Message "Arquivos exportados: $($TxtExportResult.ExportedFiles.Count)" -Color $ThemeSuccess
+
+            if ($TxtExportResult.SkippedFiles.Count -gt 0) {
+                Write-UILog -Message "Arquivos ignorados por incompatibilidade/erro: $($TxtExportResult.SkippedFiles.Count)" -Color $ThemeWarn
+            }
+
+            return
+        }
 
         $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode -ExecutorTargetValue $ExecutorTarget
         $FinalContent = $HeaderContent + "`n`n"
@@ -2035,44 +2333,78 @@ $btnRun.Add_Click({
             Write-UILog -Message "Artefato consolidado com sucesso." -Color $ThemeSuccess
         }
 
-        $ModoNome = if ($Choice -eq '1') { "Copiar Tudo" } elseif ($Choice -eq '2') { "Inteligente" } else { "Manual" }
+        $ModoNome = if ($Choice -eq '1') {
+            "Copiar Tudo"
+        } elseif ($Choice -eq '2') {
+            "Inteligente"
+        } elseif ($Choice -eq '3') {
+            "Manual"
+        } else {
+            "TXT Export"
+        }
         Write-UILog -Message "Modo: $ModoNome  ·  Executor: $ExecutorTarget"
         Write-UILog -Message "Arquivo: $OutputFile"
         Write-UILog -Message "Tokens estimados: ~$(Format-TokenCount -Tokens $TokenEstimate)"
 
-        if ($Copied) { Write-UILog -Message "Bundle copiado para a área de transferência." -Color $ThemeCyan }
+        if ($Copied) { Write-UILog -Message "Bundle copiado para a área de clipboard." -Color $ThemeCyan }
         else         { Write-UILog -Message "Arquivo salvo. Clipboard indisponível." -Color $ThemePink }
 
         if ($SendToAI -and $ShouldCallAI) {
             Write-UILog -Message "Chamando agente de IA..." -Color $ThemeCyan
             Write-UILog -Message "Provider primário: $AIProvider | fallback automático ativo." -Color $ThemeCyan
 
-            if ($currentAIPromptMode -eq "custom") {
-                $CustomSystemPromptFilePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-custom-sp-" + [System.Guid]::NewGuid().ToString("N") + ".txt")
-                [System.IO.File]::WriteAllText($CustomSystemPromptFilePath, $txtCustomSystemPrompt.Text, (New-Object System.Text.UTF8Encoding $false))
-                Write-UILog -Message "Modo personalizado: systemPrompt do HUD será enviado para a IA." -Color $ThemePink
+            # Preparar payload JSON do modo selecionado
+            $TempPromptConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-config-" + [System.Guid]::NewGuid().ToString("N") + ".json")
+            
+            if ($currentAIPromptMode -eq "template") {
+                $SelectedTemplate = $TemplateOptions | Where-Object { $_.Name -eq $cmbTemplateId.SelectedItem } | Select-Object -First 1
+                $ConfigPayload = @{
+                    promptMode = "template"
+                    routeMode = $currentAIFlowMode
+                    extractionMode = $currentExtractionMode
+                    executorTarget = $currentExecutorTarget
+                    templateId = if ($SelectedTemplate) { $SelectedTemplate.Id } else { $null }
+                    objective = $txtTemplateObjective.Text
+                    deliveryType = $txtTemplateDelivery.Text
+                    focusTags = @($txtTemplateFocus.Text -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+                    constraints = @($txtTemplateConstraints.Text -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+                    depth = if ($null -ne $cmbTemplateDepth -and $cmbTemplateDepth.SelectedIndex -ge 0) { $cmbTemplateDepth.SelectedItem.ToString().ToLower() } else { $null }
+                    additionalInstructions = $txtTemplateAdditional.Text
+                }
+                Write-UILog -Message "Modo Template selecionado: $($SelectedTemplate.Name)" -Color $ThemeCyan
+            } elseif ($currentAIPromptMode -eq "expert") {
+                $ConfigPayload = @{
+                    promptMode = "expertOverride"
+                    routeMode = $currentAIFlowMode
+                    extractionMode = $currentExtractionMode
+                    executorTarget = $currentExecutorTarget
+                    expertSystemPrompt = $txtCustomSystemPrompt.Text
+                }
+                Write-UILog -Message "Modo Expert Override: injetando diretrizes customizadas no pipeline." -Color $ThemePink
             } else {
-                Write-UILog -Message "Modo padrão: usando fluxo nativo configurado no agente." -Color $ThemeCyan
+                $ConfigPayload = @{
+                    promptMode = "default"
+                    routeMode = $currentAIFlowMode
+                    extractionMode = $currentExtractionMode
+                    executorTarget = $currentExecutorTarget
+                }
+                Write-UILog -Message "Modo Padrão: usando fluxo nativo configurado no agente." -Color $ThemeCyan
             }
 
-            if ($currentAIFlowMode -eq "executor") {
-                Write-UILog -Message "Fluxo direto para executor ativo." -Color $ThemePink
-            } else {
-                Write-UILog -Message "Fluxo via Diretor ativo." -Color $ThemeCyan
-            }
+            $ConfigJson = $ConfigPayload | ConvertTo-Json -Depth 3 -Compress
+            [System.IO.File]::WriteAllText($TempPromptConfigPath, $ConfigJson, $Utf8NoBom)
 
             $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
-            $BundleMode  = $currentExtractionMode
-
+            
             $AgentResult = Invoke-OrchestratorAgent `
                 -AgentScriptPath $AgentScript `
                 -BundlePath $OutputFullPath `
                 -ProjectNameValue $ProjectName `
                 -ExecutorTargetValue $ExecutorTarget `
-                -BundleModeValue $BundleMode `
+                -BundleModeValue $currentExtractionMode `
                 -PrimaryProviderValue $AIProvider `
                 -OutputRouteModeValue $currentAIFlowMode `
-                -CustomSystemPromptFilePath $CustomSystemPromptFilePath
+                -CustomPromptConfigPath $TempPromptConfigPath
 
             $FinalPromptPath = $null
             if ($AgentResult -and $AgentResult.OutputPath -and (Test-Path $AgentResult.OutputPath)) {
@@ -2111,13 +2443,24 @@ $btnRun.Add_Click({
             Write-UILog -Message "Execução concluída sem chamada da IA." -Color $ThemeSuccess
         }
     } catch {
-        Write-UILog -Message $_.Exception.Message -Color $ThemePink
-        [System.Windows.Forms.MessageBox]::Show(
-            $_.Exception.Message, "Falha na execução",
-            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        $errorMessage = $_.Exception.Message
+        $errorTitle = "Falha na execução"
+        $errorIcon = [System.Windows.Forms.MessageBoxIcon]::Error
+
+        if ($errorMessage -match "finalizou com código 1") {
+            $errorTitle = "Erro de Configuração / API Keys"
+            $errorMessage = "O agente falhou devido a um erro de autenticação ou configuração das chaves de API.`n`nVerifique seu arquivo .env e tente novamente."
+            $errorIcon = [System.Windows.Forms.MessageBoxIcon]::Warning
+        } elseif ($errorMessage -match "finalizou com código 2") {
+            $errorTitle = "Erro de Infraestrutura / Providers Offline"
+            $errorMessage = "Todos os providers de IA falharam (Timeout, 5xx ou Overload).`n`nTente trocar o provider primário ou aguarde alguns instantes."
+        }
+
+        Write-UILog -Message $errorMessage -Color $ThemePink
+        [System.Windows.Forms.MessageBox]::Show($errorMessage, $errorTitle, [System.Windows.Forms.MessageBoxButtons]::OK, $errorIcon) | Out-Null
     } finally {
-        if ($CustomSystemPromptFilePath -and (Test-Path $CustomSystemPromptFilePath)) {
-            Remove-Item $CustomSystemPromptFilePath -Force -ErrorAction SilentlyContinue
+        if ($TempPromptConfigPath -and (Test-Path $TempPromptConfigPath)) {
+            Remove-Item $TempPromptConfigPath -Force -ErrorAction SilentlyContinue
         }
         if ($TempBundlePath -and (Test-Path $TempBundlePath)) {
             Remove-Item $TempBundlePath -Force -ErrorAction SilentlyContinue

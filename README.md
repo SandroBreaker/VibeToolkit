@@ -1,44 +1,51 @@
 # VibeToolkit ⚡
 
-O **VibeToolkit** é uma solução de engenharia de prompts e orquestração de LLMs (Large Language Models) desenhada para o fluxo de "vibe coding". Ele automatiza a criação de contextos técnicos de alta densidade, permitindo que IAs atuem como **Diretores** (planeamento) ou **Executores** (implementação direta) com precisão cirúrgica.
+O **VibeToolkit** é uma solução de engenharia de prompts e orquestração de LLMs (Large Language Models) de elite, desenhada especificamente para o fluxo de **Vibe Coding**. Ele automatiza a criação de contextos técnicos de altíssima densidade, permitindo que IAs atuem como **Diretores** (especificação e planeamento) ou **Executores** (implementação cirúrgica) com rigor operacional sem precedentes.
 
-## 🧠 Filosofia: Orchestrator-Executor
-O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2**, que garante que a saída da IA seja estritamente técnica e compatível com o modo de extração ativo, eliminando alucinações de arquitetura.
+## 🧠 Filosofia: Agentic Mesh & Sentinel Command
+O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2.1 (Optimized)** e é gerido internamente pelo **SENTINEL COMMAND**, um gatekeeper de integridade que impõe:
+*   **Zero-Verbosity**: Saídas puramente técnicas, sem cortesias ou redundâncias.
+*   **Token Economy**: Ultra-densidade de informação para maximizar janelas de contexto.
+*   **Surgical Precision**: Alinhamento estrito entre o modo de extração e o papel da IA (Director/Executor).
 
 ## 🚀 Funcionalidades Principais
 
-* **Modos de Extração Inteligente**:
-    * **FULL**: Mapeamento completo do projeto para visão holística.
-    * **BLUEPRINT (Architect)**: Focado em estruturas, interfaces, contratos e dependências, ideal para grandes bases de código onde o limite de tokens é um desafio.
-    * **SNIPER (Manual)**: Focado apenas em recortes específicos de ficheiros para correções pontuais.
-* **Multi-Provider com Failover**: Integração nativa com **Groq (Llama 3)**, **Gemini 1.5 Pro**, **OpenAI (GPT-4o)** e **Anthropic (Claude 3.5)**. Se um provider falhar ou atingir limites, o sistema transita automaticamente para o próximo da cadeia.
-* **HUD e Integração com Windows**: Interface gráfica via PowerShell para seleção de modos e botão "ENERGIZE" para processamento imediato, com suporte a menu de contexto no botão direito do Windows.
+*   **Modos de Extração Inteligente**:
+    *   **FULL**: Mapeamento completo para visão holística do sistema.
+    *   **ARCHITECT (Blueprint)**: Focado em contratos, interfaces e dependências. Essencial para bases de código massivas.
+    *   **SNIPER (Selective)**: Recorte manual preciso de arquivos específicos para correções pontuais.
+    *   **TXT EXPORT**: Exporta ficheiros para uma estrutura física separada (`_TXT_EXPORT__`), ideal para análise externa offline.
+*   **Orquestração Multi-Provider (Resilience Layer)**:
+    *   Integração nativa com **Groq (Llama 3.3)**, **Gemini 1.5 Pro**, **OpenAI (GPT-4o)** e **Anthropic (Claude 3.5)**.
+    *   **Failover Automático**: Cadeia de execução robusta que transita entre providers em caso de erro ou rate limits.
+    *   **Observabilidade Avançada**: Diagnósticos detalhados de falhas no HUD via taxonomia de erros estruturada.
+*   **Aesthetics & HUD Interface**: Interface PowerShell de alta performance com suporte a arrastar-e-soltar, modo fullscreen e logs em tempo real.
 
-## 🛠️ Stack Técnica
-* **Runtime**: Node.js / TypeScript.
-* **Orquestração**: PowerShell (HUD e scripts de automação).
-* **Dependências**: `dotenv` para gestão de chaves e `fs/path` para manipulação de arquivos.
+## 🛠️ Templates Operacionais (Registry)
+O sistema inclui presets especializados para contextos comuns:
+*   **Director**: Diagnostic (Root Cause), Feature Planning, Architecture Review, Hardening.
+*   **Executor**: Surgical Patch, Feature Implementation, Safe Refactor, Regression Fix.
 
 ## 📋 Como Usar
 
 ### Interface Gráfica (HUD)
-1.  Clique com o botão direito na pasta do seu projeto.
-2.  Selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
-3.  No HUD:
-    * Escolha o **Modo de Extração** (Full, Architect ou Sniper).
-    * Selecione o **Fluxo** (Diretor para planeamento ou Executor para código).
-    * Escolha o **Executor Alvo** (ex: AI Studio, Claude, GPT).
-4.  Clique em **ENERGIZE** para copiar o bundle estruturado para o clipboard.
+1.  **Ação**: Clique com o botão direito em qualquer pasta de projeto no Explorer.
+2.  **Menu**: Selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
+3.  **Configuração**: No painel HUD:
+    *   Escolha o **Modo de Extração** (Full, Architect, Sniper ou TXT Export).
+    *   Defina o **Fluxo** (Diretor para planeamento ou Executor para código).
+    *   Selecione o **Executor Alvo** (Antigravity, AI Studio, etc).
+4.  **Execução**: Clique em **ENERGIZE**. O contexto será gerado e/ou copiado automaticamente.
 
-### CLI (Integração Profunda)
+### CLI (Advanced)
 ```powershell
-.\project-bundler.ps1 -Path "C:\caminho\do\projeto" -RouteMode "executor" -ExtractionMode "full"
+.\project-bundler.ps1 -Path "C:\caminho" -RouteMode "executor" -ExtractionMode "blueprint"
 ```
 
-## 🏗️ Estrutura do Projeto
-* `groq-agent.ts`: Core da lógica de comunicação com LLMs e normalização de documentos.
-* `project-bundler.ps1`: Script principal de interface e empacotamento de ficheiros.
-* `patch_agent.js`: Script de suporte para transformações rápidas de contexto.
+## 🏗️ Estrutura do Núcleo
+*   `groq-agent.ts`: Motor de orquestração, normalização de documentos e gestão de prompts.
+*   `project-bundler.ps1`: Orquestrador de UI, extração de assinaturas de código e bundling de arquivos.
+*   `patch_agent.js`: Bridge de alta velocidade para transformações de contexto em tempo real.
 
 ---
 *VibeToolkit © 2026 — Engineered for the Agentic Era*

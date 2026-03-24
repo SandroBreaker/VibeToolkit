@@ -1,7 +1,10 @@
-const fs = require('fs');
+﻿const fs = require('fs');
+const nodePath = require('path');
 
-const path = 'C:\\dev\\VibeToolkit\\groq-agent.ts';
-let code = fs.readFileSync(path, 'utf8');
+// FIX (bug 4): use __dirname instead of a hardcoded absolute path so this
+// script works on any machine, not just C:\dev\VibeToolkit.
+const agentPath = nodePath.join(__dirname, 'groq-agent.ts');
+let code = fs.readFileSync(agentPath, 'utf8');
 
 const registryCode = `
 export const Force_Protocol_Flag = true;
@@ -19,7 +22,7 @@ export const VibeToolkit_Agentic_Registry = {
             "Saída 100% determinística e estruturada."
         ],
         runtimeRole: "director",
-        gateLogic: (payload: any) => payload.routeMode === "director" && !!payload.directorPromptTemplate,
+        gateLogic: (payload: any) => payload.routeMode === "director" && !!payload.sections,
         tone: "Objetivo, diretivo, estratégico.",
         protocolMindset: "Orquestrar o caos em passos determinísticos.",
         blockingRules: [
@@ -79,15 +82,15 @@ export class SentinelValidationError extends Error {
 `;
 
 code = code.replace(
-    /type StructuredOutputDocument = StructuredDirectorDocument \| StructuredExecutorDocument;/,
-    "type StructuredOutputDocument = StructuredDirectorDocument | StructuredExecutorDocument;\n\n" + registryCode
+    /type StructuredOutputDocument = DirectorStructuredOutput \| ExecutorStructuredOutput;/,
+    "type StructuredOutputDocument = DirectorStructuredOutput | ExecutorStructuredOutput;\n\n" + registryCode
 );
 
 const gateKeeperCode = `function parseStructuredDocument(rawContent: string, outputRouteMode: OutputRouteMode): StructuredOutputDocument {
     if (Force_Protocol_Flag) {
         const lowerContent = rawContent.trim().toLowerCase();
         const conversationalTriggers = [
-            "aqui está", "aqui esta", "com certeza", "certamente", "claro,", 
+            "aqui está", "aqui esta", "com certeza", "certamente", "claro,",
             "vou gerar", "segue ", "vamos lá", "entendido"
         ];
         if (conversationalTriggers.some(t => lowerContent.startsWith(t))) {
@@ -100,7 +103,7 @@ const gateKeeperCode = `function parseStructuredDocument(rawContent: string, out
         throw new SentinelValidationError("Ausência de JSON. O agente respondeu sem o container estrutural esperado. Bloqueando saída puramente textual.", rawContent);
     }
     if (!candidate) {
-        throw new Error("A resposta da IA não contém JSON extraível e está fora do schema.");
+        throw new AgentRuntimeError("A resposta da IA não contém JSON extraível e está fora do schema.", { status: 422 });
     }
 
     let parsed: unknown;
@@ -115,28 +118,25 @@ const gateKeeperCode = `function parseStructuredDocument(rawContent: string, out
     }
 
     const payload = parsed as Record<string, unknown>;
-    const sections = payload.sections as Record<string, unknown> | undefined;
 
     if (payload.routeMode !== outputRouteMode) {
         throw new SentinelValidationError(\`Mixagem de papéis. Agente atuou como '\${payload.routeMode}' mas a rota exigia '\${outputRouteMode}'.\`, rawContent);
     }
 
-    const registryEntity = outputRouteMode === "director" 
-        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO 
+    const registryEntity = outputRouteMode === "director"
+        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO
         : VibeToolkit_Agentic_Registry.EXECUTOR_OPERACIONAL;
-        
+
     if (!registryEntity.gateLogic(payload)) {
         throw new SentinelValidationError(\`Payload rejeitado na Gate Logic do SENTINEL. O objeto não possui a arquitetura mínima exigida para a persona \${registryEntity.role}.\`, rawContent);
     }
 
-    if (!isNonEmptyString(payload.documentTitle)) throw new SentinelValidationError("Campo obrigatório ausente: documentTitle", rawContent);
     if (payload.documentMode !== "manual" && payload.documentMode !== "full") throw new SentinelValidationError("Campo obrigatório inválido: documentMode", rawContent);
-    if (!isNonEmptyString(payload.projectName)) throw new SentinelValidationError("Campo obrigatório ausente: projectName", rawContent);
-    if (!isNonEmptyString(payload.executorTarget)) throw new SentinelValidationError("Campo obrigatório ausente: executorTarget", rawContent);
-    if (!sections || typeof sections !== "object") throw new SentinelValidationError("Campo obrigatório ausente: sections", rawContent);`;
+    if (!payload.executionMeta || typeof payload.executionMeta !== "object") throw new SentinelValidationError("Campo obrigatório ausente: executionMeta", rawContent);
+    if (!payload.sections || typeof payload.sections !== "object") throw new SentinelValidationError("Campo obrigatório ausente: sections", rawContent);`;
 
 code = code.replace(
-    /function parseStructuredDocument.*?if \(\!sections \|\| typeof sections \!\=\= "object"\) throw new Error\("Campo obrigatório ausente: sections\."\);/s,
+    /function parseStructuredDocument\(payload: unknown\): StructuredOutputDocument \{[\s\S]*?if \(\!sections \|\| typeof sections \!\=\= "object" \|\| Array\.isArray\(sections\)\) \{[\s\S]*?\}/,
     gateKeeperCode
 );
 
@@ -163,21 +163,21 @@ function buildSystemHeader(registryEntityName: "DIRETOR_ESTRATEGICO" | "EXECUTOR
     ].join("\\n");
 }
 
-function buildDirectorStructuredSystemPrompt(mode: DocumentMode, executorTarget: string): string {`;
+function buildDirectorStructuredSystemPrompt(mode: DocumentMode, extractionMode: ExtractionMode, executorTarget: string): string {`;
 
 code = code.replace(
-    /function buildDirectorStructuredSystemPrompt\(mode: DocumentMode, executorTarget: string\): string \{/,
+    /function buildDirectorStructuredSystemPrompt\(\s*mode: DocumentMode,\s*extractionMode: ExtractionMode,\s*executorTarget: string\s*\): string \{/,
     systemHeaderCode
 );
 
 code = code.replace(
-    /"Você é um ENGENHEIRO DE SOFTWARE SÊNIOR E ARQUITETO DE IA\.",\n\s+`Gere/,
-    `buildSystemHeader("DIRETOR_ESTRATEGICO"),\n        "",\n        \`Gere`
+    /"Você atua EXCLUSIVAMENTE como DIRETOR TÉCNICO DE EXECUÇÃO\.",/,
+    `buildSystemHeader("DIRETOR_ESTRATEGICO"),\n        "",\n        "Você atua EXCLUSIVAMENTE como DIRETOR TÉCNICO DE EXECUÇÃO.",`
 );
 
 code = code.replace(
-    /"Você é o SENIOR SOFTWARE EXECUTOR\. Sua missão é estruturar um CONTEXTO TÉCNICO DE EXECUÇÃO destinado diretamente ao executor final\.",\n\s+scopeInstruction/,
-    `buildSystemHeader("EXECUTOR_OPERACIONAL"),\n        "",\n        scopeInstruction`
+    /"Você atua EXCLUSIVAMENTE como ENGINE EXECUTOR DE IMPLEMENTAÇÃO\.",/,
+    `buildSystemHeader("EXECUTOR_OPERACIONAL"),\n        "",\n        "Você atua EXCLUSIVAMENTE como ENGINE EXECUTOR DE IMPLEMENTAÇÃO.",`
 );
 
 const recoveryCode = `async function executeSentinelStateRecovery(
@@ -186,15 +186,16 @@ const recoveryCode = `async function executeSentinelStateRecovery(
     executorTarget: string,
     mode: DocumentMode,
     outputRouteMode: OutputRouteMode,
-    primaryProvider: ProviderId
+    primaryProvider: ProviderName,
+    modelOverride?: string
 ): Promise<StructuredOutputDocument | null> {
-    logger.warn(\`[SENTINEL COMMAND] Quebra de protocolo interceptada! Motivo do bloqueio: \${error.message}\`);
-    logger.info(\`[SENTINEL COMMAND] Iniciando protocolo de recuperação de estado e reancoragem...\`);
+    console.error(\`[SENTINEL COMMAND] Quebra de protocolo interceptada! Motivo do bloqueio: \${error.message}\`);
+    console.error(\`[SENTINEL COMMAND] Iniciando protocolo de recuperação de estado e reancoragem...\`);
 
-    const registryEntity = outputRouteMode === "director" 
-        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO 
+    const registryEntity = outputRouteMode === "director"
+        ? VibeToolkit_Agentic_Registry.DIRETOR_ESTRATEGICO
         : VibeToolkit_Agentic_Registry.EXECUTOR_OPERACIONAL;
-        
+
     const repairSystemPrompt = [
         "[SENTINEL COMMAND OVERRIDE - STATE RECOVERY ACTIVATED]",
         \`ALERTA DE SEGURANÇA OPERACIONAL DETECTADO.\`,
@@ -221,39 +222,53 @@ const recoveryCode = `async function executeSentinelStateRecovery(
         error.unformattedContent,
     ].join("\\n");
 
-    const repaired = await generateContextDocument(
-        {
-            systemContent: repairSystemPrompt,
-            userPrompt: repairUserPrompt,
-            temperature: 0,
-            maxTokens: 8192,
-        },
-        primaryProvider
-    );
-
-    if (!repaired?.content) {
-        return null;
-    }
-
     try {
+        const repaired = await tryProviderChain(primaryProvider, { systemPrompt: repairSystemPrompt, userPrompt: repairUserPrompt }, modelOverride);
+        if (!repaired?.content) return null;
         return parseStructuredDocument(repaired.content, outputRouteMode);
     } catch {
-        return null; // fall off entirely
+        return null;
     }
 }`;
 
 code = code.replace(
-    /async function repairStructuredPayload.*?return null;\n\s+\}\n\s+\}/s,
+    /async function repairStructuredPayload\([\s\S]*?\}\n\}/,
     recoveryCode
 );
 
+// Replace call-site of repairStructuredPayload in main() with executeSentinelStateRecovery
 code = code.replace(
-    /const repairedDocument = await repairStructuredPayload\(/,
-    "const repairedDocument = await executeSentinelStateRecovery(\n            parseError as SentinelValidationError,"
+    /const structuredDocument = await repairStructuredPayload\(\s*providerResponse\.content,\s*outputRouteMode,\s*mode,\s*extractionMode,\s*provider,\s*modelOverride\s*\);/,
+    `let structuredDocument: StructuredOutputDocument;
+    try {
+        structuredDocument = await repairStructuredPayload(
+            providerResponse.content,
+            outputRouteMode,
+            mode,
+            extractionMode,
+            provider,
+            modelOverride
+        );
+    } catch (parseError) {
+        if (parseError instanceof SentinelValidationError) {
+            const recovered = await executeSentinelStateRecovery(
+                parseError,
+                inferredProjectName,
+                executorTarget,
+                mode,
+                outputRouteMode,
+                provider,
+                modelOverride
+            );
+            if (!recovered) {
+                throw new AgentRuntimeError("Sentinel recovery falhou: payload rejeitado e repair impossível.", { status: 422 });
+            }
+            structuredDocument = recovered;
+        } else {
+            throw parseError;
+        }
+    }`
 );
 
-// We need to change the try catch in main so it handles SentinelValidationError logic if we bypass normal parse errors.
-// Wait, parseError as SentinelValidationError expects parseError to pass Sentinel block. Since parseStructuredDocument now throws SentinelValidationError almost everywhere, any error acts as Sentinel error.
-
-fs.writeFileSync(path, code);
-console.log('Patch complete.');
+fs.writeFileSync(agentPath, code);
+console.log('Patch completo. groq-agent.ts atualizado com Sentinel Protocol.');

@@ -17,6 +17,14 @@ npm-debug.log*
 _AI_CONTEXT_*
 _COPIAR_TUDO_*
 _INTELIGENTE_*
+_diretor_AI_RESULT_*
+_diretor_AI_CONTEXT_*
+_executor_AI_RESULT_*
+_executor_AI_CONTEXT_*
+_diretor_COPIAR_TUDO_*
+_diretor_INTELIGENTE_*
+_executor_COPIAR_TUDO_*
+_executor_INTELIGENTE_*
 
 # Sistema Operacional
 .DS_Store

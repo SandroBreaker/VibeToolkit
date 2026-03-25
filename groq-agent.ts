@@ -111,7 +111,15 @@ interface BuildAugmentedPromptBundleParams {
     promptConfig: PromptCustomizationConfig;
 }
 
-type ProviderErrorType = "AUTH_ERROR" | "RATE_LIMIT" | "NETWORK_ERROR" | "PARSE_ERROR" | "PROVIDER_DOWN" | "CONFIG_ERROR";
+type ProviderErrorType = "AUTH_ERROR" | "RATE_LIMIT" | "NETWORK_ERROR" | "PARSE_ERROR" | "PROVIDER_DOWN" | "CONFIG_ERROR" | "PAYLOAD_TOO_LARGE";
+
+interface ClassifiedError {
+    status: number;
+    errorType: ProviderErrorType;
+    message: string;
+    details?: string;
+    retryable: boolean;
+}
 
 class AgentRuntimeError extends Error {
     readonly status: number;
@@ -126,6 +134,94 @@ class AgentRuntimeError extends Error {
         this.details = options?.details;
         this.retryable = options?.retryable ?? false;
         this.errorType = options?.errorType;
+    }
+}
+
+function normalizeErrorDetails(details: string | undefined): string | undefined {
+    if (!details) {
+        return undefined;
+    }
+
+    const normalized = details.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim();
+    if (normalized.length === 0) {
+        return undefined;
+    }
+
+    return normalized.length > 500 ? `${normalized.slice(0, 500)}…` : normalized;
+}
+
+function classifyHttpStatus(status: number, details?: string): { errorType: ProviderErrorType; retryable: boolean } {
+    const lowDetails = (details ?? "").toLowerCase();
+
+    if (status === 401 || status === 403) {
+        return { errorType: "AUTH_ERROR", retryable: false };
+    }
+
+    if (status === 413 || lowDetails.includes("payload too large") || lowDetails.includes("request entity too large")) {
+        return { errorType: "PAYLOAD_TOO_LARGE", retryable: false };
+    }
+
+    if (status === 429 || lowDetails.includes("rate limit") || lowDetails.includes("too many requests")) {
+        return { errorType: "RATE_LIMIT", retryable: true };
+    }
+
+    if (
+        status === 400 ||
+        status === 404 ||
+        status === 409 ||
+        status === 422 ||
+        lowDetails.includes("invalid model") ||
+        lowDetails.includes("not found") ||
+        lowDetails.includes("bad request")
+    ) {
+        return { errorType: "CONFIG_ERROR", retryable: false };
+    }
+
+    if (
+        status === 408 ||
+        lowDetails.includes("timeout") ||
+        lowDetails.includes("econnreset") ||
+        lowDetails.includes("enetunreach") ||
+        lowDetails.includes("dns") ||
+        lowDetails.includes("fetch failed")
+    ) {
+        return { errorType: "NETWORK_ERROR", retryable: true };
+    }
+
+    if (status === 500 || status === 502 || status === 503 || status === 504) {
+        return { errorType: "PROVIDER_DOWN", retryable: true };
+    }
+
+    return { errorType: "PROVIDER_DOWN", retryable: false };
+}
+
+function buildProviderHttpError(providerLabel: string, status: number, details?: string): AgentRuntimeError {
+    const classified = classifyHttpStatus(status, details);
+
+    return new AgentRuntimeError(`Falha ao consultar ${providerLabel}.`, {
+        status,
+        details: normalizeErrorDetails(details),
+        retryable: classified.retryable,
+        errorType: classified.errorType
+    });
+}
+
+function getExitCodeForErrorType(errorType: ProviderErrorType): number {
+    switch (errorType) {
+        case "AUTH_ERROR":
+            return 1;
+        case "RATE_LIMIT":
+            return 2;
+        case "CONFIG_ERROR":
+        case "PAYLOAD_TOO_LARGE":
+            return 3;
+        case "NETWORK_ERROR":
+        case "PROVIDER_DOWN":
+            return 4;
+        case "PARSE_ERROR":
+            return 5;
+        default:
+            return 2;
     }
 }
 
@@ -1498,10 +1594,7 @@ class GroqClient implements AIClient {
 
         if (!response.ok) {
             const details = await response.text();
-            throw new AgentRuntimeError("Falha ao consultar Groq.", {
-                status: response.status,
-                details
-            });
+            throw buildProviderHttpError("Groq", response.status, details);
         }
 
         const data = (await response.json()) as {
@@ -1561,10 +1654,7 @@ class GeminiClient implements AIClient {
 
         if (!response.ok) {
             const details = await response.text();
-            throw new AgentRuntimeError("Falha ao consultar Gemini.", {
-                status: response.status,
-                details
-            });
+            throw buildProviderHttpError("Gemini", response.status, details);
         }
 
         const data = (await response.json()) as {
@@ -1618,10 +1708,7 @@ class OpenAIClient implements AIClient {
 
         if (!response.ok) {
             const details = await response.text();
-            throw new AgentRuntimeError("Falha ao consultar OpenAI.", {
-                status: response.status,
-                details
-            });
+            throw buildProviderHttpError("OpenAI", response.status, details);
         }
 
         const data = (await response.json()) as {
@@ -1653,6 +1740,17 @@ class AnthropicClient implements AIClient {
     }
 
     async request(payload: ProviderRequestPayload): Promise<ProviderResponse> {
+        const body: any = {
+            model: payload.model ?? this.model,
+            max_tokens: 4096,
+            temperature: 0.2,
+            messages: [{ role: "user", content: payload.userPrompt }]
+        };
+
+        if (payload.systemPrompt && payload.systemPrompt.trim() !== "") {
+            body.system = payload.systemPrompt;
+        }
+
         const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
@@ -1660,21 +1758,12 @@ class AnthropicClient implements AIClient {
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                model: payload.model ?? this.model,
-                max_tokens: 4096,
-                temperature: 0.2,
-                system: payload.systemPrompt,
-                messages: [{ role: "user", content: payload.userPrompt }]
-            })
+            body: JSON.stringify(body)
         });
 
         if (!response.ok) {
             const details = await response.text();
-            throw new AgentRuntimeError("Falha ao consultar Anthropic.", {
-                status: response.status,
-                details
-            });
+            throw buildProviderHttpError("Anthropic", response.status, details);
         }
 
         const data = (await response.json()) as {
@@ -1751,12 +1840,35 @@ function createClient(provider: ProviderName, modelOverride?: string): AIClient 
     }
 }
 
-function classifyError(error: unknown): { status: number; errorType: ProviderErrorType; message: string } {
+function classifyError(error: unknown): ClassifiedError {
     if (error instanceof AgentRuntimeError) {
-        return { 
-            status: error.status, 
-            errorType: error.errorType ?? "PROVIDER_DOWN", 
-            message: error.message 
+        if (error.errorType) {
+            return {
+                status: error.status,
+                errorType: error.errorType,
+                message: error.message,
+                details: error.details,
+                retryable: error.retryable
+            };
+        }
+
+        if (error.status === 422) {
+            return {
+                status: error.status,
+                errorType: "PARSE_ERROR",
+                message: error.message,
+                details: error.details,
+                retryable: false
+            };
+        }
+
+        const inferred = classifyHttpStatus(error.status, [error.message, error.details ?? ""].join("\n"));
+        return {
+            status: error.status,
+            errorType: inferred.errorType,
+            message: error.message,
+            details: error.details,
+            retryable: error.retryable || inferred.retryable
         };
     }
 
@@ -1764,19 +1876,28 @@ function classifyError(error: unknown): { status: number; errorType: ProviderErr
     const lowMessage = message.toLowerCase();
 
     if (lowMessage.includes("401") || lowMessage.includes("unauthorized") || lowMessage.includes("403") || lowMessage.includes("forbidden") || lowMessage.includes("invalid api key")) {
-        return { status: 401, errorType: "AUTH_ERROR", message };
+        return { status: 401, errorType: "AUTH_ERROR", message, retryable: false };
+    }
+    if (lowMessage.includes("413") || lowMessage.includes("payload too large") || lowMessage.includes("request entity too large")) {
+        return { status: 413, errorType: "PAYLOAD_TOO_LARGE", message, retryable: false };
     }
     if (lowMessage.includes("429") || lowMessage.includes("rate limit") || lowMessage.includes("too many requests")) {
-        return { status: 429, errorType: "RATE_LIMIT", message };
+        return { status: 429, errorType: "RATE_LIMIT", message, retryable: true };
+    }
+    if (lowMessage.includes("422")) {
+        return { status: 422, errorType: "PARSE_ERROR", message, retryable: false };
+    }
+    if (lowMessage.includes("400") || lowMessage.includes("404") || lowMessage.includes("bad request") || lowMessage.includes("not found") || lowMessage.includes("invalid model")) {
+        return { status: lowMessage.includes("404") ? 404 : 400, errorType: "CONFIG_ERROR", message, retryable: false };
     }
     if (lowMessage.includes("econnreset") || lowMessage.includes("enetunreach") || lowMessage.includes("timeout") || lowMessage.includes("fetch failed") || lowMessage.includes("dns")) {
-        return { status: 503, errorType: "NETWORK_ERROR", message };
+        return { status: 503, errorType: "NETWORK_ERROR", message, retryable: true };
     }
     if (lowMessage.includes("500") || lowMessage.includes("502") || lowMessage.includes("503") || lowMessage.includes("504")) {
-        return { status: 502, errorType: "PROVIDER_DOWN", message };
+        return { status: 502, errorType: "PROVIDER_DOWN", message, retryable: true };
     }
 
-    return { status: 500, errorType: "PROVIDER_DOWN", message };
+    return { status: 500, errorType: "PROVIDER_DOWN", message, retryable: false };
 }
 
 function buildProviderChain(primary: ProviderName): ProviderName[] {
@@ -1800,27 +1921,25 @@ async function tryProviderChain(
             return response;
         } catch (error) {
             const classified = classifyError(error);
-            const brief = `${provider.toUpperCase()}: [${classified.errorType}] ${classified.message}`;
+            const brief = `${provider.toUpperCase()}: [${classified.errorType}] ${classified.message}${classified.details ? ` | ${classified.details}` : ""}`;
             logDetails.push(brief);
-            
-            // Log observability in stderr for HUD capture
+
             console.error(`    Skipping ${provider}: ${classified.errorType} (Status ${classified.status})`);
-            
+
             errorObjects.push(new AgentRuntimeError(classified.message, {
                 status: classified.status,
                 errorType: classified.errorType,
-                details: brief
+                details: brief,
+                retryable: classified.retryable
             }));
         }
     }
 
-    // Preserve the "best" error to define exit code status
-    // Priority: AUTH_ERROR > RATE_LIMIT > PROVIDER_DOWN > NETWORK_ERROR
-    const priority: ProviderErrorType[] = ["AUTH_ERROR", "RATE_LIMIT", "PROVIDER_DOWN", "NETWORK_ERROR"];
+    const priority: ProviderErrorType[] = ["AUTH_ERROR", "PAYLOAD_TOO_LARGE", "CONFIG_ERROR", "RATE_LIMIT", "PROVIDER_DOWN", "NETWORK_ERROR", "PARSE_ERROR"];
     let bestError = errorObjects[0];
 
     for (const pType of priority) {
-        const found = errorObjects.find(e => e.errorType === pType);
+        const found = errorObjects.find((e) => e.errorType === pType);
         if (found) {
             bestError = found;
             break;
@@ -1830,7 +1949,8 @@ async function tryProviderChain(
     throw new AgentRuntimeError("Falha em toda a cadeia de providers.", {
         status: bestError?.status ?? 502,
         errorType: bestError?.errorType ?? "PROVIDER_DOWN",
-        details: logDetails.join(" | ")
+        details: logDetails.join(" | "),
+        retryable: bestError?.retryable ?? false
     });
 }
 
@@ -1995,9 +2115,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-    const status = error instanceof AgentRuntimeError ? error.status : 500;
+    const classified = classifyError(error);
     const message = error instanceof Error ? error.message : String(error);
-    const details = error instanceof AgentRuntimeError ? error.details : undefined;
+    const details = error instanceof AgentRuntimeError ? error.details : classified.details;
 
     if (details) {
         console.error(`[!] ERRO: ${message}`);
@@ -2006,6 +2126,14 @@ main().catch((error) => {
         console.error(`[!] ERRO: ${message}`);
     }
 
-    // FIX (bug 3): differentiate exit codes — auth failures = 1, server/parse errors = 2
-    process.exit(status === 401 || status === 403 ? 1 : 2);
+    process.stderr.write(
+        `[AI_ERROR] ${JSON.stringify({
+            type: classified.errorType,
+            status: classified.status,
+            message,
+            details
+        })}\n`
+    );
+
+    process.exit(getExitCodeForErrorType(classified.errorType));
 });

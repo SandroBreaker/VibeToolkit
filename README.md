@@ -1,51 +1,109 @@
-# VibeToolkit ⚡
+﻿# 🛠️ VibeToolkit ⚡
 
-O **VibeToolkit** é uma solução de engenharia de prompts e orquestração de LLMs (Large Language Models) de elite, desenhada especificamente para o fluxo de **Vibe Coding**. Ele automatiza a criação de contextos técnicos de altíssima densidade, permitindo que IAs atuem como **Diretores** (especificação e planeamento) ou **Executores** (implementação cirúrgica) com rigor operacional sem precedentes.
+O **VibeToolkit** é uma engine de alta densidade para empacotamento de contexto e orquestração de Large Language Models (LLMs). Projetado para fluxos de "Vibe Coding", ele transforma repositórios de código em artefactos estruturados, eliminando o ruído conversacional e forçando a precisão técnica através do **Protocolo ELITE v2**.
 
-## 🧠 Filosofia: Agentic Mesh & Sentinel Command
-O toolkit opera sob o **Protocolo Operacional Transversal — ELITE v2.1 (Optimized)** e é gerido internamente pelo **SENTINEL COMMAND**, um gatekeeper de integridade que impõe:
-*   **Zero-Verbosity**: Saídas puramente técnicas, sem cortesias ou redundâncias.
-*   **Token Economy**: Ultra-densidade de informação para maximizar janelas de contexto.
-*   **Surgical Precision**: Alinhamento estrito entre o modo de extração e o papel da IA (Director/Executor).
-
-## 🚀 Funcionalidades Principais
-
-*   **Modos de Extração Inteligente**:
-    *   **FULL**: Mapeamento completo para visão holística do sistema.
-    *   **ARCHITECT (Blueprint)**: Focado em contratos, interfaces e dependências. Essencial para bases de código massivas.
-    *   **SNIPER (Selective)**: Recorte manual preciso de arquivos específicos para correções pontuais.
-    *   **TXT EXPORT**: Exporta ficheiros para uma estrutura física separada (`_TXT_EXPORT__`), ideal para análise externa offline.
-*   **Orquestração Multi-Provider (Resilience Layer)**:
-    *   Integração nativa com **Groq (Llama 3.3)**, **Gemini 1.5 Pro**, **OpenAI (GPT-4o)** e **Anthropic (Claude 3.5)**.
-    *   **Failover Automático**: Cadeia de execução robusta que transita entre providers em caso de erro ou rate limits.
-    *   **Observabilidade Avançada**: Diagnósticos detalhados de falhas no HUD via taxonomia de erros estruturada.
-*   **Aesthetics & HUD Interface**: Interface PowerShell de alta performance com suporte a arrastar-e-soltar, modo fullscreen e logs em tempo real.
-
-## 🛠️ Templates Operacionais (Registry)
-O sistema inclui presets especializados para contextos comuns:
-*   **Director**: Diagnostic (Root Cause), Feature Planning, Architecture Review, Hardening.
-*   **Executor**: Surgical Patch, Feature Implementation, Safe Refactor, Regression Fix.
-
-## 📋 Como Usar
-
-### Interface Gráfica (HUD)
-1.  **Ação**: Clique com o botão direito em qualquer pasta de projeto no Explorer.
-2.  **Menu**: Selecione **"Gerar Blueprint / Contexto (Vibe AI)"**.
-3.  **Configuração**: No painel HUD:
-    *   Escolha o **Modo de Extração** (Full, Architect, Sniper ou TXT Export).
-    *   Defina o **Fluxo** (Diretor para planeamento ou Executor para código).
-    *   Selecione o **Executor Alvo** (Antigravity, AI Studio, etc).
-4.  **Execução**: Clique em **ENERGIZE**. O contexto será gerado e/ou copiado automaticamente.
-
-### CLI (Advanced)
-```powershell
-.\project-bundler.ps1 -Path "C:\caminho" -RouteMode "executor" -ExtractionMode "blueprint"
-```
-
-## 🏗️ Estrutura do Núcleo
-*   `groq-agent.ts`: Motor de orquestração, normalização de documentos e gestão de prompts.
-*   `project-bundler.ps1`: Orquestrador de UI, extração de assinaturas de código e bundling de arquivos.
-*   `patch_agent.js`: Bridge de alta velocidade para transformações de contexto em tempo real.
+## 🎯 Filosofia Operacional
+O VibeToolkit não é um invólucro de chat comum. É um pipeline de conformidade que prioriza:
+* **Zero-Yap:** Saídas estritamente técnicas, sem saudações ou explicações desnecessárias.
+* **Densidade de Contexto:** Máxima informação útil com o menor ruído possível.
+* **Isolamento de Papéis:** Separação rígida entre análise estratégica (Diretor) e implementação de código (Executor).
 
 ---
-*VibeToolkit © 2026 — Engineered for the Agentic Era*
+
+## 🛡️ Protocolo ELITE v2 (Strict Global Enforcement)
+O toolkit opera sob regras transversais que garantem a integridade da saída:
+1.  **Proibição de Inferência:** A IA está proibida de assumir arquiteturas ou fluxos não documentados no bundle visível.
+2.  **Enquadramento de Rota:** Bloqueio de drift operacional (um Executor nunca deve agir como Diretor).
+3.  **JSON Enforcement:** Validação obrigatória de schemas. Respostas fora do padrão são automaticamente submetidas a reparação estrutural.
+
+---
+
+## 🏗️ Arquitetura e Componentes
+
+### 1. Core Engine (`groq-agent.ts`)
+O coração do pipeline. Gere a normalização de rotas, montagem de prompts dinâmicos, chamadas multiplataforma e a gravação final dos artefactos de contexto.
+
+### 2. Interface Operacional (`project-bundler.ps1`)
+Console HUD em PowerShell que gere o estado visual do toolkit:
+* Seleção de modos e providers.
+* Gestão de ficheiros e geração de bundles.
+* Log em tempo real e interface de visualização de progresso.
+
+### 3. Sentinel Gatekeeper (`patch_agent.js`)
+Script de reforço que aplica patches de conformidade em runtime, garantindo que o agente adira estritamente às instruções do sistema.
+
+---
+
+## ⚙️ Modos de Operação
+
+### Rotas de Saída (Route Modes)
+* **Diretor:** Focado em inteligência analítica. Gera especificações, diagnósticos de causa raiz e planos de implementação.
+* **Executor:** Focado em implementação direta (Code-First). Converte planos em código funcional e patches cirúrgicos.
+
+### Modos de Extração (Extraction Modes)
+* **FULL:** Panorama completo do projeto para contexto total.
+* **BLUEPRINT:** Foco em arquitetura, assinaturas de contratos e topologia (ideal para sistemas complexos).
+* **SNIPER:** Atuação granular em ficheiros específicos para correções pontuais e patches rápidos.
+
+---
+
+## 🚀 Configuração e Instalação
+
+### Pré-requisitos
+* Node.js (v18+) & npm/pnpm
+* PowerShell 7+ (para o HUD)
+* Runtime TypeScript (`tsx`)
+
+### Instalação
+```bash
+# Instalar dependências
+npm install
+
+# Configurar Variáveis de Ambiente (.env)
+GROQ_API_KEY=sua_chave
+GEMINI_API_KEY=sua_chave
+OPENAI_API_KEY=sua_chave
+ANTHROPIC_API_KEY=sua_chave
+```
+
+---
+
+## 🛠️ Utilização
+
+### 1. Via HUD (Interface Visual)
+Execute o bundler para abrir o console de gestão:
+```powershell
+.\project-bundler.ps1
+```
+
+### 2. Via CLI (Execução Direta)
+O agente pode ser chamado via terminal para automação:
+```bash
+npx --quiet tsx .\groq-agent.ts `
+  --bundlePath "./bundles/meu-projeto.md" `
+  --projectName "MeuProjeto" `
+  --extractionMode "full" `
+  --provider "groq" `
+  --routeMode "executor"
+```
+
+---
+
+## 💾 Padrões de Saída (Output)
+Os ficheiros são gerados na raiz ou no diretório de saída seguindo a convenção:
+
+| Tipo de Ficheiro | Nomenclatura | Descrição |
+| :--- | :--- | :--- |
+| **Contexto (.md)** | `_<rota>_AI_CONTEXT_<Projeto>.md` | O artefacto técnico final gerado pela IA. |
+| **Metadados (.json)** | `_<rota>_AI_RESULT_<Projeto>.json` | Detalhes da execução, modelo usado e metadados estruturados. |
+
+---
+
+## 🧰 Stack Técnica
+* **Runtime:** Node.js, PowerShell.
+* **Linguagens:** TypeScript, PowerShell Scripting.
+* **Modelos Suportados:** Llama 3.3 (Groq), Gemini 1.5 Pro, GPT-4o, Claude 3.5 Sonnet.
+* **Processamento:** `tsx` para execução TypeScript sem transpilação manual.
+
+---
+> **Filosofia Final:** *O código é o detalhe, o contexto é a lei. Reduza o ruído, aumente o sinal.*

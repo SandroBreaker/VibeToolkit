@@ -14,9 +14,6 @@ out/
 npm-debug.log*
 
 # Arquivos gerados pelo VibeToolkit (Opcional)
-_AI_CONTEXT_*
-_COPIAR_TUDO_*
-_INTELIGENTE_*
 _diretor_AI_RESULT_*
 _diretor_AI_CONTEXT_*
 _executor_AI_RESULT_*
@@ -25,6 +22,7 @@ _diretor_COPIAR_TUDO_*
 _diretor_INTELIGENTE_*
 _executor_COPIAR_TUDO_*
 _executor_INTELIGENTE_*
+_TXT_EXPORT_*
 
 # Sistema Operacional
 .DS_Store

@@ -32,6 +32,21 @@ if ($consoleHandle -ne [IntPtr]::Zero) {
 $ProjectName = (Get-Item .).Name
 $ScriptFullPath = $MyInvocation.MyCommand.Path
 $ToolkitDir = Split-Path $ScriptFullPath
+$ModulesDir = Join-Path $ToolkitDir "modules"
+$RequiredModulePaths = @(
+    (Join-Path $ModulesDir "VibeDirectorProtocol.psm1"),
+    (Join-Path $ModulesDir "VibeBundleWriter.psm1"),
+    (Join-Path $ModulesDir "VibeSignatureExtractor.psm1"),
+    (Join-Path $ModulesDir "VibeFileDiscovery.psm1")
+)
+foreach ($modulePath in $RequiredModulePaths) {
+    if (-not (Test-Path $modulePath -PathType Leaf)) {
+        throw "Módulo obrigatório não encontrado: $modulePath"
+    }
+}
+foreach ($modulePath in $RequiredModulePaths) {
+    Import-Module $modulePath -Force -DisableNameChecking -ErrorAction Stop
+}
 
 $Choice = $null
 $ExecutorTarget = $null
@@ -57,7 +72,7 @@ $AllowedExtensions = @(
     ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1"
 )
 $SignatureExtensions = @(
-    ".tsx", ".ts", ".js", ".jsx", ".prisma",
+    ".tsx", ".ts", ".js", ".jsx", ".prisma", ".ps1",
     ".py", ".java", ".cs", ".go", ".rb", ".php", ".rs", ".swift", ".kt", ".scala", ".dart"
 )
 $IgnoredDirs = @(
@@ -93,28 +108,26 @@ $TemplateOptions = @(
 
 function Test-IsGeneratedArtifactFileName {
     param([string]$FileName)
-    if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
-    return $FileName -match '^_(?:(?:Diretor|Executor)_)?(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__|AI_CONTEXT_|AI_RESULT_)'
+    return (Test-VibeGeneratedArtifactFileName -FileName $FileName)
 }
 
 function Get-RelevantFiles {
     param([string]$CurrentPath)
-    try {
-        $Items = Get-ChildItem -Path $CurrentPath -ErrorAction Stop
-        foreach ($Item in $Items) {
-            if ($Item.PSIsContainer) {
-                if ($Item.Name -notin $IgnoredDirs) { Get-RelevantFiles -CurrentPath $Item.FullName }
-            }
-            else {
-                $IsTarget = ($Item.Extension -in $AllowedExtensions) -and
-                ($Item.Name -notin $IgnoredFiles) -and
-                ($Item.BaseName -notmatch '-[a-f0-9]{8,}$') -and
-                (-not (Test-IsGeneratedArtifactFileName -FileName $Item.Name))
-                if ($IsTarget) { $Item }
-            }
-        }
-    }
-    catch {}
+    return (Get-VibeRelevantFiles -CurrentPath $CurrentPath -AllowedExtensions $AllowedExtensions -IgnoredDirs $IgnoredDirs -IgnoredFiles $IgnoredFiles)
+}
+
+function Read-LocalTextArtifact {
+    param([string]$Path)
+    return (Read-VibeTextFile -Path $Path)
+}
+
+function Write-LocalTextArtifact {
+    param(
+        [string]$Path,
+        [AllowEmptyString()][string]$Content,
+        [switch]$UseBom
+    )
+    Write-VibeTextFile -Path $Path -Content $Content -UseBom:$UseBom
 }
 
 $FoundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path)
@@ -207,16 +220,87 @@ function Convert-SourceFileToTxtExportName {
         $relativePath = [System.IO.Path]::GetFileName($fullPathResolved)
     }
 
-    $safeName = $relativePath `
-        -replace '^[\/\.]+', '' `
-        -replace '[\/]+', '__' `
-        -replace '[:*?"<>|]', '_'
+    $normalizedRelativePath = $relativePath -replace '[\/]+', [string][System.IO.Path]::DirectorySeparatorChar
+    $normalizedRelativePath = $normalizedRelativePath.TrimStart([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar, '.'))
 
-    if ([string]::IsNullOrWhiteSpace($safeName)) {
-        $safeName = [System.IO.Path]::GetFileName($fullPathResolved)
+    if ([string]::IsNullOrWhiteSpace($normalizedRelativePath) -or $normalizedRelativePath -eq ".") {
+        $normalizedRelativePath = [System.IO.Path]::GetFileName($fullPathResolved)
     }
 
-    return "${safeName}.txt"
+    $segments = @(
+        $normalizedRelativePath -split '[\/]+' |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "." }
+    )
+
+    if ($segments.Count -eq 0) {
+        $segments = @([System.IO.Path]::GetFileName($fullPathResolved))
+    }
+
+    $safeSegments = New-Object System.Collections.Generic.List[string]
+
+    foreach ($segment in $segments) {
+        $safeSegment = $segment -replace '[:*?"<>|]', '_'
+
+        if ([string]::IsNullOrWhiteSpace($safeSegment) -or $safeSegment -match '^\.+$') {
+            $safeSegment = '_'
+        }
+
+        $safeSegments.Add($safeSegment) | Out-Null
+    }
+
+    $lastIndex = $safeSegments.Count - 1
+    $safeSegments[$lastIndex] = "{0}.txt" -f $safeSegments[$lastIndex]
+
+    $targetRelativePath = $safeSegments[0]
+    for ($i = 1; $i -lt $safeSegments.Count; $i++) {
+        $targetRelativePath = Join-Path $targetRelativePath $safeSegments[$i]
+    }
+
+    return $targetRelativePath
+}
+
+function New-TxtExportZipFilePath {
+    param([string]$OutputDirectory)
+
+    $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+    $resolvedOutputDirectory = $resolvedOutputDirectory.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+
+    $parentDirectory = [System.IO.Path]::GetDirectoryName($resolvedOutputDirectory)
+    $directoryName = [System.IO.Path]::GetFileName($resolvedOutputDirectory)
+
+    if ([string]::IsNullOrWhiteSpace($parentDirectory)) {
+        $parentDirectory = (Get-Location).Path
+    }
+
+    $candidate = Join-Path $parentDirectory ("{0}.zip" -f $directoryName)
+    $suffix = 2
+
+    while (Test-Path $candidate) {
+        $candidate = Join-Path $parentDirectory ("{0}__{1}.zip" -f $directoryName, $suffix)
+        $suffix++
+    }
+
+    return $candidate
+}
+
+function New-TxtExportZipArchive {
+    param([string]$OutputDirectory)
+
+    if ([string]::IsNullOrWhiteSpace($OutputDirectory) -or -not (Test-Path $OutputDirectory -PathType Container)) {
+        throw "Diretório de saída do TXT Export inválido para compactação: $OutputDirectory"
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $zipFilePath = New-TxtExportZipFilePath -OutputDirectory $OutputDirectory
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $OutputDirectory,
+        $zipFilePath,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $false
+    )
+
+    return $zipFilePath
 }
 
 function Test-IsLikelyBinaryFile {
@@ -252,8 +336,8 @@ function Read-TextContentForTxtExport {
 
     $reader = $null
     try {
-        $reader = New-Object System.IO.StreamReader($FilePath, $true)
-        return $reader.ReadToEnd()
+        return (Read-LocalTextArtifact -Path $FilePath)
+        # retorno acima centraliza a política de encoding
     }
     finally {
         if ($null -ne $reader) {
@@ -295,8 +379,13 @@ function Export-OperationFilesToTxtDirectory {
             $content = Read-TextContentForTxtExport -FilePath $resolvedSource
             $targetName = Convert-SourceFileToTxtExportName -FullPath $resolvedSource -ProjectRootPath $ProjectRootPath
             $targetPath = Join-Path $outputDirectory $targetName
+            $targetDirectory = [System.IO.Path]::GetDirectoryName($targetPath)
 
-            [System.IO.File]::WriteAllText($targetPath, $content, $utf8NoBomLocal)
+            if (-not [string]::IsNullOrWhiteSpace($targetDirectory)) {
+                [System.IO.Directory]::CreateDirectory($targetDirectory) | Out-Null
+            }
+
+            Write-LocalTextArtifact -Path $targetPath -Content $content -UseBom
             $exportedFiles.Add($targetPath) | Out-Null
 
             Write-UILog -Message "TXT gerado: $targetName" -Color $ThemeCyan
@@ -308,8 +397,11 @@ function Export-OperationFilesToTxtDirectory {
         }
     }
 
+    $zipFilePath = New-TxtExportZipArchive -OutputDirectory $outputDirectory
+
     return [pscustomobject]@{
         OutputDirectory = $outputDirectory
+        ZipFilePath     = $zipFilePath
         ExportedFiles   = $exportedFiles
         SkippedFiles    = $skippedFiles
     }
@@ -317,11 +409,7 @@ function Export-OperationFilesToTxtDirectory {
 
 function Get-ExtractionModeLabel {
     param([string]$ExtractionMode)
-    switch ($ExtractionMode) {
-        'blueprint' { return 'BLUEPRINT' }
-        'sniper' { return 'SNIPER' }
-        default { return 'FULL' }
-    }
+    return (Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)
 }
 
 function Resolve-AIProviderFromUI {
@@ -372,6 +460,33 @@ function Get-AIResultOutputFileName {
     return Add-OutputRoutePrefixToFileName -FileName "_AI_RESULT_${ProjectNameValue}.json" -RouteMode $RouteMode
 }
 
+
+function Test-IsMomentumResultFileName {
+    param([string]$FileName)
+    return (Test-VibeMomentumResultFileName -FileName $FileName)
+}
+
+function Resolve-LatestMomentumContext {
+    param([string]$SearchRoot)
+    return (Resolve-VibeLatestMomentumContext -SearchRoot $SearchRoot)
+}
+
+function Get-MarkdownFenceToken {
+    param([AllowEmptyString()][string]$Content, [string]$FenceChar = '`')
+    return (Get-VibeMarkdownFenceToken -Content $Content -FenceChar $FenceChar)
+}
+
+function Convert-ToSafeMarkdownCodeBlock {
+    param([AllowEmptyString()][string]$Content, [string]$Language = 'text', [string]$FenceChar = '`')
+    return (ConvertTo-VibeSafeMarkdownCodeBlock -Content $Content -Language $Language -FenceChar $FenceChar)
+}
+
+function Get-MomentumSectionContent {
+    param($MomentumContext)
+    return (Get-VibeMomentumSectionContent -MomentumContext $MomentumContext)
+}
+
+
 function Get-ProviderDisplayInfo {
     param([string]$Provider)
     $envModels = @{
@@ -385,81 +500,34 @@ function Get-ProviderDisplayInfo {
 
 function Get-CodeFenceLanguageFromExtension {
     param([string]$Extension)
-    $Ext = ($Extension | ForEach-Object { $_ })
-    if ([string]::IsNullOrWhiteSpace($Ext)) { return "text" }
-    $Ext = $Ext.TrimStart('.').ToLowerInvariant()
-    if ($Ext -match '^(tsx?)$') { return 'typescript' }
-    if ($Ext -match '^(jsx?)$') { return 'javascript' }
-    if ($Ext -match '^(py)$') { return 'python' }
-    if ($Ext -match '^(cs)$') { return 'csharp' }
-    if ($Ext -match '^(rb)$') { return 'ruby' }
-    if ($Ext -match '^(rs)$') { return 'rust' }
-    if ($Ext -match '^(kt)$') { return 'kotlin' }
-    if ($Ext -match '^(go)$') { return 'go' }
-    if ($Ext -match '^(java)$') { return 'java' }
-    if ($Ext -match '^(php)$') { return 'php' }
-    if ($Ext -match '^(c|h|cpp|hpp)$') { return 'cpp' }
-    return $Ext
+    return (Get-VibeCodeFenceLanguageFromExtension -Extension $Extension)
+}
+
+function Get-PowerShellFunctionSignatures {
+    param([string[]]$Lines)
+    return @(Get-VibePowerShellFunctionSignatures -Lines $Lines)
 }
 
 function Get-BundlerSignaturesForFile {
     param([System.IO.FileInfo]$File, [ref]$IssueMessage)
-    if ($IssueMessage) { $IssueMessage.Value = $null }
-    if ($null -eq $File) { return @() }
-    $RelPath = Resolve-Path -Path $File.FullName -Relative
-    $ContentRaw = Get-Content $File.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-    if (-not $ContentRaw) { return @() }
-    try {
-        $Lines = @(Get-Content $File.FullName -Encoding UTF8)
-        $Signatures = @()
-        for ($i = 0; $i -lt $Lines.Count; $i++) {
-            $RawLine = $Lines[$i]
-            if ($null -eq $RawLine) { continue }
-            $Line = $RawLine.Trim()
-            if ($Line -match '^(?:export\s+)?(interface|type|enum)\s+[A-Za-z0-9_]+') {
-                $Block = "$Line`n"
-                if ($Line -notmatch '\}' -and $Line -notmatch ' = ' -and $Line -notmatch ';$') {
-                    $j = $i + 1
-                    while ($j -lt $Lines.Count -and $Lines[$j] -notmatch '^\}') {
-                        $Block += "$($Lines[$j])`n"; $j++
-                    }
-                    if ($j -lt $Lines.Count) { $Block += "$($Lines[$j])`n" }
-                    $i = $j
-                }
-                $Signatures += $Block
-            }
-            elseif ($Line -match '^(?:export\s+)?(?:const|function|class)\s+[A-Za-z0-9_]+') {
-                $Signatures += "$(($Line -replace '\{.*$','') -replace '\s*=>.*$','')`n"
-            }
-            elseif ($Line -match '^(?:public|protected|private|internal)\s+(?:class|interface|record|struct|enum)\s+[A-Za-z0-9_]+') {
-                $Signatures += "$($Line -replace '\{.*$','')`n"
-            }
-            elseif ($Line -match '^(?:def|class)\s+[A-Za-z0-9_]+') {
-                $Signatures += "$($Line -replace ':$','')`n"
-            }
-            elseif ($Line -match '^func\s+[A-Za-z0-9_]+') {
-                $Signatures += "$($Line -replace '\{.*$','')`n"
-            }
-            elseif ($Line -match '^(?:pub\s+)?(?:fn|struct|enum|trait)\s+[A-Za-z0-9_]+') {
-                $Signatures += "$($Line -replace '\{.*$','')`n"
-            }
-        }
-        return @($Signatures)
-    }
-    catch {
-        if ($IssueMessage) { $IssueMessage.Value = "[$RelPath] $($_.Exception.Message)" }
-        return @()
-    }
+    return @(Get-VibeBundlerSignaturesForFile -File $File -IssueMessage $IssueMessage)
 }
 
 function New-BundlerContractsBlock {
     param([System.IO.FileInfo[]]$Files, [ref]$IssueCollector,
         [string]$StructureHeading, [string]$ContractsHeading, [switch]$LogExtraction)
     if ($null -eq $Files -or $Files.Count -eq 0) { return "" }
-    $Block = "${StructureHeading}`n" + '```text' + "`n"
-    foreach ($File in $Files) { $Block += (Resolve-Path -Path $File.FullName -Relative) + "`n" }
-    $Block += '```' + "`n`n"
+
+    $structureLines = New-Object System.Collections.Generic.List[string]
+    foreach ($File in $Files) {
+        $structureLines.Add((Resolve-Path -Path $File.FullName -Relative))
+    }
+
+    $Block = "${StructureHeading}`n"
+    $Block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
+    $Block += "`n`n"
     $Block += "${ContractsHeading}`n"
+
     foreach ($File in $Files) {
         if ($SignatureExtensions -notcontains $File.Extension) { continue }
         $RelPath = Resolve-Path -Path $File.FullName -Relative
@@ -472,9 +540,10 @@ function New-BundlerContractsBlock {
         }
         if ($Signatures.Count -le 0) { continue }
         $FenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $File.Extension
-        $Block += "#### File: $RelPath`n" + '```' + $FenceLanguage + "`n"
-        $Block += ($Signatures -join '')
-        $Block += '```' + "`n`n"
+        $SignatureContent = ($Signatures -join '')
+        $Block += "#### File: $RelPath`n"
+        $Block += (Convert-ToSafeMarkdownCodeBlock -Content $SignatureContent -Language $FenceLanguage)
+        $Block += "`n`n"
     }
     return $Block
 }
@@ -1911,7 +1980,7 @@ function Invoke-OrchestratorAgent {
 
     if ($resultMetaPathFromDisk) {
         try {
-            $meta = Get-Content $resultMetaPathFromDisk -Raw -Encoding UTF8 | ConvertFrom-Json
+            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json
             return [pscustomobject]@{
                 OutputPath     = $meta.outputPath
                 ResultMetaPath = $resultMetaPathFromDisk
@@ -1940,140 +2009,52 @@ function Invoke-OrchestratorAgent {
 # ══════════════════════════════════════════════════════════════════
 # PROTOCOL HEADER BUILDER
 # ══════════════════════════════════════════════════════════════════
-function Get-ProtocolSliceSection0 {
-    return @"
-### §0 — FILOSOFIA UNIFICADA (STRICT GLOBAL ENFORCEMENT)
-- Toda saída deve conter exclusivamente conteúdo técnico compatível com o modo efetivamente gerado.
-- É proibido misturar papéis, blocos ou instruções de modos incompatíveis com a combinação ativa de rota e extração.
-- Não inferir arquitetura, contratos, fluxos ou comportamento fora do que estiver documentado no artefato visível.
-"@.Trim()
-}
+
+function Get-ProtocolSliceSection0 { return (Get-VibeProtocolSliceSection0) }
 
 function Get-ProtocolSliceSection1 {
     param([string]$RouteMode, [string]$ExtractionMode)
-    return @"
-### §1 — ENQUADRAMENTO OPERACIONAL
-- Rota ativa: $(if ($RouteMode -eq 'executor') { 'DIRETO PARA O EXECUTOR' } else { 'VIA DIRETOR' }).
-- Extração efetiva: $(Get-ExtractionModeLabel -ExtractionMode $ExtractionMode).
-- O protocolo final deve ser composto apenas com os slices compatíveis com esta combinação operacional.
-"@.Trim()
+    return (Get-VibeProtocolSliceSection1 -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
 }
 
-function Get-ProtocolSliceDirectorMode {
-    return @"
-### MODO DIRETOR (OPTIMIZED v2.1)
-- **Função:** Atuar como camada de inteligência analítica que processa inputs (erros/pedidos) e gera especificações "zero-gap" para o Executor.
-- **DNA do Output:** Técnico, imperativo, denso e orientado a "Differential Delivery".
-- **Template Obrigatório de Saída:**
-    1. **[CONTEXTO]**: ID do Projeto, Arquivo(s) e Função(ões) afetadas conforme o bundle.
-    2. **[SINTOMA]**: Log bruto + Diagnóstico técnico (Root Cause Analysis). Proibido suposições vagas.
-    3. **[OBJETIVO]**: Estado final esperado e critérios de aceitação.
-    4. **[REGRAS]**: Constraints de arquitetura, segurança e imutabilidade do projeto.
-    5. **[ESPECIFICAÇÃO DE IMPLEMENTAÇÃO]**: Lógica técnica detalhada (Regex, Algoritmos, Sanitização, Tipagem).
-    6. **[ENTREGA]**: Formato do código (Full file ou Atomic Snippet) e instruções de validação.
-- **Proibição:** Não implementar código diretamente. Não usar frases de cortesia ou introduções.
-"@.Trim()
-}
+function Get-ProtocolSliceDirectorMode { return (Get-VibeProtocolSliceDirectorMode) }
 
-function Get-ProtocolSliceExecutorMode {
-    return @"
-### MODO EXECUTOR (OPTIMIZED v2.1)
-- **Função:** Atuar como engine de engenharia e implementação direta (Code-First). Converter especificações técnicas, blueprints ou logs de erro em código funcional e produtivo.
-- **DNA do Output:** Strict "Zero-Yap". Proibido saudações, explicações verbais, resumos pós-código ou validações de sentimentos. A entrega é o código.
-- **Regras de Entrega Técnica:**
-    1. **Precisão Cirúrgica:** Modificar APENAS o escopo solicitado. Manter o restante do arquivo, formatação, indentação e contratos estritamente intocados.
-    2. **Formatação de Saída:** O código gerado DEVE estar contido em blocos Markdown válidos (ex: ```typescript), precedidos EXCLUSIVAMENTE pelo caminho/nome do arquivo afetado.
-    3. **Fail-Safe de Contexto:** Se o bundle não contiver contexto ou dependências suficientes para uma implementação segura e testável, ABORTAR a geração de código e retornar um erro técnico listando os arquivos faltantes.
-    4. **Isolamento de Papel:** NUNCA orquestrar, gerar prompts para outras IAs ou atuar como Diretor.
-"@.Trim()
-}
+function Get-ProtocolSliceExecutorMode { return (Get-VibeProtocolSliceExecutorMode) }
 
-function Get-ProtocolSliceBlueprintMode {
-    return @"
-### MODO BLUEPRINT
-- Priorizar estruturas, assinaturas, contratos, dependências e organização do projeto.
-- Não puxar regras de SNIPER nem tratar o documento como recorte manual.
-- Restringir a síntese ao que for compatível com leitura arquitetural/estrutural do bundle.
-"@.Trim()
-}
+function Get-ProtocolSliceBlueprintMode { return (Get-VibeProtocolSliceBlueprintMode) }
 
-function Get-ProtocolSliceSniperMode {
-    return @"
-### MODO SNIPER
-- Tratar o documento como recorte parcial/manual derivado de seleção granular de arquivos.
-- Limitar qualquer análise, instrução ou execução ao escopo visível no recorte enviado.
-- Declarar explicitamente lacunas como contexto não visível no recorte enviado.
-"@.Trim()
-}
+function Get-ProtocolSliceSniperMode { return (Get-VibeProtocolSliceSniperMode) }
 
 function Get-ProtocolSliceSection3 {
     param([string]$RouteMode, [string]$ExtractionMode)
-    $documentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $ExtractionMode
-    $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add('### §3 — POLÍTICA DE ESCOPO E CONTEXTO')
-
-    if ($documentMode -eq 'manual') {
-        $lines.Add('- O artefato deve ser tratado como recorte parcial/manual.')
-        $lines.Add('- Qualquer decisão deve permanecer estritamente no escopo visível.')
-        $lines.Add('- Quando faltar contexto, declarar explicitamente a limitação em vez de inferir comportamento ausente.')
-    }
-    else {
-        $lines.Add('- O artefato deve ser tratado como projeto completo contido no bundle gerado.')
-        $lines.Add('- Basear a leitura exclusivamente no material visível, sem inferir contratos não documentados.')
-        if ($ExtractionMode -eq 'blueprint') {
-            $lines.Add('- Como a extração é BLUEPRINT, priorizar visão estrutural e não puxar regras de SNIPER.')
-        }
-        else {
-            $lines.Add('- Como a extração é FULL, não inserir blocos de BLUEPRINT nem de SNIPER.')
-        }
-    }
-
-    if ($RouteMode -eq 'executor') {
-        $lines.Add('- O resultado deve preparar a atuação futura do Executor sem vazamento do papel de Diretor.')
-    }
-    else {
-        $lines.Add('- O resultado deve preparar a atuação futura do Diretor sem vazamento do papel de Executor.')
-    }
-
-    return ($lines -join "`n")
+    return (Get-VibeProtocolSliceSection3 -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
 }
 
 function Get-ProtocolSliceSection4 {
     param([string]$ExecutorTargetValue)
-    return @"
-### §4 — REGRAS FINAIS DE EXECUÇÃO
-- Preservar contratos, identificadores, comportamento existente e compatibilidade com o fluxo atual.
-- Não introduzir blocos, instruções ou resumos pertencentes a modos incompatíveis com o documento gerado.
-- Executor alvo de referência: $ExecutorTargetValue.
-"@.Trim()
+    return (Get-VibeProtocolSliceSection4 -ExecutorTargetValue $ExecutorTargetValue)
 }
+
+function Get-DirectorEliteV3ProtocolSection0 {
+    param([string]$ExecutorTargetValue)
+    return (Get-VibeDirectorEliteV3ProtocolSection0 -ExecutorTargetValue $ExecutorTargetValue)
+}
+
+function Get-DirectorEliteV3ProtocolSection1 {
+    param([string]$ExtractionMode)
+    return (Get-VibeDirectorEliteV3ProtocolSection1 -ExtractionMode $ExtractionMode)
+}
+
+function Get-DirectorEliteV3ProtocolSection2 { return (Get-VibeDirectorEliteV3ProtocolSection2) }
+
+function Get-DirectorEliteV3ProtocolSection3 { return (Get-VibeDirectorEliteV3ProtocolSection3) }
+
+function Get-DirectorEliteV3ProtocolSection4 { return (Get-VibeDirectorEliteV3ProtocolSection4) }
+
 
 function Get-ProtocolHeaderContent {
     param([string]$RouteMode, [string]$ExtractionMode, [string]$ExecutorTargetValue)
-
-    $parts = New-Object System.Collections.Generic.List[string]
-    $parts.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2')
-    $parts.Add((Get-ProtocolSliceSection0))
-    $parts.Add((Get-ProtocolSliceSection1 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
-
-    if ($RouteMode -eq 'executor') {
-        $parts.Add((Get-ProtocolSliceExecutorMode))
-    }
-    else {
-        $parts.Add((Get-ProtocolSliceDirectorMode))
-    }
-
-    if ($ExtractionMode -eq 'blueprint') {
-        $parts.Add((Get-ProtocolSliceBlueprintMode))
-    }
-    elseif ($ExtractionMode -eq 'sniper') {
-        $parts.Add((Get-ProtocolSliceSniperMode))
-    }
-
-    $parts.Add((Get-ProtocolSliceSection3 -RouteMode $RouteMode -ExtractionMode $ExtractionMode))
-    $parts.Add((Get-ProtocolSliceSection4 -ExecutorTargetValue $ExecutorTargetValue))
-
-    return (($parts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
+    return (Get-VibeProtocolHeaderContent -RouteMode $RouteMode -ExtractionMode $ExtractionMode -ExecutorTargetValue $ExecutorTargetValue)
 }
 
 function Normalize-BundleContentForDiff {
@@ -2098,7 +2079,7 @@ function Get-BundleContentHash {
 function Read-NormalizedBundleFile {
     param([string]$Path)
     if (-not (Test-Path $Path)) { return $null }
-    $raw = Get-Content $Path -Raw -Encoding UTF8 -ErrorAction Stop
+    $raw = Read-LocalTextArtifact -Path $Path
     return (Normalize-BundleContentForDiff -Content $raw)
 }
 
@@ -2241,6 +2222,7 @@ $btnRun.Add_Click({
                     -ProjectNameValue $ProjectName
 
                 Write-UILog -Message "Pasta de saída: $($TxtExportResult.OutputDirectory)" -Color $ThemeSuccess
+                Write-UILog -Message "Arquivo ZIP: $($TxtExportResult.ZipFilePath)" -Color $ThemeSuccess
                 Write-UILog -Message "Arquivos exportados: $($TxtExportResult.ExportedFiles.Count)" -Color $ThemeSuccess
 
                 if ($TxtExportResult.SkippedFiles.Count -gt 0) {
@@ -2250,8 +2232,56 @@ $btnRun.Add_Click({
                 return
             }
 
-            $HeaderContent = Get-ProtocolHeaderContent -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode -ExecutorTargetValue $ExecutorTarget
+            if ($currentAIFlowMode -eq 'director') {
+                $directorParts = @(
+                    (Get-DirectorEliteV3ProtocolSection0 -ExecutorTargetValue $ExecutorTarget),
+                    (Get-DirectorEliteV3ProtocolSection1 -ExtractionMode $currentExtractionMode),
+                    (Get-DirectorEliteV3ProtocolSection2),
+                    (Get-DirectorEliteV3ProtocolSection3),
+                    (Get-DirectorEliteV3ProtocolSection4)
+                )
+
+                $HeaderContent = (($directorParts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
+            }
+            else {
+                $headerParts = New-Object System.Collections.Generic.List[string]
+                $headerParts.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2')
+                $headerParts.Add((Get-ProtocolSliceSection0))
+                $headerParts.Add((Get-ProtocolSliceSection1 -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode))
+                $headerParts.Add((Get-ProtocolSliceExecutorMode))
+
+                if ($currentExtractionMode -eq 'blueprint') {
+                    $headerParts.Add((Get-ProtocolSliceBlueprintMode))
+                }
+                elseif ($currentExtractionMode -eq 'sniper') {
+                    $headerParts.Add((Get-ProtocolSliceSniperMode))
+                }
+
+                $headerParts.Add((Get-ProtocolSliceSection3 -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode))
+                $headerParts.Add((Get-ProtocolSliceSection4 -ExecutorTargetValue $ExecutorTarget))
+
+                $HeaderContent = (($headerParts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
+            }
+
             $FinalContent = $HeaderContent + "`n`n"
+
+            if ($currentAIFlowMode -eq 'director') {
+                $MomentumContext = Resolve-LatestMomentumContext -SearchRoot (Get-Location).Path
+
+                foreach ($MomentumWarning in @($MomentumContext.Warnings)) {
+                    Write-UILog -Message $MomentumWarning -Color $ThemeWarn
+                }
+
+                if ($MomentumContext.Status -eq 'found') {
+                    Write-UILog -Message "Contexto Momentum carregado: $([System.IO.Path]::GetFileName($MomentumContext.FilePath))" -Color $ThemeCyan
+                }
+                else {
+                    Write-UILog -Message $MomentumContext.Message -Color $ThemeWarn
+                }
+
+                $FinalContent += (Get-MomentumSectionContent -MomentumContext $MomentumContext) + "`n`n"
+            }
+
             $BlueprintIssues = @()
 
             if ($Choice -eq '1' -or $Choice -eq '3') {
@@ -2292,12 +2322,11 @@ $btnRun.Add_Click({
                 foreach ($File in $FilesToProcess) {
                     $RelPath = Resolve-Path -Path $File.FullName -Relative
                     Write-UILog -Message "Lendo $RelPath"
-                    $Content = Get-Content $File.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                    $Content = Read-LocalTextArtifact -Path $File.FullName
                     if ($Content) {
                         $Content = $Content -replace "(`r?`n){3,}", "`r`n`r`n"
-                        $FinalContent += "#### File: $RelPath`n" + '```text' + "`n"
-                        $FinalContent += $Content.TrimEnd() + "`n"
-                        $FinalContent += '```' + "`n`n"
+                        $FinalContent += "#### File: $RelPath`n"
+                        $FinalContent += (Convert-ToSafeMarkdownCodeBlock -Content $Content.TrimEnd() -Language 'text') + "`n`n"
                     }
                 }
 
@@ -2320,7 +2349,7 @@ $btnRun.Add_Click({
 
                 if (Test-Path "package.json") {
                     Write-UILog -Message "Lendo package.json para tech stack..."
-                    $Pkg = Get-Content "package.json" | ConvertFrom-Json
+                    $Pkg = (Read-LocalTextArtifact -Path "package.json") | ConvertFrom-Json
                     if ($Pkg.dependencies) { $FinalContent += "* **Deps:** $(($Pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
                     if ($Pkg.devDependencies) { $FinalContent += "* **Dev Deps:** $(($Pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
                 }
@@ -2339,7 +2368,7 @@ $btnRun.Add_Click({
             $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
             $TempBundlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-bundle-" + [System.Guid]::NewGuid().ToString("N") + ".md")
 
-            [System.IO.File]::WriteAllText($TempBundlePath, $FinalContent, $Utf8NoBom)
+            Write-LocalTextArtifact -Path $TempBundlePath -Content $FinalContent
 
             $ShouldCallAI = $false
             $ShouldPersistOfficialBundle = $true
@@ -2375,7 +2404,7 @@ $btnRun.Add_Click({
             }
 
             if ($ShouldPersistOfficialBundle) {
-                [System.IO.File]::WriteAllText($OutputFullPath, $FinalContent, $Utf8NoBom)
+                Write-LocalTextArtifact -Path $OutputFullPath -Content $FinalContent -UseBom
                 Write-UILog -Message "Bundle oficial salvo em: $OutputFullPath" -Color $ThemeSuccess
             }
             else {
@@ -2458,7 +2487,7 @@ $btnRun.Add_Click({
                 }
 
                 $ConfigJson = $ConfigPayload | ConvertTo-Json -Depth 3 -Compress
-                [System.IO.File]::WriteAllText($TempPromptConfigPath, $ConfigJson, $Utf8NoBom)
+                Write-LocalTextArtifact -Path $TempPromptConfigPath -Content $ConfigJson
 
                 $AgentScript = Join-Path $ToolkitDir "groq-agent.ts"
             
@@ -2488,7 +2517,7 @@ $btnRun.Add_Click({
                 }
 
                 if ($FinalPromptPath) {
-                    $FinalSummarizedContent = Get-Content $FinalPromptPath -Raw -Encoding UTF8
+                    $FinalSummarizedContent = Read-LocalTextArtifact -Path $FinalPromptPath
                     try {
                         $FinalSummarizedContent | Set-Clipboard
                         Write-UILog -Message "Prompt final preparado e copiado para o clipboard." -Color $ThemeSuccess

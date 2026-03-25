@@ -242,7 +242,7 @@ const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
         systemDelta: [
             "Especialização operacional ativa: diagnóstico técnico via Diretor.",
             "Aprofunde causalidade, evidências observáveis, riscos de regressão e critérios de aceitação.",
-            "Mantenha intacto o schema JSON, routeMode, extractionMode, parse e repair do pipeline."
+            "Mantenha intactos os headings obrigatórios, delimitadores do prompt, routeMode e extractionMode do pipeline."
         ].join("\n"),
         userDelta: [
             "Template operacional: diagnóstico técnico.",
@@ -288,7 +288,7 @@ const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
         systemDelta: [
             "Especialização operacional ativa: architecture review via Diretor.",
             "Aprofunde limites, contratos, organização, acoplamentos e riscos sistêmicos.",
-            "Mantenha JSON, schema, parse e repair intactos."
+            "Mantenha intactos os headings obrigatórios, delimitadores do prompt, parse e repair do pipeline."
         ].join("\n"),
         userDelta: [
             "Template operacional: revisão arquitetural.",
@@ -306,7 +306,7 @@ const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
         constraints: [
             "Não inferir superfícies não documentadas.",
             "Não trocar o papel do Diretor.",
-            "Não alterar o schema obrigatório."
+            "Não alterar o contrato estrutural obrigatório."
         ],
         systemDelta: [
             "Especialização operacional ativa: hardening via Diretor.",
@@ -562,12 +562,12 @@ function buildDefaultPromptCustomizationConfig(
 ): PromptCustomizationConfig {
     const objective =
         routeMode === "director"
-            ? "Gerar documento técnico estruturado de alto sinal para orientar o Executor."
+            ? "Gerar análise técnica e meta-prompt zero-gap de alto sinal para orientar o Executor."
             : "Gerar contexto técnico estruturado pronto para implementação direta.";
 
     const deliveryType =
         routeMode === "director"
-            ? "Especificação operacional estruturada para Diretor"
+            ? "Meta-prompt operacional estruturado para Diretor"
             : `Especificação operacional estruturada para Executor (${executorTarget})`;
 
     const baseConstraints =
@@ -712,6 +712,11 @@ function buildPromptCustomizationSystemLayer(
     extractionMode: ExtractionMode,
     promptConfig: PromptCustomizationConfig
 ): string {
+    const contractGuard =
+        routeMode === "director"
+            ? "É proibido alterar o contrato do Diretor ELITE v3: headings obrigatórios, delimitadores do prompt, routeMode ou extractionMode."
+            : "É proibido desligar JSON, schema obrigatório, parse estruturado, repair estruturado, routeMode ou extractionMode.";
+
     const layers: string[] = [
         "## CUSTOM PROMPT LAYER — STRICT ENFORCEMENT",
         `ROUTE_MODE_LOCK=${routeMode}`,
@@ -719,7 +724,7 @@ function buildPromptCustomizationSystemLayer(
         `PROMPT_MODE=${promptConfig.promptMode}`,
         `DEPTH=${promptConfig.depth}`,
         `TONE=${promptConfig.tone}`,
-        "É proibido desligar JSON, schema obrigatório, parse estruturado, repair estruturado, routeMode ou extractionMode."
+        contractGuard
     ];
 
     if (promptConfig.objective) {
@@ -1314,6 +1319,201 @@ function buildExtractionModeRequirements(extractionMode: ExtractionMode): string
     }
 }
 
+
+const DIRECTOR_REQUIRED_BLOCKS: readonly string[] = [
+    "## ANÁLISE DO DIRETOR",
+    "## RACIOCÍNIO (CoT)",
+    "## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)",
+    "--- INÍCIO DO PROMPT ---",
+    "--- FIM DO PROMPT ---"
+];
+
+function buildDirectorEliteV3SystemPrompt(
+    mode: DocumentMode,
+    extractionMode: ExtractionMode,
+    executorTarget: string
+): string {
+    const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
+
+    return [
+        "Você atua EXCLUSIVAMENTE como DIRETOR DE ENGENHARIA AGÊNTICA.",
+        "Sua função é ler o bundle visível, assimilar o contexto e produzir um meta-prompt zero-gap para o Executor.",
+        "Você está proibido de implementar código, escrever patches finais, assumir papel de Executor ou inventar arquitetura fora do bundle visível.",
+        "Quando houver lacuna de contexto, declare explicitamente a lacuna em vez de improvisar.",
+        "O bundle pode conter uma seção de CONTEXTO MOMENTUM com metadados AI_RESULT anteriores; use-a apenas como estado anterior de apoio, sem sobrescrever o bundle visível.",
+        scopeInstruction,
+        `O executor alvo de referência é: ${executorTarget}.`,
+        `O documentMode externo é: ${mode}.`,
+        "Sua saída deve obedecer exatamente ao contrato abaixo, sem qualquer bloco adicional antes, depois ou entre eles:",
+        "## ANÁLISE DO DIRETOR",
+        "## RACIOCÍNIO (CoT)",
+        "## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)",
+        "--- INÍCIO DO PROMPT ---",
+        "--- FIM DO PROMPT ---",
+        "Dentro do bloco PROMPT PARA O EXECUTOR, estruture o conteúdo em camadas: LAYER 1 IDENTIDADE E REGRAS, LAYER 2 BLUEPRINT TÉCNICO, LAYER 3 CONTEXTO MOMENTUM, LAYER 4 PROTOCOLO DE VERIFICAÇÃO.",
+        "Instrua explicitamente Lei da Subtração, Relatório de Impacto, diff claro, validação objetiva e verificação de segurança.",
+        "Use linguagem técnica, imperativa, densa e rastreável."
+    ].join("\n");
+}
+
+function buildDirectorEliteV3UserPrompt(
+    projectName: string,
+    executorTarget: string,
+    mode: DocumentMode,
+    extractionMode: ExtractionMode,
+    technicalBundleDump: string
+): string {
+    return [
+        `PROJECT_NAME: ${projectName}`,
+        `EXECUTOR_TARGET: ${executorTarget}`,
+        "ROUTE_MODE: director",
+        `DOCUMENT_MODE: ${mode}`,
+        `EXTRACTION_MODE: ${extractionMode}`,
+        "",
+        "TAREFA:",
+        "- Assimilar exclusivamente o bundle visível.",
+        "- Produzir análise técnica, decomposição lógica e um prompt copiável para o Executor.",
+        "- Não escrever código final.",
+        "- Não responder em JSON.",
+        "- Não usar qualquer seção fora do contrato obrigatório.",
+        "",
+        "CONTRATO OBRIGATÓRIO DE SAÍDA:",
+        "## ANÁLISE DO DIRETOR",
+        "## RACIOCÍNIO (CoT)",
+        "## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)",
+        "--- INÍCIO DO PROMPT ---",
+        "--- FIM DO PROMPT ---",
+        "",
+        "CONTEÚDO MÍNIMO DO BLOCO DE PROMPT PARA O EXECUTOR:",
+        "- [LAYER 1: IDENTIDADE E REGRAS]",
+        "- [LAYER 2: BLUEPRINT TÉCNICO]",
+        "- [LAYER 3: CONTEXTO MOMENTUM]",
+        "- [LAYER 4: PROTOCOLO DE VERIFICAÇÃO]",
+        "- exigir Lei da Subtração",
+        "- exigir Relatório de Impacto",
+        "- exigir verificação de segurança",
+        "",
+        "BUNDLE VISÍVEL:",
+        technicalBundleDump
+    ].join("\n");
+}
+
+function extractDirectorPromptBody(content: string): string {
+    const startToken = "--- INÍCIO DO PROMPT ---";
+    const endToken = "--- FIM DO PROMPT ---";
+    const startIndex = content.indexOf(startToken);
+    const endIndex = content.indexOf(endToken);
+
+    if (startIndex < 0 || endIndex <= startIndex) {
+        throw new AgentRuntimeError("Bloco do prompt do Executor não pôde ser delimitado.", { status: 422 });
+    }
+
+    const promptBody = content.slice(startIndex + startToken.length, endIndex).trim();
+    if (promptBody.length === 0) {
+        throw new AgentRuntimeError("Bloco do prompt do Executor veio vazio.", { status: 422 });
+    }
+
+    return promptBody;
+}
+
+function validateDirectorResponseContract(content: string): string {
+    const normalized = normalizeWhitespace(content);
+    validateForbiddenPatterns(normalized);
+
+    const missingBlocks = DIRECTOR_REQUIRED_BLOCKS.filter((block) => !normalized.includes(block));
+    if (missingBlocks.length > 0) {
+        throw new AgentRuntimeError("Resposta do Diretor fora do contrato obrigatório.", {
+            status: 422,
+            details: `Blocos obrigatórios ausentes: ${missingBlocks.join(" | ")}`
+        });
+    }
+
+    extractDirectorPromptBody(normalized);
+    return normalized;
+}
+
+function buildDirectorRepairPrompt(extractionMode: ExtractionMode, failureDetails?: string): string {
+    return [
+        "Sua última resposta violou o contrato obrigatório do Diretor ELITE v3.",
+        "Reemita a resposta inteira mantendo a mesma intenção técnica derivada do bundle visível.",
+        "Não implementar código.",
+        "Não responder em JSON.",
+        "Não adicionar qualquer bloco fora do contrato obrigatório.",
+        "Use exatamente:",
+        "## ANÁLISE DO DIRETOR",
+        "## RACIOCÍNIO (CoT)",
+        "## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)",
+        "--- INÍCIO DO PROMPT ---",
+        "--- FIM DO PROMPT ---",
+        `EXTRACTION_MODE: ${extractionMode}`,
+        ...(failureDetails ? [`DETALHE DA VIOLAÇÃO: ${failureDetails}`] : [])
+    ].join("\n");
+}
+
+async function repairDirectorResponseContract(
+    content: string,
+    extractionMode: ExtractionMode,
+    primaryProvider: ProviderName,
+    modelOverride?: string
+): Promise<string> {
+    try {
+        return validateDirectorResponseContract(content);
+    } catch (error) {
+        const classified = classifyError(error);
+        const repairPayload: ProviderRequestPayload = {
+            systemPrompt: buildDirectorRepairPrompt(extractionMode, classified.details ?? classified.message),
+            userPrompt: content
+        };
+
+        const repaired = await tryProviderChain(primaryProvider, repairPayload, modelOverride);
+        return validateDirectorResponseContract(repaired.content);
+    }
+}
+
+function buildDirectorEliteV3MarkdownDocument(
+    directorResponse: string,
+    technicalBundleDump: string,
+    executionMeta: ExecutionMeta,
+    extractionMode: ExtractionMode
+): string {
+    const protocolMarkdown = [
+        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v3",
+        "",
+        "### §0 — IDENTIDADE E MANDATO (O DIRETOR)",
+        "- Papel ativo: Diretor de Engenharia Agêntica.",
+        "- Saída validada contra o contrato obrigatório do Diretor ELITE v3.",
+        "",
+        "### §1 — ENQUADRAMENTO OPERACIONAL",
+        "- Rota ativa: VIA DIRETOR.",
+        `- Extração efetiva: ${getExtractionModeLabel(extractionMode)}.`,
+        `- Executor alvo de referência: ${escapeMarkdown(executionMeta.executorTarget)}.`,
+        "- O bloco [META-PROMPT PARA EXECUTOR] abaixo está pronto para cópia."
+    ].join("\n");
+
+    return [
+        protocolMarkdown,
+        "",
+        buildExecutionMetaMarkdown(executionMeta),
+        "",
+        "## SOURCE OF TRUTH",
+        "",
+        `> Modo de extração: ${getExtractionModeLabel(extractionMode)}.`,
+        `> Route mode: ${executionMeta.routeMode}.`,
+        `> Document mode: full.`,
+        "",
+        "[META-PROMPT PARA EXECUTOR]",
+        "",
+        validateDirectorResponseContract(directorResponse),
+        "",
+        "## BUNDLE VISÍVEL",
+        "",
+        "```text",
+        normalizeWhitespace(technicalBundleDump),
+        "```"
+    ].join("\n");
+}
+
+
 function buildDirectorStructuredSystemPrompt(
     mode: DocumentMode,
     extractionMode: ExtractionMode,
@@ -1545,19 +1745,33 @@ function buildAugmentedPromptBundle({
     promptConfig
 }: BuildAugmentedPromptBundleParams): ProviderRequestPayload {
     const hydratedConfig = mergePromptConfigWithTemplatePreset(promptConfig);
-
-    const baseSystemPrompt =
-        routeMode === "director"
-            ? buildDirectorStructuredSystemPrompt(mode, extractionMode, executorTarget)
-            : buildExecutorStructuredSystemPrompt(mode, extractionMode, executorTarget);
-
-    const baseUserPrompt =
-        routeMode === "director"
-            ? buildDirectorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump)
-            : buildExecutorStructuredUserPrompt(projectName, executorTarget, mode, extractionMode, technicalBundleDump);
-
     const customSystemLayer = buildPromptCustomizationSystemLayer(routeMode, extractionMode, hydratedConfig);
     const customUserLayer = buildPromptCustomizationUserLayer(hydratedConfig);
+
+    if (routeMode === "director") {
+        const baseSystemPrompt = buildDirectorEliteV3SystemPrompt(mode, extractionMode, executorTarget);
+        const baseUserPrompt = buildDirectorEliteV3UserPrompt(
+            projectName,
+            executorTarget,
+            mode,
+            extractionMode,
+            technicalBundleDump
+        );
+
+        return {
+            systemPrompt: [baseSystemPrompt, "", customSystemLayer].join("\n"),
+            userPrompt: [customUserLayer, "", baseUserPrompt].join("\n")
+        };
+    }
+
+    const baseSystemPrompt = buildExecutorStructuredSystemPrompt(mode, extractionMode, executorTarget);
+    const baseUserPrompt = buildExecutorStructuredUserPrompt(
+        projectName,
+        executorTarget,
+        mode,
+        extractionMode,
+        technicalBundleDump
+    );
 
     return {
         systemPrompt: [baseSystemPrompt, "", customSystemLayer].join("\n"),
@@ -1584,7 +1798,7 @@ class GroqClient implements AIClient {
             },
             body: JSON.stringify({
                 model: payload.model ?? this.model,
-                temperature: 0.2,
+                temperature: 0,
                 messages: [
                     { role: "system", content: payload.systemPrompt },
                     { role: "user", content: payload.userPrompt }
@@ -1637,7 +1851,7 @@ class GeminiClient implements AIClient {
             },
             body: JSON.stringify({
                 generationConfig: {
-                    temperature: 0.2
+                    temperature: 0
                 },
                 contents: [
                     {
@@ -1698,7 +1912,7 @@ class OpenAIClient implements AIClient {
             },
             body: JSON.stringify({
                 model: payload.model ?? this.model,
-                temperature: 0.2,
+                temperature: 0,
                 messages: [
                     { role: "system", content: payload.systemPrompt },
                     { role: "user", content: payload.userPrompt }
@@ -1743,7 +1957,7 @@ class AnthropicClient implements AIClient {
         const body: any = {
             model: payload.model ?? this.model,
             max_tokens: 4096,
-            temperature: 0.2,
+            temperature: 0,
             messages: [{ role: "user", content: payload.userPrompt }]
         };
 
@@ -1794,48 +2008,68 @@ function getEnvValue(keys: string[]): string | null {
     return null;
 }
 
+function resolveModelForProvider(provider: ProviderName, modelOverride?: string): string {
+    if (typeof modelOverride === "string" && modelOverride.trim().length > 0) {
+        return modelOverride.trim();
+    }
+
+    switch (provider) {
+        case "gemini":
+            return getEnvValue(["GEMINI_MODEL", "GOOGLE_MODEL"]) ?? "gemini-1.5-pro";
+        case "openai":
+            return getEnvValue(["OPENAI_MODEL"]) ?? "gpt-4o";
+        case "anthropic":
+            return getEnvValue(["ANTHROPIC_MODEL"]) ?? "claude-3-5-sonnet-20240620";
+        case "groq":
+        default:
+            return getEnvValue(["GROQ_MODEL"]) ?? "llama-3.3-70b-versatile";
+    }
+}
+
 function createClient(provider: ProviderName, modelOverride?: string): AIClient {
+    const resolvedModel = resolveModelForProvider(provider, modelOverride);
+
     switch (provider) {
         case "gemini": {
             const apiKey = getEnvValue(["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
             if (!apiKey) {
-                throw new AgentRuntimeError("GEMINI_API_KEY/GOOGLE_API_KEY não configurada.", { 
-                    status: 401, 
-                    errorType: "AUTH_ERROR" 
+                throw new AgentRuntimeError("GEMINI_API_KEY/GOOGLE_API_KEY não configurada.", {
+                    status: 401,
+                    errorType: "AUTH_ERROR"
                 });
             }
-            return new GeminiClient(apiKey, modelOverride ?? "gemini-1.5-pro");
+            return new GeminiClient(apiKey, resolvedModel);
         }
         case "openai": {
             const apiKey = getEnvValue(["OPENAI_API_KEY"]);
             if (!apiKey) {
-                throw new AgentRuntimeError("OPENAI_API_KEY não configurada.", { 
-                    status: 401, 
-                    errorType: "AUTH_ERROR" 
+                throw new AgentRuntimeError("OPENAI_API_KEY não configurada.", {
+                    status: 401,
+                    errorType: "AUTH_ERROR"
                 });
             }
-            return new OpenAIClient(apiKey, modelOverride ?? "gpt-4o");
+            return new OpenAIClient(apiKey, resolvedModel);
         }
         case "anthropic": {
             const apiKey = getEnvValue(["ANTHROPIC_API_KEY"]);
             if (!apiKey) {
-                throw new AgentRuntimeError("ANTHROPIC_API_KEY não configurada.", { 
-                    status: 401, 
-                    errorType: "AUTH_ERROR" 
+                throw new AgentRuntimeError("ANTHROPIC_API_KEY não configurada.", {
+                    status: 401,
+                    errorType: "AUTH_ERROR"
                 });
             }
-            return new AnthropicClient(apiKey, modelOverride ?? "claude-3-5-sonnet-20240620");
+            return new AnthropicClient(apiKey, resolvedModel);
         }
         case "groq":
         default: {
             const apiKey = getEnvValue(["GROQ_API_KEY"]);
             if (!apiKey) {
-                throw new AgentRuntimeError("GROQ_API_KEY não configurada.", { 
-                    status: 401, 
-                    errorType: "AUTH_ERROR" 
+                throw new AgentRuntimeError("GROQ_API_KEY não configurada.", {
+                    status: 401,
+                    errorType: "AUTH_ERROR"
                 });
             }
-            return new GroqClient(apiKey, modelOverride ?? "llama-3.3-70b-versatile");
+            return new GroqClient(apiKey, resolvedModel);
         }
     }
 }
@@ -1916,6 +2150,8 @@ async function tryProviderChain(
 
     for (const provider of chain) {
         try {
+            const resolvedModel = resolveModelForProvider(provider, modelOverride);
+            console.error(`    Provider target: ${provider} | Resolved model: ${resolvedModel}`);
             const client = createClient(provider, modelOverride);
             const response = await client.request(payload);
             return response;
@@ -2047,16 +2283,39 @@ async function main(): Promise<void> {
     });
 
     const providerResponse = await tryProviderChain(provider, promptPayload, modelOverride);
-    const structuredDocument = await repairStructuredPayload(
-        providerResponse.content,
-        outputRouteMode,
-        mode,
-        extractionMode,
-        provider,
-        modelOverride
-    );
+    const generatedAt = getCurrentTimestampIso();
 
-    const finalMarkdown = buildStructuredMarkdownDocument(structuredDocument, technicalBundleDump, extractionMode);
+    const finalMarkdown =
+        outputRouteMode === "director"
+            ? buildDirectorEliteV3MarkdownDocument(
+                  await repairDirectorResponseContract(
+                      providerResponse.content,
+                      extractionMode,
+                      provider,
+                      modelOverride
+                  ),
+                  technicalBundleDump,
+                  {
+                      projectName: inferredProjectName,
+                      sourceArtifact: sourceArtifactName,
+                      executorTarget,
+                      routeMode: outputRouteMode,
+                      generatedAt
+                  },
+                  extractionMode
+              )
+            : buildStructuredMarkdownDocument(
+                  await repairStructuredPayload(
+                      providerResponse.content,
+                      outputRouteMode,
+                      mode,
+                      extractionMode,
+                      provider,
+                      modelOverride
+                  ),
+                  technicalBundleDump,
+                  extractionMode
+              );
 
     const outputBaseDir = path.dirname(absolutePath);
     const routePrefix = outputRouteMode === "director" ? "_diretor_AI_CONTEXT_" : "_executor_AI_CONTEXT_";
@@ -2084,7 +2343,7 @@ async function main(): Promise<void> {
         hasExpertOverride: Boolean(promptConfig.expertSystemPrompt),
         outputPath: finalOutputPath,
         bundlePath: absolutePath,
-        generatedAt: getCurrentTimestampIso()
+        generatedAt
     };
 
     await writeTextFile(finalResultMetaPath, JSON.stringify(resultMeta, null, 2));

@@ -1,4 +1,4 @@
-﻿# VibeToolkit
+# VibeToolkit
 
 VibeToolkit é um toolkit de empacotamento de contexto e orquestração de LLMs para fluxos de engenharia agêntica. O projeto combina um entrypoint local em PowerShell (`project-bundler.ps1`) com um agente TypeScript (`groq-agent.ts`) para gerar bundles técnicos, acionar providers de IA e produzir artefatos estruturados para os papéis de **Diretor** e **Executor**.
 

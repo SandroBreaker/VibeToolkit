@@ -23,6 +23,7 @@ _diretor_INTELIGENTE_*
 _executor_COPIAR_TUDO_*
 _executor_INTELIGENTE_*
 _TXT_EXPORT_*
+_meta-prompt_COPIAR_TUDO_*
 
 # Sistema Operacional
 .DS_Store

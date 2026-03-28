@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const nodePath = require('path');
 
 // FIX (bug 4): use __dirname instead of a hardcoded absolute path so this

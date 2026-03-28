@@ -1,4 +1,5 @@
-﻿# VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
+﻿
+# VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
 # =================================================================
 
 [CmdletBinding()]
@@ -6,6 +7,22 @@ param([string]$Path = ".")
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Set-Location $Path
+
+$SentinelUiPath = Join-Path $PSScriptRoot "lib\SentinelUI.ps1"
+try {
+    if (-not (Test-Path $SentinelUiPath -PathType Leaf)) {
+        throw "Biblioteca de UI não encontrada: lib\SentinelUI.ps1"
+    }
+
+    . $SentinelUiPath
+}
+catch {
+    Write-Error ("Falha ao carregar a biblioteca de UI SENTINEL: {0}" -f $_.Exception.Message)
+    exit 1
+}
+
+Write-SentinelHeader -Version "v1.0.0"
+Write-SentinelStatus -Message "Bootstrap SENTINEL carregado." -Type Success
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -25,7 +42,8 @@ public static class Win32 {
 "@
 
 $consoleHandle = [Win32]::GetConsoleWindow()
-if ($consoleHandle -ne [IntPtr]::Zero) {
+$script:IsConsoleHost = $Host.Name -match "ConsoleHost|Visual Studio Code Host"
+if (-not $script:IsConsoleHost -and $consoleHandle -ne [IntPtr]::Zero) {
     [Win32]::ShowWindow($consoleHandle, 0) | Out-Null
 }
 
@@ -41,11 +59,18 @@ $RequiredModulePaths = @(
 )
 foreach ($modulePath in $RequiredModulePaths) {
     if (-not (Test-Path $modulePath -PathType Leaf)) {
+        Write-SentinelStatus -Message ("Módulo obrigatório não encontrado: {0}" -f (Split-Path $modulePath -Leaf)) -Type Error
         throw "Módulo obrigatório não encontrado: $modulePath"
     }
 }
 foreach ($modulePath in $RequiredModulePaths) {
-    Import-Module $modulePath -Force -DisableNameChecking -ErrorAction Stop
+    # Força leitura UTF-8 do conteúdo do módulo para impedir corrupção
+    # quando o .psm1 estiver sem BOM no PowerShell 5.1.
+    $moduleContent = [System.IO.File]::ReadAllText($modulePath, [System.Text.Encoding]::UTF8)
+    $scriptBlock = [scriptblock]::Create($moduleContent)
+    $dynamicModuleName = [System.IO.Path]::GetFileNameWithoutExtension($modulePath)
+    $dynamicModule = New-Module -Name $dynamicModuleName -ScriptBlock $scriptBlock
+    Import-Module -ModuleInfo $dynamicModule -Force -DisableNameChecking -ErrorAction Stop
 }
 
 $Choice = $null
@@ -65,6 +90,36 @@ $ThemeCyan = [System.Drawing.ColorTranslator]::FromHtml("#00E5FF")
 $ThemePink = [System.Drawing.ColorTranslator]::FromHtml("#FF1493")
 $ThemeSuccess = [System.Drawing.ColorTranslator]::FromHtml("#22C55E")
 $ThemeWarn = [System.Drawing.ColorTranslator]::FromHtml("#F59E0B")
+
+function Resolve-SentinelStatusTypeFromColor {
+    param([System.Drawing.Color]$Color)
+
+    if ($null -eq $Color) { return "Info" }
+
+    switch ($Color.ToArgb()) {
+        { $_ -eq $ThemeSuccess.ToArgb() } { return "Success" }
+        { $_ -eq $ThemeWarn.ToArgb() } { return "Warning" }
+        { $_ -eq $ThemePink.ToArgb() } { return "Error" }
+        default { return "Info" }
+    }
+}
+
+function Write-SentinelConsoleLog {
+    param(
+        [string]$Message,
+        [System.Drawing.Color]$Color = $ThemeText
+    )
+
+    if (-not $script:IsConsoleHost) { return }
+    if ([string]::IsNullOrWhiteSpace($Message)) { return }
+
+    try {
+        Write-SentinelStatus -Message $Message -Type (Resolve-SentinelStatusTypeFromColor -Color $Color)
+    }
+    catch {
+        # Fail-open: a telemetria CLI não pode interromper a HUD existente.
+    }
+}
 
 $AllowedExtensions = @(
     ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
@@ -133,6 +188,7 @@ function Write-LocalTextArtifact {
 $FoundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path)
 
 if ($FoundFiles.Count -eq 0) {
+    Write-SentinelStatus -Message "Nenhum arquivo válido encontrado no diretório atual." -Type Warning
     [System.Windows.Forms.MessageBox]::Show(
         "Nenhum arquivo válido encontrado no diretório atual.",
         "VibeToolkit", [System.Windows.Forms.MessageBoxButtons]::OK,
@@ -354,7 +410,6 @@ function Export-OperationFilesToTxtDirectory {
         [string]$ProjectNameValue
     )
 
-    $utf8NoBomLocal = New-Object System.Text.UTF8Encoding($false)
     $outputDirectory = New-TxtExportOutputDirectory -BaseDirectory $BaseOutputDirectory -ProjectNameValue $ProjectNameValue
     $exportedFiles = New-Object System.Collections.Generic.List[string]
     $skippedFiles = New-Object System.Collections.Generic.List[string]
@@ -461,6 +516,214 @@ function Get-AIResultOutputFileName {
 }
 
 
+function Get-DeterministicMetaPromptOutputFileName {
+    param(
+        [string]$ProjectNameValue,
+        [string]$ChoiceValue
+    )
+
+    switch ($ChoiceValue) {
+        '1' { return "_meta-prompt_COPIAR_TUDO__${ProjectNameValue}.md" }
+        '2' { return "_meta-prompt_INTELIGENTE__${ProjectNameValue}.md" }
+        '3' { return "_meta-prompt_MANUAL__${ProjectNameValue}.md" }
+        default { return "_meta-prompt__${ProjectNameValue}.md" }
+    }
+}
+
+function Get-DeterministicMetaPromptModeLabel {
+    param([string]$ChoiceValue)
+
+    switch ($ChoiceValue) {
+        '1' { return "COPIAR_TUDO" }
+        '2' { return "INTELIGENTE" }
+        '3' { return "MANUAL" }
+        default { return "BUNDLE" }
+    }
+}
+
+function Get-DeterministicMetaPromptAnalysisSummary {
+    param([string]$ExtractionMode)
+
+    $normalizedExtractionMode = if ([string]::IsNullOrWhiteSpace($ExtractionMode)) { '' } else { $ExtractionMode.ToLowerInvariant() }
+
+    switch ($normalizedExtractionMode) {
+        'full' { return "O material consolidado fornece visão ampla do projeto, incluindo estrutura, arquivos fonte e contexto operacional visível." }
+        'blueprint' { return "O material consolidado fornece recorte arquitetural focado em contratos, estrutura e componentes centrais." }
+        'sniper' { return "O material consolidado fornece recorte cirúrgico do projeto, com foco apenas no contexto explicitamente selecionado." }
+        default { return "O material consolidado fornece um bundle operacional estruturado do projeto." }
+    }
+}
+
+function Get-DeterministicMetaPromptReasoningSummary {
+    param(
+        [string[]]$RelevantFiles,
+        [string]$ExtractionMode
+    )
+
+    $parts = @(
+        "A saída deve ser compilada localmente no bundler, sem provider remoto e sem invocar groq-agent.ts.",
+        "O documento final precisa manter estrutura estável, vocabulário controlado e usar apenas sinais objetivos do bundle visível.",
+        "O Executor deve trabalhar sobre o material compilado, preservando contratos e evitando inferência livre fora dos arquivos anexados."
+    )
+
+    if ($RelevantFiles -and $RelevantFiles.Count -gt 0) {
+        $parts += "Os recortes prioritários para leitura são: $($RelevantFiles -join ', ')."
+    }
+
+    return ($parts -join ' ')
+}
+
+function Get-DeterministicRelevantFiles {
+    param([System.IO.FileInfo[]]$Files)
+
+    $priorityPatterns = @(
+        '.\project-bundler.ps1',
+        '.\groq-agent.ts',
+        '.\modules\VibeDirectorProtocol.psm1',
+        '.\modules\VibeBundleWriter.psm1',
+        '.\modules\VibeFileDiscovery.psm1',
+        '.\modules\VibeSignatureExtractor.psm1',
+        '.\DOCUMENTACAO_TECNICA.md',
+        '.\README.md',
+        '.\package.json'
+    )
+
+    $relativeMap = @{}
+    foreach ($file in @($Files)) {
+        try {
+            $relativePath = Resolve-Path -Path $file.FullName -Relative
+            $relativeMap[$relativePath] = $true
+        }
+        catch {
+        }
+    }
+
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($pattern in $priorityPatterns) {
+        if ($relativeMap.ContainsKey($pattern)) {
+            $result.Add($pattern)
+        }
+    }
+
+    if ($result.Count -eq 0) {
+        foreach ($key in ($relativeMap.Keys | Select-Object -First 8)) {
+            $result.Add([string]$key)
+        }
+    }
+
+    return @($result)
+}
+
+function Get-DeterministicMomentumSourceLabel {
+    param($MomentumContext)
+
+    if ($null -eq $MomentumContext) { return "não identificado" }
+    if ($MomentumContext.Status -ne 'found' -or [string]::IsNullOrWhiteSpace($MomentumContext.FilePath)) { return "não identificado" }
+
+    try {
+        return (Resolve-Path -Path $MomentumContext.FilePath -Relative)
+    }
+    catch {
+        return [System.IO.Path]::GetFileName($MomentumContext.FilePath)
+    }
+}
+
+function New-DeterministicMetaPromptArtifact {
+    param(
+        [string]$ProjectNameValue,
+        [string]$ExecutorTargetValue,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$SourceArtifactFileName,
+        [string]$OutputArtifactFileName,
+        [AllowEmptyString()][string]$BundleContent,
+        [System.IO.FileInfo[]]$Files,
+        $MomentumContext
+    )
+
+    $generatedAt = [DateTime]::UtcNow.ToString("o")
+    $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
+    $analysisSummary = Get-DeterministicMetaPromptAnalysisSummary -ExtractionMode $ExtractionMode
+    $reasoningSummary = Get-DeterministicMetaPromptReasoningSummary -RelevantFiles $relevantFiles -ExtractionMode $ExtractionMode
+    $momentumState = if ($MomentumContext -and $MomentumContext.Status -eq 'found') { 'carregado' } else { 'vazio' }
+    $momentumSource = Get-DeterministicMomentumSourceLabel -MomentumContext $MomentumContext
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v3")
+    $lines.Add("")
+    $lines.Add("### §0 — IDENTIDADE E MANDATO (O DIRETOR)")
+    $lines.Add("- Papel ativo: Diretor de Engenharia Agêntica.")
+    $lines.Add("- Saída compilada localmente por `project-bundler.ps1`, sem uso de provider remoto e sem `groq-agent.ts`.")
+    $lines.Add("")
+    $lines.Add("### §1 — ENQUADRAMENTO OPERACIONAL")
+    $lines.Add("- Rota ativa: VIA DIRETOR.")
+    $lines.Add("- Extração efetiva: $($ExtractionMode.ToUpperInvariant()).")
+    $lines.Add("- Executor alvo de referência: $ExecutorTargetValue.")
+    $lines.Add("- Este arquivo reúne meta-prompt determinístico e bundle visível em um único artefato.")
+    $lines.Add("")
+    $lines.Add("## EXECUTION META")
+    $lines.Add("")
+    $lines.Add("- Projeto: $ProjectNameValue")
+    $lines.Add("- Artefato final: $OutputArtifactFileName")
+    $lines.Add("- Artefato fonte interno: $SourceArtifactFileName")
+    $lines.Add("- Executor alvo: $ExecutorTargetValue")
+    $lines.Add("- Route mode: director")
+    $lines.Add("- Gerado em: $generatedAt")
+    $lines.Add("")
+    $lines.Add("## SOURCE OF TRUTH")
+    $lines.Add("")
+    $lines.Add("> Modo de extração: $($ExtractionMode.ToUpperInvariant()).")
+    $lines.Add("> Route mode: director.")
+    $lines.Add("> Document mode: $DocumentMode.")
+    $lines.Add("> Compilado localmente no bundler.")
+    $lines.Add("")
+    $lines.Add("[META-PROMPT PARA EXECUTOR]")
+    $lines.Add("")
+    $lines.Add("## ANÁLISE DO DIRETOR")
+    $lines.Add($analysisSummary)
+    $lines.Add("")
+    $lines.Add("## RACIOCÍNIO (CoT)")
+    $lines.Add($reasoningSummary)
+    $lines.Add("")
+    $lines.Add("## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)")
+    $lines.Add("--- INÍCIO DO PROMPT ---")
+    $lines.Add("### LAYER 1: IDENTIDADE E REGRAS")
+    $lines.Add("- Papel do Executor: Senior Implementation Agent (Sniper).")
+    $lines.Add("- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.")
+    $lines.Add("- Aplicar Lei da Subtração antes de adicionar novo código.")
+    $lines.Add("- Não inferir módulos, contratos ou comportamentos fora do bundle visível.")
+    $lines.Add("")
+    $lines.Add("### LAYER 2: BLUEPRINT TÉCNICO")
+    $lines.Add("- Objetivo: gerar orientação operacional estruturada a partir do bundle consolidado, sem uso de IA remota.")
+    $lines.Add("- Entrega esperada: análise, relatório de impacto, implementação em código, protocolo de validação e verificação de segurança.")
+    $lines.Add("- Route mode de origem: director")
+    $lines.Add("- Extraction mode: $ExtractionMode")
+    $lines.Add("- Executor alvo: $ExecutorTargetValue")
+    $lines.Add("")
+    $lines.Add("### LAYER 3: CONTEXTO MOMENTUM")
+    $lines.Add("- Estado: $momentumState")
+    $lines.Add("- Fonte: $momentumSource")
+    if ($relevantFiles.Count -gt 0) {
+        $lines.Add("- Recortes prioritários: $($relevantFiles -join ', ')")
+    }
+    else {
+        $lines.Add("- Recortes prioritários: não identificados objetivamente")
+    }
+    $lines.Add("")
+    $lines.Add("### LAYER 4: PROTOCOLO DE VERIFICAÇÃO")
+    $lines.Add("- Validar contra o contrato estrutural do Diretor e do Executor.")
+    $lines.Add("- Exigir Relatório de Impacto, diff claro, validação objetiva e verificação de segurança.")
+    $lines.Add("- Propor testes mínimos e checagens de regressão compatíveis com o escopo.")
+    $lines.Add("--- FIM DO PROMPT ---")
+    $lines.Add("")
+    $lines.Add("## BUNDLE VISÍVEL CONSOLIDADO")
+    $lines.Add("")
+    $lines.Add($BundleContent)
+
+    return ($lines -join "`n")
+}
+
+
 function Test-IsMomentumResultFileName {
     param([string]$FileName)
     return (Test-VibeMomentumResultFileName -FileName $FileName)
@@ -485,7 +748,6 @@ function Get-MomentumSectionContent {
     param($MomentumContext)
     return (Get-VibeMomentumSectionContent -MomentumContext $MomentumContext)
 }
-
 
 function Get-ProviderDisplayInfo {
     param([string]$Provider)
@@ -1306,6 +1568,16 @@ $chkSendToAI.Location = New-Object System.Drawing.Point(18, 336)
 $chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $form.Controls.Add($chkSendToAI)
 
+$chkDeterministicDirector = New-Object System.Windows.Forms.CheckBox
+$chkDeterministicDirector.Text = "Gerar meta-prompt determinístico local (sem IA / sem groq-agent.ts)"
+$chkDeterministicDirector.ForeColor = $ThemeText; $chkDeterministicDirector.BackColor = $ThemeBg
+$chkDeterministicDirector.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$chkDeterministicDirector.AutoSize = $true
+$chkDeterministicDirector.Location = New-Object System.Drawing.Point(18, 360)
+$chkDeterministicDirector.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$form.Controls.Add($chkDeterministicDirector)
+
+
 $panelAIPromptMode = New-Object System.Windows.Forms.GroupBox
 $panelAIPromptMode.Text = "Fluxo Final / Geração com IA"
 $panelAIPromptMode.ForeColor = $ThemePink
@@ -1536,7 +1808,7 @@ $logViewer.ReadOnly = $true; $logViewer.DetectUrls = $false
 $logViewer.Font = New-Object System.Drawing.Font("Consolas", 9.5)
 $logViewer.Location = New-Object System.Drawing.Point(18, 532)
 $logViewer.Size = New-Object System.Drawing.Size(824, 260)
-$logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($logViewer)
 
 # ══════════════════════════════════════════════════════════════════
@@ -1558,7 +1830,7 @@ function Update-StatusBar {
 function Update-ProviderStatus {
     $provider = Resolve-AIProviderFromUI -RbGroq $rbGroq -RbGemini $rbGemini -RbOpenAI $rbOpenAI -RbAnthropic $rbAnthropic
     if (-not $provider) { $provider = "groq" }
-    $isActive = $chkSendToAI.Checked
+    $isActive = $chkSendToAI.Checked -and -not $chkDeterministicDirector.Checked
     $info = Get-ProviderDisplayInfo -Provider $provider
     $lblStatusProvider.Text = "$(if ($isActive) { '●' } else { '○' }) $info"
     $lblStatusProvider.ForeColor = if ($isActive) { $ThemeCyan } else { $ThemeMuted }
@@ -1663,8 +1935,9 @@ function Update-ResponsiveLayout {
     }
 
     $chkSendToAI.Location = New-Object System.Drawing.Point($leftGap, $chkY)
+    $chkDeterministicDirector.Location = New-Object System.Drawing.Point($leftGap, [int]($chkY + 24))
 
-    $aiPanelTop = [int]($chkY + 32)
+    $aiPanelTop = [int]($chkY + 56)
     $promptVis = $chkSendToAI.Checked
     $tplVis = $promptVis -and $rbPromptModeTemplate.Checked
     $expVis = $promptVis -and $rbPromptModeExpert.Checked
@@ -1696,13 +1969,12 @@ function Update-ResponsiveLayout {
     $btnExpandLog.Location = New-Object System.Drawing.Point(($panelLogHeader.Width - 84), 4)
 
     $logTop = [int]($logHeaderY + $logHeaderH)
-    $expandedLogH = [int]($clientHeight - $logTop - $bottomGap - 80)
-    $normalLogH = [int]($clientHeight - $logTop - $bottomGap)
+    $remainingVisibleSpace = [int]($clientHeight - $logTop - $bottomGap)
     $logH = if ($script:LogExpanded) {
-        [Math]::Max($minLogH, $expandedLogH)
+        [Math]::Max(400, $remainingVisibleSpace)
     }
     else {
-        [Math]::Max($minLogH, $normalLogH)
+        [Math]::Max($minLogH, $remainingVisibleSpace)
     }
     $logViewer.Location = New-Object System.Drawing.Point($leftGap, $logTop)
     $logViewer.Size = New-Object System.Drawing.Size($usableWidth, $logH)
@@ -1738,7 +2010,19 @@ $rbFull.Add_CheckedChanged({ if ($rbFull.Checked) { Set-SniperLayout -Visible $f
 $rbArchitect.Add_CheckedChanged({ if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
 $rbTxtExport.Add_CheckedChanged({ if ($rbTxtExport.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
 
-$chkSendToAI.Add_CheckedChanged({ Update-AIPromptModeUi })
+$chkSendToAI.Add_CheckedChanged({
+    if ($chkSendToAI.Checked) {
+        $chkDeterministicDirector.Checked = $false
+    }
+    Update-AIPromptModeUi
+})
+$chkDeterministicDirector.Add_CheckedChanged({
+    if ($chkDeterministicDirector.Checked) {
+        $chkSendToAI.Checked = $false
+        $rbAIFlowDirector.Checked = $true
+    }
+    Update-AIPromptModeUi
+})
 $rbPromptModeDefault.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbPromptModeTemplate.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbPromptModeExpert.Add_CheckedChanged({ Update-AIPromptModeUi })
@@ -1812,6 +2096,7 @@ function Redraw-LogViewer {
 
 function Write-UILog {
     param([string]$Message, [System.Drawing.Color]$Color = $ThemeText)
+    Write-SentinelConsoleLog -Message $Message -Color $Color
     $timestamp = Get-Date -Format "HH:mm:ss"
     $level = Get-LogLevel -Color $Color
     $entry = @{ Timestamp = $timestamp; Message = $Message; Color = $Color; Level = $level }
@@ -1848,6 +2133,7 @@ function Set-UiBusy {
     $panelSniper.Enabled = -not $Busy
     $panelAIPromptMode.Enabled = -not $Busy
     $chkSendToAI.Enabled = -not $Busy
+    $chkDeterministicDirector.Enabled = -not $Busy
     $btnRun.Enabled = -not $Busy
     $progressBar.Visible = $Busy
     $btnRun.Text = if ($Busy) { "..." } else { "ENERGIZE" }
@@ -2051,7 +2337,6 @@ function Get-DirectorEliteV3ProtocolSection3 { return (Get-VibeDirectorEliteV3Pr
 
 function Get-DirectorEliteV3ProtocolSection4 { return (Get-VibeDirectorEliteV3ProtocolSection4) }
 
-
 function Get-ProtocolHeaderContent {
     param([string]$RouteMode, [string]$ExtractionMode, [string]$ExecutorTargetValue)
     return (Get-VibeProtocolHeaderContent -RouteMode $RouteMode -ExtractionMode $ExtractionMode -ExecutorTargetValue $ExecutorTargetValue)
@@ -2144,7 +2429,7 @@ $btnRun.Add_Click({
                 [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
         }
-        if ($chkSendToAI.Checked -and -not $currentAIProvider) {
+        if ($chkSendToAI.Checked -and -not $chkDeterministicDirector.Checked -and -not $currentAIProvider) {
             [System.Windows.Forms.MessageBox]::Show("Selecione a IA primária.", "VibeToolkit",
                 [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
@@ -2154,7 +2439,7 @@ $btnRun.Add_Click({
                 [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
         }
-        if ($chkSendToAI.Checked -and $currentAIPromptMode -eq "expert" -and [string]::IsNullOrWhiteSpace($txtCustomSystemPrompt.Text)) {
+        if ($chkSendToAI.Checked -and -not $chkDeterministicDirector.Checked -and $currentAIPromptMode -eq "expert" -and [string]::IsNullOrWhiteSpace($txtCustomSystemPrompt.Text)) {
             [System.Windows.Forms.MessageBox]::Show("No modo Expert Override, preencha as diretrizes do especialista.", "VibeToolkit",
                 [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
             return
@@ -2183,6 +2468,9 @@ $btnRun.Add_Click({
         $AIProvider = $currentAIProvider
         $FilesToProcess = @($selectedFiles)
         $SendToAI = $chkSendToAI.Checked
+        $UseDeterministicDirector = $chkDeterministicDirector.Checked
+        $ResolvedOutputRouteMode = if ($UseDeterministicDirector) { 'director' } else { $currentAIFlowMode }
+        $CallFinalGenerator = $SendToAI -or $UseDeterministicDirector
         $TempPromptConfigPath = $null
         $TempBundlePath = $null
 
@@ -2195,7 +2483,8 @@ $btnRun.Add_Click({
             Write-UILog -Message "Projeto: $ProjectName"
             Write-UILog -Message "Modo: $(if ($Choice -eq '1') { 'Full Vibe' } elseif ($Choice -eq '2') { 'Architect' } elseif ($Choice -eq '3') { 'Sniper' } else { 'TXT Export' })"
             Write-UILog -Message "Executor alvo: $ExecutorTarget"
-            if ($SendToAI) { Write-UILog -Message "IA primária: $AIProvider" -Color $ThemeCyan }
+            if ($SendToAI -and -not $UseDeterministicDirector) { Write-UILog -Message "IA primária: $AIProvider" -Color $ThemeCyan }
+            if ($UseDeterministicDirector) { Write-UILog -Message "Fluxo local determinístico: sem provider remoto e sem groq-agent.ts." -Color $ThemeCyan }
             Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
             if ($Choice -eq '3') {
                 Write-UILog -Message "Sniper: $($FilesToProcess.Count) arquivo(s) selecionado(s) em modo manual." -Color $ThemeCyan
@@ -2203,8 +2492,8 @@ $btnRun.Add_Click({
                     Write-UILog -Message "Sniper: $($unselectedFiles.Count) arquivo(s) não selecionado(s) serão anexados em modo Bundler." -Color $ThemeCyan
                 }
             }
-            Write-UILog -Message "Geração com IA: $(if ($SendToAI) { $currentAIPromptMode } else { 'Desabilitado' })"
-            Write-UILog -Message "Fluxo final: $(if ($currentAIFlowMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' })"
+            Write-UILog -Message "Geração final: $(if ($UseDeterministicDirector) { 'Determinística local' } elseif ($SendToAI) { $currentAIPromptMode } else { 'Desabilitada' })"
+            Write-UILog -Message "Fluxo final: $(if ($ResolvedOutputRouteMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' })"
 
             $IsTxtExportMode = ($Choice -eq '4')
 
@@ -2232,7 +2521,7 @@ $btnRun.Add_Click({
                 return
             }
 
-            if ($currentAIFlowMode -eq 'director') {
+            if ($ResolvedOutputRouteMode -eq 'director') {
                 $directorParts = @(
                     (Get-DirectorEliteV3ProtocolSection0 -ExecutorTargetValue $ExecutorTarget),
                     (Get-DirectorEliteV3ProtocolSection1 -ExtractionMode $currentExtractionMode),
@@ -2264,8 +2553,9 @@ $btnRun.Add_Click({
             }
 
             $FinalContent = $HeaderContent + "`n`n"
+            $MomentumContext = $null
 
-            if ($currentAIFlowMode -eq 'director') {
+            if ($ResolvedOutputRouteMode -eq 'director') {
                 $MomentumContext = Resolve-LatestMomentumContext -SearchRoot (Get-Location).Path
 
                 foreach ($MomentumWarning in @($MomentumContext.Warnings)) {
@@ -2286,12 +2576,12 @@ $btnRun.Add_Click({
 
             if ($Choice -eq '1' -or $Choice -eq '3') {
                 if ($Choice -eq '1') {
-                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_COPIAR_TUDO__${ProjectName}.md" -RouteMode $currentAIFlowMode
+                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_COPIAR_TUDO__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
                     $HeaderTitle = "MODO COPIAR TUDO"
                     Write-UILog -Message "Iniciando Modo Copiar Tudo..." -Color $ThemeCyan
                 }
                 else {
-                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_MANUAL__${ProjectName}.md" -RouteMode $currentAIFlowMode
+                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_MANUAL__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
                     $HeaderTitle = "MODO MANUAL"
                     Write-UILog -Message "Iniciando Modo Sniper / Manual..." -Color $ThemePink
                 }
@@ -2342,16 +2632,20 @@ $btnRun.Add_Click({
                 }
             }
             else {
-                $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_INTELIGENTE__${ProjectName}.md" -RouteMode $currentAIFlowMode
+                $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_INTELIGENTE__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
                 Write-UILog -Message "Iniciando Modo Architect / Inteligente..." -Color $ThemeCyan
                 $FinalContent += "## MODO INTELIGENTE: $ProjectName`n`n"
                 $FinalContent += "### 1. TECH STACK`n"
 
-                if (Test-Path "package.json") {
+                $PackageJsonPath = Join-Path $ToolkitDir "package.json"
+                if (Test-Path $PackageJsonPath -PathType Leaf) {
                     Write-UILog -Message "Lendo package.json para tech stack..."
-                    $Pkg = (Read-LocalTextArtifact -Path "package.json") | ConvertFrom-Json
+                    $Pkg = (Read-LocalTextArtifact -Path $PackageJsonPath) | ConvertFrom-Json
                     if ($Pkg.dependencies) { $FinalContent += "* **Deps:** $(($Pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
                     if ($Pkg.devDependencies) { $FinalContent += "* **Dev Deps:** $(($Pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
+                }
+                else {
+                    Write-UILog -Message "package.json não encontrado em $PackageJsonPath; tech stack será omitida." -Color $ThemeWarn
                 }
 
                 $FinalContent += "`n"
@@ -2365,10 +2659,76 @@ $btnRun.Add_Click({
 
             Write-UILog -Message "Salvando artefato..."
             $OutputFullPath = Join-Path (Get-Location) $OutputFile
-            $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
             $TempBundlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-bundle-" + [System.Guid]::NewGuid().ToString("N") + ".md")
 
             Write-LocalTextArtifact -Path $TempBundlePath -Content $FinalContent
+
+            if ($UseDeterministicDirector) {
+                $DeterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $ProjectName -ChoiceValue $Choice
+                $DeterministicOutputFullPath = Join-Path (Get-Location) $DeterministicOutputFile
+
+                Write-UILog -Message "Fluxo determinístico local ignorará o pre-flight diff gate." -Color $ThemeCyan
+                Write-UILog -Message "Compilando meta-prompt determinístico local diretamente no bundler..." -Color $ThemeCyan
+
+                $DeterministicContent = New-DeterministicMetaPromptArtifact `
+                    -ProjectNameValue $ProjectName `
+                    -ExecutorTargetValue $ExecutorTarget `
+                    -ExtractionMode $currentExtractionMode `
+                    -DocumentMode $currentExtractionMode `
+                    -SourceArtifactFileName $OutputFile `
+                    -OutputArtifactFileName $DeterministicOutputFile `
+                    -BundleContent $FinalContent `
+                    -Files $FilesToProcess `
+                    -MomentumContext $MomentumContext
+
+                Write-LocalTextArtifact -Path $DeterministicOutputFullPath -Content $DeterministicContent -UseBom
+
+                $DeterministicTokenEstimate = [math]::Round($DeterministicContent.Length / 4)
+
+                try {
+                    $DeterministicContent | Set-Clipboard
+                    $CopiedDeterministic = $true
+                }
+                catch {
+                    $CopiedDeterministic = $false
+                }
+
+                if ($BlueprintIssues -and $BlueprintIssues.Count -gt 0) {
+                    Write-UILog -Message "Artefato gerado com $($BlueprintIssues.Count) aviso(s)." -Color $ThemePink
+                    foreach ($Issue in ($BlueprintIssues | Select-Object -First 10)) { Write-UILog -Message $Issue -Color $ThemePink }
+                }
+                else {
+                    Write-UILog -Message "Meta-prompt determinístico consolidado com sucesso." -Color $ThemeSuccess
+                }
+
+                $ModoNome = if ($Choice -eq '1') {
+                    "Meta-Prompt · Copiar Tudo"
+                }
+                elseif ($Choice -eq '2') {
+                    "Meta-Prompt · Inteligente"
+                }
+                elseif ($Choice -eq '3') {
+                    "Meta-Prompt · Manual"
+                }
+                else {
+                    "Meta-Prompt"
+                }
+
+                Write-UILog -Message "Modo: $ModoNome  ·  Executor: $ExecutorTarget"
+                Write-UILog -Message "Arquivo: $DeterministicOutputFile"
+                Write-UILog -Message "Tokens estimados: ~$(Format-TokenCount -Tokens $DeterministicTokenEstimate)"
+                Write-UILog -Message "Meta-prompt determinístico salvo em: $DeterministicOutputFullPath" -Color $ThemeSuccess
+
+                if ($CopiedDeterministic) {
+                    Write-UILog -Message "Meta-prompt final copiado para a área de clipboard." -Color $ThemeCyan
+                }
+                else {
+                    Write-UILog -Message "Meta-prompt final gerado, mas clipboard indisponível." -Color $ThemePink
+                }
+
+                Write-UILog -Message "Execução concluída sem chamada de IA e sem groq-agent.ts." -Color $ThemeSuccess
+                return
+            }
 
             $ShouldCallAI = $false
             $ShouldPersistOfficialBundle = $true
@@ -2497,8 +2857,8 @@ $btnRun.Add_Click({
                     -ProjectNameValue $ProjectName `
                     -ExecutorTargetValue $ExecutorTarget `
                     -BundleModeValue $currentExtractionMode `
-                    -PrimaryProviderValue $AIProvider `
-                    -OutputRouteModeValue $currentAIFlowMode `
+                    -PrimaryProviderValue $(if ($UseDeterministicDirector) { "groq" } else { $AIProvider }) `
+                    -OutputRouteModeValue $ResolvedOutputRouteMode `
                     -CustomPromptConfigPath $TempPromptConfigPath
 
                 $FinalPromptPath = $null

@@ -1,7 +1,7 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
-$script:VibeUtf8NoBom = New-Object System.Text.UTF8Encoding($false)
-$script:VibeUtf8Bom = New-Object System.Text.UTF8Encoding($true)
+$script:VibeUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $false)
+$script:VibeUtf8Bom = New-Object System.Text.UTF8Encoding($true, $false)
 
 function Get-VibeUtf8Encoding {
     param([switch]$UseBom)
@@ -47,7 +47,14 @@ function Read-VibeTextFile {
         return $strictUtf8.GetString($bytes)
     }
     catch {
-        return ([System.Text.Encoding]::Default.GetString($bytes))
+        # Fallback tolerante: continua em UTF-8 e substitui bytes inválidos,
+        # evitando mojibake massivo causado por fallback para codepage local.
+        try {
+            return $script:VibeUtf8NoBom.GetString($bytes)
+        }
+        catch {
+            return ([System.Text.Encoding]::Default.GetString($bytes))
+        }
     }
 }
 

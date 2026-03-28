@@ -6,7 +6,7 @@ import process from "process";
 type OutputRouteMode = "director" | "executor";
 type ExtractionMode = "full" | "blueprint" | "sniper";
 type DocumentMode = "full" | "manual";
-type ProviderName = "groq" | "gemini" | "openai" | "anthropic";
+type ProviderName = "groq" | "gemini" | "openai" | "anthropic" | "local";
 type PromptMode = "default" | "template" | "expertOverride";
 
 type PromptDepth = "normal" | "deep" | "max";
@@ -109,6 +109,32 @@ interface BuildAugmentedPromptBundleParams {
     mode: DocumentMode;
     extractionMode: ExtractionMode;
     promptConfig: PromptCustomizationConfig;
+}
+
+const DETERMINISTIC_DIRECTOR_TEMPLATE_ID = "director_meta_v1" as const;
+
+interface ContextMomentumMeta {
+    state: "loaded" | "empty";
+    source: string | null;
+    payload: Record<string, unknown> | null;
+}
+
+interface DeterministicDirectorTemplateModel {
+    projectName: string;
+    sourceArtifact: string;
+    executorTarget: string;
+    extractionMode: ExtractionMode;
+    documentMode: DocumentMode;
+    generatedAt: string;
+    objective: string;
+    deliveryType: string;
+    focusTags: string[];
+    constraints: string[];
+    contextMomentum: ContextMomentumMeta;
+    visibleFiles: string[];
+    relevantFiles: string[];
+    analysisSummary: string;
+    reasoningSummary: string;
 }
 
 type ProviderErrorType = "AUTH_ERROR" | "RATE_LIMIT" | "NETWORK_ERROR" | "PARSE_ERROR" | "PROVIDER_DOWN" | "CONFIG_ERROR" | "PAYLOAD_TOO_LARGE";
@@ -318,6 +344,24 @@ const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
             "Mapear riscos, fragilidades, guardrails e critérios de endurecimento."
         ].join("\n")
     },
+
+    "director_meta_v1": {
+        id: "director_meta_v1",
+        label: "Diretor Meta-Prompt Determinístico v1",
+        allowedRouteModes: ["director"],
+        allowedExtractionModes: ["full", "blueprint", "sniper"],
+        objective: "Compilar meta-prompt do Diretor em Markdown determinístico, sem provider remoto.",
+        deliveryType: "Documento Markdown pronto para cópia operacional.",
+        focusTags: ["director", "meta-prompt", "deterministic", "elite-v3"],
+        constraints: [
+            "Não chamar provider remoto.",
+            "Preservar headings obrigatórios do Diretor.",
+            "Usar apenas sinais objetivos do bundle visível.",
+            "Não inferir módulos, contratos ou comportamentos ausentes."
+        ],
+        systemDelta: "Modo local determinístico ativo.",
+        userDelta: "Renderize o documento final localmente."
+    },
     "executor.full.surgical-patch": {
         id: "executor.full.surgical-patch",
         label: "Executor · Surgical Patch",
@@ -412,6 +456,209 @@ const PROMPT_TEMPLATE_REGISTRY: Record<string, PromptTemplatePreset> = {
     }
 };
 
+const DIRECTOR_DETERMINISTIC_PHRASEBOOK = {
+    analysisByExtractionMode: {
+        full: "O bundle visível fornece visão ampla do projeto, incluindo estrutura, componentes centrais e contratos operacionais.",
+        blueprint: "O bundle visível fornece recorte arquitetural orientado a contratos, responsabilidades e superfícies de integração.",
+        sniper: "O bundle visível fornece recorte cirúrgico orientado a um ajuste pontual, com contexto minimizado."
+    } as const,
+    reasoningBase: [
+        "A saída deve converter sinais objetivos do bundle em um meta-prompt estável e pronto para cópia.",
+        "O documento precisa preservar routeMode, extractionMode, contrato estrutural do Diretor e Lei da Subtração.",
+        "Nenhum bloco deve depender de inferência livre ou de respostas probabilísticas do provider."
+    ]
+};
+
+function isDeterministicDirectorTemplate(
+    routeMode: OutputRouteMode,
+    promptConfig: PromptCustomizationConfig
+): boolean {
+    return (
+        routeMode === "director" &&
+        promptConfig.promptMode === "template" &&
+        promptConfig.templateId === DETERMINISTIC_DIRECTOR_TEMPLATE_ID
+    );
+}
+
+function extractVisibleFilesFromBundle(bundle: string): string[] {
+    const matches = Array.from(bundle.matchAll(/#### File:\s+(.+)$/gm));
+    const items = matches.map((match) => match[1].trim());
+    return Array.from(new Set(items));
+}
+
+function selectRelevantFiles(visibleFiles: string[]): string[] {
+    const priority = [
+        ".\\groq-agent.ts",
+        ".\\project-bundler.ps1",
+        ".\\modules\\VibeDirectorProtocol.psm1",
+        ".\\modules\\VibeBundleWriter.psm1",
+        ".\\DOCUMENTACAO_TECNICA.md",
+        ".\\README.md"
+    ];
+
+    const visible = new Set(visibleFiles);
+    return priority.filter((file) => visible.has(file));
+}
+
+function extractContextMomentum(bundle: string): ContextMomentumMeta {
+    const headingMatch = bundle.search(/#{4,6}\s*0\.\s*CONTEXTO MOMENTUM/i);
+    if (headingMatch < 0) {
+        return { state: "empty", source: null, payload: null };
+    }
+
+    const sectionTail = bundle.slice(headingMatch);
+    const nextHeadingRelative = sectionTail.slice(1).search(/\n#{2,6}\s+/);
+    const section =
+        nextHeadingRelative >= 0
+            ? sectionTail.slice(0, nextHeadingRelative + 1)
+            : sectionTail;
+
+    const sourceMatch = section.match(/-\s*Fonte:\s*(.+)$/im);
+    const jsonMatch = section.match(/```json\s*([\s\S]*?)```/i);
+    const payload = jsonMatch ? safeJsonParse<Record<string, unknown> | null>(jsonMatch[1], null) : null;
+
+    return {
+        state: payload ? "loaded" : "empty",
+        source: sourceMatch ? sourceMatch[1].trim() : null,
+        payload
+    };
+}
+
+function buildDeterministicDirectorTemplateModel(params: {
+    projectName: string;
+    sourceArtifact: string;
+    executorTarget: string;
+    extractionMode: ExtractionMode;
+    documentMode: DocumentMode;
+    generatedAt: string;
+    technicalBundleDump: string;
+    promptConfig: PromptCustomizationConfig;
+}): DeterministicDirectorTemplateModel {
+    const visibleFiles = extractVisibleFilesFromBundle(params.technicalBundleDump);
+    const relevantFiles = selectRelevantFiles(visibleFiles);
+    const contextMomentum = extractContextMomentum(params.technicalBundleDump);
+
+    const analysisSummary =
+        DIRECTOR_DETERMINISTIC_PHRASEBOOK.analysisByExtractionMode[params.extractionMode];
+
+    const reasoningSummary = [
+        ...DIRECTOR_DETERMINISTIC_PHRASEBOOK.reasoningBase,
+        relevantFiles.length > 0
+            ? `Os recortes prioritários para o Executor são: ${relevantFiles.join(", ")}.`
+            : "Não foram detectados recortes prioritários explícitos no bundle visível."
+    ].join(" ");
+
+    return {
+        projectName: params.projectName,
+        sourceArtifact: params.sourceArtifact,
+        executorTarget: params.executorTarget,
+        extractionMode: params.extractionMode,
+        documentMode: params.documentMode,
+        generatedAt: params.generatedAt,
+        objective:
+            params.promptConfig.objective ??
+            "Gerar meta-prompt operacional estruturado para orientar o Executor com alto sinal técnico.",
+        deliveryType:
+            params.promptConfig.deliveryType ??
+            "Meta-prompt operacional estruturado para Diretor",
+        focusTags: params.promptConfig.focusTags,
+        constraints: params.promptConfig.constraints,
+        contextMomentum,
+        visibleFiles,
+        relevantFiles,
+        analysisSummary,
+        reasoningSummary
+    };
+}
+
+function renderDeterministicDirectorMarkdown(model: DeterministicDirectorTemplateModel): string {
+    const layer1 = [
+        "### LAYER 1: IDENTIDADE E REGRAS",
+        "- Papel do Executor: Senior Implementation Agent (Sniper).",
+        "- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.",
+        "- Aplicar Lei da Subtração antes de adicionar novo código.",
+        "- Não inferir módulos, contratos ou comportamentos fora do bundle visível."
+    ];
+
+    const layer2 = [
+        "### LAYER 2: BLUEPRINT TÉCNICO",
+        `- Objetivo: ${model.objective}`,
+        `- Entrega esperada: ${model.deliveryType}`,
+        "- Route mode de origem: director",
+        `- Extraction mode: ${model.extractionMode}`,
+        `- Executor alvo: ${model.executorTarget}`
+    ];
+
+    const layer3 = [
+        "### LAYER 3: CONTEXTO MOMENTUM",
+        `- Estado: ${model.contextMomentum.state === "loaded" ? "carregado" : "vazio"}`,
+        `- Fonte: ${model.contextMomentum.source ?? "não identificada"}`,
+        model.relevantFiles.length > 0
+            ? `- Recortes prioritários: ${model.relevantFiles.join(", ")}`
+            : "- Recortes prioritários: não identificados objetivamente"
+    ];
+
+    const layer4 = [
+        "### LAYER 4: PROTOCOLO DE VERIFICAÇÃO",
+        "- Validar contra o contrato estrutural do Diretor e do Executor.",
+        "- Exigir Relatório de Impacto, diff claro, validação objetiva e verificação de segurança.",
+        "- Propor testes mínimos e checagens de regressão compatíveis com o escopo."
+    ];
+
+    const extraConstraints =
+        model.constraints.length > 0
+            ? ["", "### RESTRIÇÕES ADICIONAIS", ...model.constraints.map((item) => `- ${item}`)]
+            : [];
+
+    return [
+        "## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v3",
+        "",
+        "### §0 — IDENTIDADE E MANDATO (O DIRETOR)",
+        "- Papel ativo: Diretor de Engenharia Agêntica.",
+        "- Saída compilada localmente por template determinístico.",
+        "",
+        "### §1 — ENQUADRAMENTO OPERACIONAL",
+        "- Rota ativa: VIA DIRETOR.",
+        `- Extração efetiva: ${getExtractionModeLabel(model.extractionMode)}.`,
+        `- Executor alvo de referência: ${model.executorTarget}.`,
+        "- O bloco [META-PROMPT PARA EXECUTOR] abaixo está pronto para cópia.",
+        "",
+        "## EXECUTION META",
+        "",
+        `- Projeto: ${model.projectName}`,
+        `- Artefato fonte: ${model.sourceArtifact}`,
+        `- Executor alvo: ${model.executorTarget}`,
+        "- Route mode: director",
+        `- Gerado em: ${model.generatedAt}`,
+        "",
+        "## SOURCE OF TRUTH",
+        "",
+        `> Modo de extração: ${getExtractionModeLabel(model.extractionMode)}.`,
+        "> Route mode: director.",
+        `> Document mode: ${model.documentMode}.`,
+        "",
+        "[META-PROMPT PARA EXECUTOR]",
+        "",
+        "## ANÁLISE DO DIRETOR",
+        model.analysisSummary,
+        "",
+        "## RACIOCÍNIO (CoT)",
+        model.reasoningSummary,
+        "",
+        "## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)",
+        "--- INÍCIO DO PROMPT ---",
+        ...layer1,
+        "",
+        ...layer2,
+        "",
+        ...layer3,
+        "",
+        ...layer4,
+        ...extraConstraints,
+        "--- FIM DO PROMPT ---"
+    ].join("\n");
+}
+
 function normalizeProviderName(value: string | undefined | null): ProviderName {
     switch ((value ?? "").trim().toLowerCase()) {
         case "groq":
@@ -422,6 +669,8 @@ function normalizeProviderName(value: string | undefined | null): ProviderName {
             return "openai";
         case "anthropic":
             return "anthropic";
+        case "local":
+            return "local";
         default:
             return "groq";
     }
@@ -1319,7 +1568,6 @@ function buildExtractionModeRequirements(extractionMode: ExtractionMode): string
     }
 }
 
-
 const DIRECTOR_REQUIRED_BLOCKS: readonly string[] = [
     "## ANÁLISE DO DIRETOR",
     "## RACIOCÍNIO (CoT)",
@@ -1512,7 +1760,6 @@ function buildDirectorEliteV3MarkdownDocument(
         "```"
     ].join("\n");
 }
-
 
 function buildDirectorStructuredSystemPrompt(
     mode: DocumentMode,
@@ -2014,6 +2261,8 @@ function resolveModelForProvider(provider: ProviderName, modelOverride?: string)
     }
 
     switch (provider) {
+        case "local":
+            return "deterministic-director_meta_v1";
         case "gemini":
             return getEnvValue(["GEMINI_MODEL", "GOOGLE_MODEL"]) ?? "gemini-1.5-pro";
         case "openai":
@@ -2030,6 +2279,12 @@ function createClient(provider: ProviderName, modelOverride?: string): AIClient 
     const resolvedModel = resolveModelForProvider(provider, modelOverride);
 
     switch (provider) {
+        case "local": {
+            throw new AgentRuntimeError("Provider local não deve ser instanciado via createClient().", {
+                status: 400,
+                errorType: "CONFIG_ERROR"
+            });
+        }
         case "gemini": {
             const apiKey = getEnvValue(["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
             if (!apiKey) {
@@ -2267,55 +2522,82 @@ async function main(): Promise<void> {
     const outputRouteMode = explicitRouteMode ?? (sourceArtifactName.toLowerCase().includes("_executor_") ? "executor" : "director");
 
     const promptConfig = await readOptionalPromptConfig(promptConfigFilePath, outputRouteMode, extractionMode, executorTarget);
+    assertDeterministicTemplateLoaded(promptConfig);
 
     console.error(
-        `Pipeline estruturado ativo | routeMode=${outputRouteMode} | extractionMode=${extractionMode} | promptMode=${promptConfig.promptMode}`
+        `Pipeline estruturado ativo | routeMode=${outputRouteMode} | extractionMode=${extractionMode} | promptMode=${promptConfig.promptMode} | templateId=${promptConfig.templateId ?? "null"}`
     );
 
-    const promptPayload = buildAugmentedPromptBundle({
-        projectName: inferredProjectName,
-        technicalBundleDump,
-        executorTarget,
-        routeMode: outputRouteMode,
-        mode,
-        extractionMode,
-        promptConfig
-    });
-
-    const providerResponse = await tryProviderChain(provider, promptPayload, modelOverride);
     const generatedAt = getCurrentTimestampIso();
 
-    const finalMarkdown =
-        outputRouteMode === "director"
-            ? buildDirectorEliteV3MarkdownDocument(
-                  await repairDirectorResponseContract(
-                      providerResponse.content,
-                      extractionMode,
-                      provider,
-                      modelOverride
-                  ),
-                  technicalBundleDump,
-                  {
-                      projectName: inferredProjectName,
-                      sourceArtifact: sourceArtifactName,
-                      executorTarget,
-                      routeMode: outputRouteMode,
-                      generatedAt
-                  },
-                  extractionMode
-              )
-            : buildStructuredMarkdownDocument(
-                  await repairStructuredPayload(
-                      providerResponse.content,
-                      outputRouteMode,
-                      mode,
-                      extractionMode,
-                      provider,
-                      modelOverride
-                  ),
-                  technicalBundleDump,
-                  extractionMode
-              );
+    let providerResponse: ProviderResponse;
+    let finalMarkdown: string;
+
+    if (isDeterministicDirectorTemplate(outputRouteMode, promptConfig)) {
+        const model = buildDeterministicDirectorTemplateModel({
+            projectName: inferredProjectName,
+            sourceArtifact: sourceArtifactName,
+            executorTarget,
+            extractionMode,
+            documentMode: mode,
+            generatedAt,
+            technicalBundleDump,
+            promptConfig
+        });
+
+        providerResponse = {
+            provider: "local",
+            model: "deterministic-director_meta_v1",
+            content: ""
+        };
+
+        console.error("    Provider target: local | Resolved model: deterministic-director_meta_v1");
+        finalMarkdown = renderDeterministicDirectorMarkdown(model);
+    } else {
+        const promptPayload = buildAugmentedPromptBundle({
+            projectName: inferredProjectName,
+            technicalBundleDump,
+            executorTarget,
+            routeMode: outputRouteMode,
+            mode,
+            extractionMode,
+            promptConfig
+        });
+
+        providerResponse = await tryProviderChain(provider, promptPayload, modelOverride);
+
+        finalMarkdown =
+            outputRouteMode === "director"
+                ? buildDirectorEliteV3MarkdownDocument(
+                      await repairDirectorResponseContract(
+                          providerResponse.content,
+                          extractionMode,
+                          provider,
+                          modelOverride
+                      ),
+                      technicalBundleDump,
+                      {
+                          projectName: inferredProjectName,
+                          sourceArtifact: sourceArtifactName,
+                          executorTarget,
+                          routeMode: outputRouteMode,
+                          generatedAt
+                      },
+                      extractionMode
+                  )
+                : buildStructuredMarkdownDocument(
+                      await repairStructuredPayload(
+                          providerResponse.content,
+                          outputRouteMode,
+                          mode,
+                          extractionMode,
+                          provider,
+                          modelOverride
+                      ),
+                      technicalBundleDump,
+                      extractionMode
+                  );
+    }
 
     const outputBaseDir = path.dirname(absolutePath);
     const routePrefix = outputRouteMode === "director" ? "_diretor_AI_CONTEXT_" : "_executor_AI_CONTEXT_";
@@ -2395,4 +2677,14 @@ main().catch((error) => {
     );
 
     process.exit(getExitCodeForErrorType(classified.errorType));
-});
+})
+function assertDeterministicTemplateLoaded(promptConfig: PromptCustomizationConfig): void {
+    if (
+        promptConfig.templateId === "director_meta_v1" &&
+        promptConfig.promptMode !== "template"
+    ) {
+        throw new Error("Prompt config inconsistente: director_meta_v1 exige promptMode=template.");
+    }
+}
+
+;

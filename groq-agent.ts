@@ -1385,7 +1385,47 @@ function buildProtocolSliceSection3(documentMode: DocumentMode, extractionMode: 
     return lines.join("\n");
 }
 
+function buildExecutorEliteV41ProtocolMarkdown(document: ExecutorStructuredOutput, extractionMode: ExtractionMode): string {
+    const extractionLabel = getExtractionModeLabel(extractionMode);
+
+    return [
+        "### IMPLEMENTAÇÃO: PROTOCOLO OPERACIONAL EXECUTOR — ELITE v4.1 (SNIPER MODE)",
+        "",
+        "#### §0 — IDENTIDADE OPERACIONAL (O SNIPER)",
+        "- **Papel:** Você é o **Senior Implementation Agent (Sniper)**. Sua função é a materialização de sintaxe com precisão cirúrgica a partir de especificações técnicas.",
+        "- **Missão:** Converter o blueprint recebido em código funcional, respeitando invariantes, contratos e a arquitetura existente.",
+        "- **Filosofia:** O código é um **passivo técnico (liability)**. Sua entrega só se torna um ativo após validação rigorosa. Não decida arquitetura; execute o plano.",
+        "",
+        "#### §1 — REGRAS DE EXECUÇÃO \"ZERO-GAP\"",
+        "- **Rota ativa:** DIRETO PARA O EXECUTOR.",
+        `- **Extração efetiva:** ${extractionLabel}.`,
+        `- **Document mode:** ${document.documentMode}.`,
+        "1. **Lei da Subtração:** Antes de adicionar código, verifique se a funcionalidade pode ser resolvida reutilizando abstrações existentes ou removendo redundâncias.",
+        "2. **Preservação de Contexto:** Mantenha estilos de nomenclatura, padrões de documentação e estruturas de arquivos compatíveis com o projeto original.",
+        "3. **DNA do Output (Zero-Yap):** A entrega deve ser exclusivamente técnica e pronta para aplicação.",
+        "",
+        "#### §2 — FLUXO DE MATERIALIZAÇÃO",
+        "- **Análise de Impacto:** Identifique arquivos afetados e dependências antes de iniciar a escrita.",
+        "- **Implementação de Alta Fidelidade:** Siga estritamente as assinaturas de funções e tipos definidos no blueprint.",
+        "- **Checklist de Segurança:** Verifique contra vulnerabilidades comuns antes de finalizar.",
+        "",
+        "#### §3 — TEMPLATE OBRIGATÓRIO DE RESPOSTA",
+        "Toda saída deve seguir esta estrutura rigorosa:",
+        "1. **[RELATÓRIO DE IMPACTO]**: Lista de arquivos alterados e dependências verificadas.",
+        "2. **[IMPLEMENTAÇÃO]**:",
+        "   * `### ARQUIVO: [caminho/do/arquivo]`",
+        "   * (Blocos de código Markdown com diffs precisos ou arquivo completo conforme solicitado).",
+        "3. **[PROTOCOLO DE VERIFICAÇÃO]**:",
+        "   * Sugestões de Property-based Testing ou Fuzzing para validar o código gerado contra falhas não previstas.",
+        "4. **[ASSINATURA TÉCNICA]**: Confirmação de que todos os requisitos do contrato foram atendidos."
+    ].join("\n");
+}
+
 function buildProtocolMarkdown(document: StructuredOutputDocument, extractionMode: ExtractionMode): string {
+    if (document.routeMode === "executor") {
+        return buildExecutorEliteV41ProtocolMarkdown(document as ExecutorStructuredOutput, extractionMode);
+    }
+
     return [
         buildProtocolSliceSection1(document.routeMode, extractionMode),
         "",
@@ -1451,41 +1491,47 @@ function buildDirectorPromptTemplateMarkdown(document: DirectorStructuredOutput)
 
 function buildExecutorPromptTemplateMarkdown(document: ExecutorStructuredOutput): string {
     const sections = document.sections;
+    const impactLines = [
+        ...sections.targetFiles.map((item) => `Arquivo-alvo: ${item}`),
+        ...sections.scope.map((item) => `Escopo: ${item}`),
+        ...sections.constraints.map((item) => `Restrição: ${item}`)
+    ];
+
+    const verificationLines = [
+        ...sections.acceptanceCriteria,
+        ...sections.deliveryFormat
+    ];
+
+    const signatureLines = [
+        "Executor ativo: Senior Implementation Agent (Sniper).",
+        "Todos os requisitos devem permanecer aderentes ao bundle visível e ao protocolo ELITE v4.1."
+    ];
+
     return [
-        "# TASK",
+        "## [RELATÓRIO DE IMPACTO]",
         "",
-        escapeMarkdown(sections.task),
+        renderBulletedMarkdown(impactLines),
         "",
-        "## 1. OBJETIVO PRIMÁRIO",
+        "## [IMPLEMENTAÇÃO]",
         "",
-        escapeMarkdown(sections.objective),
-        "",
-        "## 2. ARQUIVOS-ALVO",
+        "### ARQUIVO(S)-ALVO",
         "",
         renderBulletedMarkdown(sections.targetFiles),
         "",
-        "## 3. ESCOPO",
-        "",
-        renderBulletedMarkdown(sections.scope),
-        "",
-        "## 4. REGRAS DE IMPLEMENTAÇÃO",
+        "### REGRAS DE IMPLEMENTAÇÃO",
         "",
         renderBulletedMarkdown(sections.implementationRules),
-        "",
-        "## 5. RESTRIÇÕES GLOBAIS (STRICT ADHERENCE)",
-        "",
-        renderBulletedMarkdown(sections.constraints),
-        "",
-        "## 6. FORMATO DE ENTREGA",
-        "",
-        renderBulletedMarkdown(sections.deliveryFormat),
-        "",
-        "## 7. CRITÉRIOS DE ACEITAÇÃO",
-        "",
-        renderBulletedMarkdown(sections.acceptanceCriteria),
         ...(sections.implementationNotes.length > 0
-            ? ["", "## 8. NOTAS DE IMPLEMENTAÇÃO", "", renderBulletedMarkdown(sections.implementationNotes)]
-            : [])
+            ? ["", "### NOTAS DE IMPLEMENTAÇÃO", "", renderBulletedMarkdown(sections.implementationNotes)]
+            : []),
+        "",
+        "## [PROTOCOLO DE VERIFICAÇÃO]",
+        "",
+        renderBulletedMarkdown(verificationLines),
+        "",
+        "## [ASSINATURA TÉCNICA]",
+        "",
+        renderBulletedMarkdown(signatureLines)
     ].join("\n");
 }
 
@@ -1792,13 +1838,15 @@ function buildExecutorStructuredSystemPrompt(
     const scopeInstruction = buildExtractionModeScopeInstruction(extractionMode);
 
     return [
-        "Você atua EXCLUSIVAMENTE como ENGINE EXECUTOR DE IMPLEMENTAÇÃO.",
-        "Sua função é converter o bundle visível em contexto técnico operacional pronto para implementação direta.",
+        "Você atua EXCLUSIVAMENTE como o Senior Implementation Agent (Sniper).",
+        "Sua função é converter o bundle visível em contexto técnico operacional pronto para implementação direta com precisão cirúrgica.",
+        "Considere o protocolo base do Executor como ELITE v4.1 (Sniper Mode).",
         "Saída obrigatória em JSON estrito, sem markdown, comentários ou texto fora do objeto.",
-        "O JSON final deve obedecer exatamente o schema solicitado.",
+        "O JSON final deve obedecer exatamente ao schema solicitado.",
         "É proibido agir como Diretor, orquestrar outras IAs ou fugir do bundle visível.",
+        "A Lei da Subtração deve orientar targetFiles, implementationRules, deliveryFormat e implementationNotes.",
+        "O deliveryFormat precisa preparar explicitamente a resposta final do Executor com [RELATÓRIO DE IMPACTO], [IMPLEMENTAÇÃO], [PROTOCOLO DE VERIFICAÇÃO] e [ASSINATURA TÉCNICA].",
         scopeInstruction,
-        "A composição final do protocolo em markdown será feita por slices determinísticos compatíveis com routeMode + extractionMode.",
         `O executor alvo informado é: ${executorTarget}.`,
         `O documentMode externo é: ${mode}.`,
         "Preencha todos os campos obrigatórios com precisão operacional.",
@@ -1918,10 +1966,13 @@ function buildExecutorStructuredUserPrompt(
         "Não use texto fora do objeto JSON.",
         "",
         "REGRAS OPERACIONAIS:",
-        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
+        "- Papel ativo: Senior Implementation Agent (Sniper).",
+        "- Objetivo base: implementação zero-gap com precisão cirúrgica.",
+        "- deliveryFormat deve refletir o protocolo de resposta do Executor ELITE v4.1.",
         "- Não inventar arquivos fora do bundle.",
         "- Não agir como Diretor.",
         "- Conteúdo deve ser operacional e pronto para implementação direta.",
+        ...buildExtractionModeRequirements(extractionMode).map((line) => `- ${line}`),
         "",
         "SCHEMA JSON OBRIGATÓRIO:",
         buildStructuredOutputJsonSchema("executor", mode),
@@ -2677,7 +2728,8 @@ main().catch((error) => {
     );
 
     process.exit(getExitCodeForErrorType(classified.errorType));
-})
+});
+
 function assertDeterministicTemplateLoaded(promptConfig: PromptCustomizationConfig): void {
     if (
         promptConfig.templateId === "director_meta_v1" &&

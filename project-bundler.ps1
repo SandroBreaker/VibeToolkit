@@ -87,7 +87,8 @@ $ThemeBorder = [System.Drawing.ColorTranslator]::FromHtml("#2A2A26")
 $ThemeText = [System.Drawing.ColorTranslator]::FromHtml("#F3F6F7")
 $ThemeMuted = [System.Drawing.ColorTranslator]::FromHtml("#A6ADB3")
 $ThemeCyan = [System.Drawing.ColorTranslator]::FromHtml("#00E5FF")
-$ThemePink = [System.Drawing.ColorTranslator]::FromHtml("#FF1493")
+$ThemePink    = [System.Drawing.ColorTranslator]::FromHtml("#FF1493")
+$ThemeCyanDark = [System.Drawing.ColorTranslator]::FromHtml("#001D28")
 $ThemeSuccess = [System.Drawing.ColorTranslator]::FromHtml("#22C55E")
 $ThemeWarn = [System.Drawing.ColorTranslator]::FromHtml("#F59E0B")
 
@@ -515,7 +516,6 @@ function Get-AIResultOutputFileName {
     return Add-OutputRoutePrefixToFileName -FileName "_AI_RESULT_${ProjectNameValue}.json" -RouteMode $RouteMode
 }
 
-
 function Get-DeterministicMetaPromptOutputFileName {
     param(
         [string]$ProjectNameValue,
@@ -632,6 +632,7 @@ function New-DeterministicMetaPromptArtifact {
     param(
         [string]$ProjectNameValue,
         [string]$ExecutorTargetValue,
+        [string]$RouteMode,
         [string]$ExtractionMode,
         [string]$DocumentMode,
         [string]$SourceArtifactFileName,
@@ -643,86 +644,114 @@ function New-DeterministicMetaPromptArtifact {
 
     $generatedAt = [DateTime]::UtcNow.ToString("o")
     $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
-    $analysisSummary = Get-DeterministicMetaPromptAnalysisSummary -ExtractionMode $ExtractionMode
-    $reasoningSummary = Get-DeterministicMetaPromptReasoningSummary -RelevantFiles $relevantFiles -ExtractionMode $ExtractionMode
     $momentumState = if ($MomentumContext -and $MomentumContext.Status -eq 'found') { 'carregado' } else { 'vazio' }
     $momentumSource = Get-DeterministicMomentumSourceLabel -MomentumContext $MomentumContext
+    $normalizedRouteMode = if ($RouteMode -eq 'executor') { 'executor' } else { 'director' }
+    $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
+    $momentumMemoryLabel = if ($momentumState -eq 'carregado') { $momentumSource } else { 'estado vazio / não identificado' }
 
     $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add("## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v3")
-    $lines.Add("")
-    $lines.Add("### §0 — IDENTIDADE E MANDATO (O DIRETOR)")
-    $lines.Add("- Papel ativo: Diretor de Engenharia Agêntica.")
-    $lines.Add("- Saída compilada localmente por `project-bundler.ps1`, sem uso de provider remoto e sem `groq-agent.ts`.")
-    $lines.Add("")
-    $lines.Add("### §1 — ENQUADRAMENTO OPERACIONAL")
-    $lines.Add("- Rota ativa: VIA DIRETOR.")
-    $lines.Add("- Extração efetiva: $($ExtractionMode.ToUpperInvariant()).")
-    $lines.Add("- Executor alvo de referência: $ExecutorTargetValue.")
-    $lines.Add("- Este arquivo reúne meta-prompt determinístico e bundle visível em um único artefato.")
-    $lines.Add("")
-    $lines.Add("## EXECUTION META")
-    $lines.Add("")
-    $lines.Add("- Projeto: $ProjectNameValue")
-    $lines.Add("- Artefato final: $OutputArtifactFileName")
-    $lines.Add("- Artefato fonte interno: $SourceArtifactFileName")
-    $lines.Add("- Executor alvo: $ExecutorTargetValue")
-    $lines.Add("- Route mode: director")
-    $lines.Add("- Gerado em: $generatedAt")
-    $lines.Add("")
-    $lines.Add("## SOURCE OF TRUTH")
-    $lines.Add("")
-    $lines.Add("> Modo de extração: $($ExtractionMode.ToUpperInvariant()).")
-    $lines.Add("> Route mode: director.")
-    $lines.Add("> Document mode: $DocumentMode.")
-    $lines.Add("> Compilado localmente no bundler.")
-    $lines.Add("")
-    $lines.Add("[META-PROMPT PARA EXECUTOR]")
-    $lines.Add("")
-    $lines.Add("## ANÁLISE DO DIRETOR")
-    $lines.Add($analysisSummary)
-    $lines.Add("")
-    $lines.Add("## RACIOCÍNIO (CoT)")
-    $lines.Add($reasoningSummary)
-    $lines.Add("")
-    $lines.Add("## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)")
-    $lines.Add("--- INÍCIO DO PROMPT ---")
-    $lines.Add("### LAYER 1: IDENTIDADE E REGRAS")
-    $lines.Add("- Papel do Executor: Senior Implementation Agent (Sniper).")
-    $lines.Add("- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.")
-    $lines.Add("- Aplicar Lei da Subtração antes de adicionar novo código.")
-    $lines.Add("- Não inferir módulos, contratos ou comportamentos fora do bundle visível.")
-    $lines.Add("")
-    $lines.Add("### LAYER 2: BLUEPRINT TÉCNICO")
-    $lines.Add("- Objetivo: gerar orientação operacional estruturada a partir do bundle consolidado, sem uso de IA remota.")
-    $lines.Add("- Entrega esperada: análise, relatório de impacto, implementação em código, protocolo de validação e verificação de segurança.")
-    $lines.Add("- Route mode de origem: director")
-    $lines.Add("- Extraction mode: $ExtractionMode")
-    $lines.Add("- Executor alvo: $ExecutorTargetValue")
-    $lines.Add("")
-    $lines.Add("### LAYER 3: CONTEXTO MOMENTUM")
-    $lines.Add("- Estado: $momentumState")
-    $lines.Add("- Fonte: $momentumSource")
-    if ($relevantFiles.Count -gt 0) {
-        $lines.Add("- Recortes prioritários: $($relevantFiles -join ', ')")
+
+    if ($normalizedRouteMode -eq 'executor') {
+        $lines.Add("### <metadata>")
+        $lines.Add("")
+        $lines.Add("* **Projeto:** `$ProjectNameValue`")
+        $lines.Add("* **Protocolo:** `ELITE v4.1 (Sniper Mode)`")
+        $lines.Add("* **Route Mode:** `$normalizedRouteMode`")
+        $lines.Add("* **Extração:** `$(Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)`")
+        $lines.Add("* **Document Mode:** `$DocumentMode`")
+        $lines.Add("* **Artefato Fonte:** `$SourceArtifactFileName`")
+        $lines.Add("* **Artefato Final:** `$OutputArtifactFileName`")
+        $lines.Add("* **Contexto Momentum:** `$momentumState`")
+        $lines.Add("* **Executor Alvo:** `$ExecutorTargetValue`")
+        $lines.Add("* **Gerado em:** `$generatedAt`")
+        $lines.Add("")
+        $lines.Add("</metadata>")
+        $lines.Add("")
+        $lines.Add("### <identity_and_mandate>")
+        $lines.Add("")
+        $lines.Add("Você é o **Senior Implementation Agent (Sniper)**. Sua função é a materialização técnica de especificações de ""espaço zero"" (zero-gap) em código de produção.")
+        $lines.Add("* **Missão:** Converter o blueprint técnico em código funcional, respeitando invariantes e contratos existentes.")
+        $lines.Add("* **Filosofia:** O código é um **passivo técnico (liability)** até ser verificado por um humano.")
+        $lines.Add("* **Proibição de Alquimia:** Não tome decisões arquiteturais criativas. Se houver ambiguidade, declare a lacuna antes de prosseguir.")
+        $lines.Add("")
+        $lines.Add("</identity_and_mandate>")
+        $lines.Add("")
+        $lines.Add("### <execution_rules>")
+        $lines.Add("")
+        $lines.Add("1. **Lei da Subtração:** Antes de adicionar código, verifique se a funcionalidade pode ser resolvida reutilizando abstrações presentes ou removendo redundâncias.")
+        $lines.Add("2. **DNA do Output (Zero-Yap):** A entrega deve ser técnica e pronta para aplicação.")
+        $lines.Add("3. **Preservação de Contexto:** Mantenha estilos de nomenclatura e estruturas de arquivos compatíveis com o projeto **$ProjectNameValue**.")
+        $lines.Add("")
+        $lines.Add("</execution_rules>")
+        $lines.Add("")
+        $lines.Add("### <technical_blueprint>")
+        $lines.Add("")
+        $lines.Add("* **Objetivo:** Materializar ajustes no pipeline estruturado de `$ProjectNameValue` para gerar contexto executor determinístico local, sem provider remoto.")
+        $lines.Add("* **Arquivos-Alvo:** `$relevantFilesValue`")
+        $lines.Add("* **Injeção de Momentum:** Utilize o estado de `$momentumMemoryLabel` como memória de trabalho para evitar regressões sistêmicas.")
+        $lines.Add("")
+        $lines.Add("</technical_blueprint>")
+        $lines.Add("")
+        $lines.Add("### <verification_protocol>")
+        $lines.Add("")
+        $lines.Add("Toda implementação deve incluir:")
+        $lines.Add("")
+        $lines.Add("1. **Relatório de Impacto:** Lista de arquivos e dependências verificadas.")
+        $lines.Add("2. **Property-based Testing/Fuzzing:** Instruções para bombardear o sistema com inputs aleatórios e descobrir falhas de borda.")
+        $lines.Add("3. **Checklist de Segurança:** Verificação obrigatória contra exposição de segredos, validação insuficiente de entrada e violações de contrato.")
+        $lines.Add("")
+        $lines.Add("</verification_protocol>")
+        $lines.Add("")
+        $lines.Add("### <response_template>")
+        $lines.Add("")
+        $lines.Add("1. **ANÁLISE DE EXECUÇÃO**")
+        $lines.Add("2. **DIFF VISUAL / IMPLEMENTAÇÃO**")
+        $lines.Add("3. **PROTOCOLO DE VALIDAÇÃO**")
+        $lines.Add("4. **ASSINATURA TÉCNICA**")
+        $lines.Add("")
+        $lines.Add("</response_template>")
+        $lines.Add("")
+        $lines.Add("## BUNDLE VISÍVEL CONSOLIDADO")
+        $lines.Add("- Projeto: $ProjectNameValue")
+        $lines.Add("- Modo operacional: $normalizedRouteMode")
+        $lines.Add("- Extração: $ExtractionMode")
+        $lines.Add("- Artefato fonte: $SourceArtifactFileName")
+        $lines.Add("- Arquivos relevantes: $relevantFilesValue")
+        $lines.Add("")
+        $lines.Add($BundleContent)
+
+        return ($lines -join "`n")
     }
-    else {
-        $lines.Add("- Recortes prioritários: não identificados objetivamente")
-    }
+
+    $lines.Add((Get-DirectorHighFidelityMetadataSection `
+        -ProjectNameValue $ProjectNameValue `
+        -ExtractionMode $ExtractionMode `
+        -DocumentMode $DocumentMode `
+        -GeneratedAt $generatedAt `
+        -SourceArtifactFileName $SourceArtifactFileName `
+        -OutputArtifactFileName $OutputArtifactFileName `
+        -ExecutorTargetValue $ExecutorTargetValue))
     $lines.Add("")
-    $lines.Add("### LAYER 4: PROTOCOLO DE VERIFICAÇÃO")
-    $lines.Add("- Validar contra o contrato estrutural do Diretor e do Executor.")
-    $lines.Add("- Exigir Relatório de Impacto, diff claro, validação objetiva e verificação de segurança.")
-    $lines.Add("- Propor testes mínimos e checagens de regressão compatíveis com o escopo.")
-    $lines.Add("--- FIM DO PROMPT ---")
+    $lines.Add((Get-DirectorHighFidelitySystemGovernanceSection))
+    $lines.Add("")
+    $lines.Add((Get-DirectorHighFidelityMetaPromptEngineeringLayersSection -TargetFiles $relevantFiles))
+    $lines.Add("")
+    $lines.Add((Get-DirectorHighFidelityResponseTemplateSection))
+    $lines.Add("")
+    $lines.Add((Get-DirectorHighFidelityContextMomentumSection -MomentumState $momentumState -MomentumSource $momentumSource))
     $lines.Add("")
     $lines.Add("## BUNDLE VISÍVEL CONSOLIDADO")
+    $lines.Add("- Projeto: $ProjectNameValue")
+    $lines.Add("- Modo operacional: $normalizedRouteMode")
+    $lines.Add("- Extração: $ExtractionMode")
+    $lines.Add("- Artefato fonte: $SourceArtifactFileName")
+    $lines.Add("- Arquivos relevantes: $relevantFilesValue")
     $lines.Add("")
     $lines.Add($BundleContent)
 
     return ($lines -join "`n")
 }
-
 
 function Test-IsMomentumResultFileName {
     param([string]$FileName)
@@ -1036,19 +1065,19 @@ $subTitleLabel.Add_DoubleClick({ Toggle-HudFullscreen })
 # PANEL: MODO DE EXTRAÇÃO (includes executor inline)
 # ══════════════════════════════════════════════════════════════════
 $panelMode = New-Object System.Windows.Forms.GroupBox
-$panelMode.Text = "Modo de Extração"
+$panelMode.Text = "1. Modo de Extração"
 $panelMode.ForeColor = $ThemeCyan
 $panelMode.BackColor = $ThemePanel
-$panelMode.Size = New-Object System.Drawing.Size(395, 238)
+$panelMode.Size = New-Object System.Drawing.Size(396, 238)
 $panelMode.Location = New-Object System.Drawing.Point(18, 84)
-$panelMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$panelMode.Font = New-Object System.Drawing.Font("Segoe UI", 9.75, [System.Drawing.FontStyle]::Bold)
 $panelMode.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelMode)
 
 $rbFull = New-Object System.Windows.Forms.RadioButton
 $rbFull.Text = "Full Vibe — enviar tudo"
 $rbFull.ForeColor = $ThemeText; $rbFull.BackColor = $ThemePanel
-$rbFull.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbFull.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbFull.Location = New-Object System.Drawing.Point(18, 34)
 $rbFull.Size = New-Object System.Drawing.Size(330, 24)
 $rbFull.Checked = $true
@@ -1057,7 +1086,7 @@ $panelMode.Controls.Add($rbFull)
 $lblFull = New-Object System.Windows.Forms.Label
 $lblFull.Text = "Ideal para análise completa, bugs e contexto integral."
 $lblFull.ForeColor = $ThemeMuted; $lblFull.BackColor = $ThemePanel
-$lblFull.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblFull.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblFull.AutoSize = $true
 $lblFull.Location = New-Object System.Drawing.Point(38, 58)
 $panelMode.Controls.Add($lblFull)
@@ -1065,7 +1094,7 @@ $panelMode.Controls.Add($lblFull)
 $rbArchitect = New-Object System.Windows.Forms.RadioButton
 $rbArchitect.Text = "Architect — blueprint / estrutura"
 $rbArchitect.ForeColor = $ThemeText; $rbArchitect.BackColor = $ThemePanel
-$rbArchitect.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbArchitect.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbArchitect.Location = New-Object System.Drawing.Point(18, 80)
 $rbArchitect.Size = New-Object System.Drawing.Size(330, 24)
 $panelMode.Controls.Add($rbArchitect)
@@ -1073,7 +1102,7 @@ $panelMode.Controls.Add($rbArchitect)
 $lblArchitect = New-Object System.Windows.Forms.Label
 $lblArchitect.Text = "Economiza tokens e foca em contratos e assinaturas."
 $lblArchitect.ForeColor = $ThemeMuted; $lblArchitect.BackColor = $ThemePanel
-$lblArchitect.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblArchitect.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblArchitect.AutoSize = $true
 $lblArchitect.Location = New-Object System.Drawing.Point(38, 104)
 $panelMode.Controls.Add($lblArchitect)
@@ -1081,7 +1110,7 @@ $panelMode.Controls.Add($lblArchitect)
 $rbSniper = New-Object System.Windows.Forms.RadioButton
 $rbSniper.Text = "Sniper — seleção manual"
 $rbSniper.ForeColor = $ThemeText; $rbSniper.BackColor = $ThemePanel
-$rbSniper.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbSniper.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbSniper.Location = New-Object System.Drawing.Point(18, 126)
 $rbSniper.Size = New-Object System.Drawing.Size(330, 24)
 $panelMode.Controls.Add($rbSniper)
@@ -1089,7 +1118,7 @@ $panelMode.Controls.Add($rbSniper)
 $lblSniper = New-Object System.Windows.Forms.Label
 $lblSniper.Text = "Recorte manual com foco cirúrgico."
 $lblSniper.ForeColor = $ThemeMuted; $lblSniper.BackColor = $ThemePanel
-$lblSniper.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblSniper.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblSniper.AutoSize = $true
 $lblSniper.Location = New-Object System.Drawing.Point(38, 150)
 $panelMode.Controls.Add($lblSniper)
@@ -1097,7 +1126,7 @@ $panelMode.Controls.Add($lblSniper)
 $rbTxtExport = New-Object System.Windows.Forms.RadioButton
 $rbTxtExport.Text = "TXT Export — pasta com arquivos separados"
 $rbTxtExport.ForeColor = $ThemeText; $rbTxtExport.BackColor = $ThemePanel
-$rbTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbTxtExport.Location = New-Object System.Drawing.Point(18, 172)
 $rbTxtExport.Size = New-Object System.Drawing.Size(350, 24)
 $panelMode.Controls.Add($rbTxtExport)
@@ -1105,16 +1134,16 @@ $panelMode.Controls.Add($rbTxtExport)
 $lblTxtExport = New-Object System.Windows.Forms.Label
 $lblTxtExport.Text = "Cria nova pasta e salva cada arquivo da operação em .txt."
 $lblTxtExport.ForeColor = $ThemeMuted; $lblTxtExport.BackColor = $ThemePanel
-$lblTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblTxtExport.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblTxtExport.AutoSize = $true
 $lblTxtExport.Location = New-Object System.Drawing.Point(38, 196)
 $panelMode.Controls.Add($lblTxtExport)
 
 $lblModeSep = New-Object System.Windows.Forms.Label
 $lblModeSep.Text = "EXECUTOR ALVO"
-$lblModeSep.ForeColor = $ThemeMuted
+$lblModeSep.ForeColor = $ThemeCyan
 $lblModeSep.BackColor = $ThemePanel
-$lblModeSep.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
+$lblModeSep.Font = New-Object System.Drawing.Font("Segoe UI", 7.75, [System.Drawing.FontStyle]::Bold)
 $lblModeSep.AutoSize = $true
 $lblModeSep.Location = New-Object System.Drawing.Point(18, 218)
 $panelMode.Controls.Add($lblModeSep)
@@ -1124,8 +1153,8 @@ $cmbExecutorInline.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDow
 $cmbExecutorInline.BackColor = $ThemePanelAlt
 $cmbExecutorInline.ForeColor = $ThemeText
 $cmbExecutorInline.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$cmbExecutorInline.Location = New-Object System.Drawing.Point(130, 213)
-$cmbExecutorInline.Size = New-Object System.Drawing.Size(220, 26)
+$cmbExecutorInline.Location = New-Object System.Drawing.Point(122, 210)
+$cmbExecutorInline.Size = New-Object System.Drawing.Size(242, 28)
 [void]$cmbExecutorInline.Items.Add("AI Studio Apps")
 [void]$cmbExecutorInline.Items.Add("Antigravity")
 $cmbExecutorInline.SelectedIndex = 0
@@ -1135,52 +1164,53 @@ $panelMode.Controls.Add($cmbExecutorInline)
 # PANEL: IA ORQUESTRADORA (with provider chain visualization)
 # ══════════════════════════════════════════════════════════════════
 $panelProvider = New-Object System.Windows.Forms.GroupBox
-$panelProvider.Text = "IA Orquestradora"
+$panelProvider.Text = "2. IA Orquestradora"
 $panelProvider.ForeColor = $ThemeCyan
 $panelProvider.BackColor = $ThemePanel
-$panelProvider.Size = New-Object System.Drawing.Size(409, 192)
-$panelProvider.Location = New-Object System.Drawing.Point(433, 84)
-$panelProvider.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$panelProvider.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
+$panelProvider.Size = New-Object System.Drawing.Size(396, 192)
+$panelProvider.Location = New-Object System.Drawing.Point(18, 330)
+$panelProvider.Font = New-Object System.Drawing.Font("Segoe UI", 9.75, [System.Drawing.FontStyle]::Bold)
+$panelProvider.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelProvider)
 
 $providerHint = New-Object System.Windows.Forms.Label
-$providerHint.Text = "Provedor primário. Fallback automático se falhar ou atingir limite."
+$providerHint.Text = "Selecione o provedor primário. O fallback automático segue a cadeia abaixo."
 $providerHint.ForeColor = $ThemeMuted; $providerHint.BackColor = $ThemePanel
-$providerHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
-$providerHint.AutoSize = $true
-$providerHint.Location = New-Object System.Drawing.Point(18, 28)
+$providerHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.25)
+$providerHint.AutoSize = $false
+$providerHint.Location = New-Object System.Drawing.Point(18, 26)
+$providerHint.Size = New-Object System.Drawing.Size(352, 28)
 $panelProvider.Controls.Add($providerHint)
 
 $rbGroq = New-Object System.Windows.Forms.RadioButton
 $rbGroq.Text = "Groq"; $rbGroq.ForeColor = $ThemeText; $rbGroq.BackColor = $ThemePanel
 $rbGroq.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbGroq.Location = New-Object System.Drawing.Point(18, 56); $rbGroq.Size = New-Object System.Drawing.Size(88, 24)
+$rbGroq.Location = New-Object System.Drawing.Point(18, 60); $rbGroq.Size = New-Object System.Drawing.Size(82, 24)
 $rbGroq.Checked = $true
 $panelProvider.Controls.Add($rbGroq)
 
 $rbGemini = New-Object System.Windows.Forms.RadioButton
 $rbGemini.Text = "Gemini"; $rbGemini.ForeColor = $ThemeText; $rbGemini.BackColor = $ThemePanel
 $rbGemini.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbGemini.Location = New-Object System.Drawing.Point(116, 56); $rbGemini.Size = New-Object System.Drawing.Size(88, 24)
+$rbGemini.Location = New-Object System.Drawing.Point(102, 60); $rbGemini.Size = New-Object System.Drawing.Size(86, 24)
 $panelProvider.Controls.Add($rbGemini)
 
 $rbOpenAI = New-Object System.Windows.Forms.RadioButton
 $rbOpenAI.Text = "OpenAI"; $rbOpenAI.ForeColor = $ThemeText; $rbOpenAI.BackColor = $ThemePanel
 $rbOpenAI.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbOpenAI.Location = New-Object System.Drawing.Point(214, 56); $rbOpenAI.Size = New-Object System.Drawing.Size(88, 24)
+$rbOpenAI.Location = New-Object System.Drawing.Point(194, 60); $rbOpenAI.Size = New-Object System.Drawing.Size(86, 24)
 $panelProvider.Controls.Add($rbOpenAI)
 
 $rbAnthropic = New-Object System.Windows.Forms.RadioButton
 $rbAnthropic.Text = "Anthropic"; $rbAnthropic.ForeColor = $ThemeText; $rbAnthropic.BackColor = $ThemePanel
 $rbAnthropic.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$rbAnthropic.Location = New-Object System.Drawing.Point(312, 56); $rbAnthropic.Size = New-Object System.Drawing.Size(88, 24)
+$rbAnthropic.Location = New-Object System.Drawing.Point(284, 60); $rbAnthropic.Size = New-Object System.Drawing.Size(96, 24)
 $panelProvider.Controls.Add($rbAnthropic)
 
 $pnlProviderChain = New-Object System.Windows.Forms.Panel
 $pnlProviderChain.BackColor = $ThemePanel
-$pnlProviderChain.Location = New-Object System.Drawing.Point(18, 90)
-$pnlProviderChain.Size = New-Object System.Drawing.Size(373, 24)
+$pnlProviderChain.Location = New-Object System.Drawing.Point(18, 94)
+$pnlProviderChain.Size = New-Object System.Drawing.Size(360, 26)
 $panelProvider.Controls.Add($pnlProviderChain)
 
 function Build-ProviderChainDots {
@@ -1235,25 +1265,25 @@ $lblCurrentModel.ForeColor = $ThemeMuted
 $lblCurrentModel.BackColor = $ThemePanel
 $lblCurrentModel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblCurrentModel.AutoSize = $true
-$lblCurrentModel.Location = New-Object System.Drawing.Point(18, 120)
+$lblCurrentModel.Location = New-Object System.Drawing.Point(18, 126)
 $panelProvider.Controls.Add($lblCurrentModel)
 
 $lblFallbackHint = New-Object System.Windows.Forms.Label
-$lblFallbackHint.Text = "A ordem inicia pelo provedor selecionado acima."
+$lblFallbackHint.Text = "A cadeia é recalculada a partir do provedor selecionado."
 $lblFallbackHint.ForeColor = $ThemeMuted
 $lblFallbackHint.BackColor = $ThemePanel
 $lblFallbackHint.Font = New-Object System.Drawing.Font("Segoe UI", 8)
 $lblFallbackHint.AutoSize = $true
-$lblFallbackHint.Location = New-Object System.Drawing.Point(18, 142)
+$lblFallbackHint.Location = New-Object System.Drawing.Point(18, 146)
 $panelProvider.Controls.Add($lblFallbackHint)
 
 $lblProviderDisabled = New-Object System.Windows.Forms.Label
-$lblProviderDisabled.Text = "Ative 'Gerar com IA' abaixo para usar o orquestrador."
+$lblProviderDisabled.Text = "Ative a geração com IA abaixo para habilitar o orquestrador."
 $lblProviderDisabled.ForeColor = $ThemeWarn
 $lblProviderDisabled.BackColor = $ThemePanel
 $lblProviderDisabled.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblProviderDisabled.AutoSize = $true
-$lblProviderDisabled.Location = New-Object System.Drawing.Point(18, 164)
+$lblProviderDisabled.Location = New-Object System.Drawing.Point(18, 166)
 $lblProviderDisabled.Visible = $true
 $panelProvider.Controls.Add($lblProviderDisabled)
 
@@ -1262,27 +1292,27 @@ $panelProvider.Controls.Add($lblProviderDisabled)
 # ══════════════════════════════════════════════════════════════════
 $panelStatus = New-Object System.Windows.Forms.Panel
 $panelStatus.BackColor = $ThemePanelAlt
-$panelStatus.Size = New-Object System.Drawing.Size(824, 44)
-$panelStatus.Location = New-Object System.Drawing.Point(18, 284)
-$panelStatus.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$panelStatus.Size = New-Object System.Drawing.Size(412, 48)
+$panelStatus.Location = New-Object System.Drawing.Point(430, 84)
+$panelStatus.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelStatus)
 
 $lblStatusProvider = New-Object System.Windows.Forms.Label
 $lblStatusProvider.Text = "● Groq  ·  llama-3.3-70b-versatile"
 $lblStatusProvider.ForeColor = $ThemeCyan
 $lblStatusProvider.BackColor = $ThemePanelAlt
-$lblStatusProvider.Font = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Bold)
+$lblStatusProvider.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblStatusProvider.AutoSize = $true
-$lblStatusProvider.Location = New-Object System.Drawing.Point(12, 14)
+$lblStatusProvider.Location = New-Object System.Drawing.Point(12, 10)
 $panelStatus.Controls.Add($lblStatusProvider)
 
 $lblStatusInfo = New-Object System.Windows.Forms.Label
 $lblStatusInfo.Text = "~0 tokens  ·  $($FoundFiles.Count) arquivos  ·  $ProjectName"
 $lblStatusInfo.ForeColor = $ThemeMuted
 $lblStatusInfo.BackColor = $ThemePanelAlt
-$lblStatusInfo.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblStatusInfo.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblStatusInfo.AutoSize = $true
-$lblStatusInfo.Location = New-Object System.Drawing.Point(280, 14)
+$lblStatusInfo.Location = New-Object System.Drawing.Point(12, 28)
 $panelStatus.Controls.Add($lblStatusInfo)
 
 $btnRun = New-Object System.Windows.Forms.Button
@@ -1290,11 +1320,11 @@ $btnRun.Text = "ENERGIZE"
 $btnRun.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $btnRun.FlatAppearance.BorderSize = 1
 $btnRun.FlatAppearance.BorderColor = $ThemeCyan
-$btnRun.BackColor = $ThemePanelAlt
+$btnRun.BackColor = $ThemeCyanDark
 $btnRun.ForeColor = $ThemeCyan
-$btnRun.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$btnRun.Size = New-Object System.Drawing.Size(148, 30)
-$btnRun.Location = New-Object System.Drawing.Point(664, 7)
+$btnRun.Font = New-Object System.Drawing.Font("Segoe UI", 10.5, [System.Drawing.FontStyle]::Bold)
+$btnRun.Size = New-Object System.Drawing.Size(152, 34)
+$btnRun.Location = New-Object System.Drawing.Point(248, 7)
 $btnRun.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $panelStatus.Controls.Add($btnRun)
 
@@ -1318,16 +1348,16 @@ $txtSniperSearch.ForeColor = $ThemeMuted
 $txtSniperSearch.Font = New-Object System.Drawing.Font("Consolas", 9)
 $txtSniperSearch.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $txtSniperSearch.Location = New-Object System.Drawing.Point(18, 26)
-$txtSniperSearch.Size = New-Object System.Drawing.Size(350, 22)
+$txtSniperSearch.Size = New-Object System.Drawing.Size(332, 24)
 $txtSniperSearch.Text = "Buscar arquivo..."
 $panelSniper.Controls.Add($txtSniperSearch)
 
 $lblSniperHint = New-Object System.Windows.Forms.Label
-$lblSniperHint.Text = "Selecione os arquivos que entrarão no bundle manual."
+$lblSniperHint.Text = "Selecione o recorte manual. O restante entra apenas como contexto do bundler."
 $lblSniperHint.ForeColor = $ThemeMuted; $lblSniperHint.BackColor = $ThemePanel
 $lblSniperHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
 $lblSniperHint.AutoSize = $true
-$lblSniperHint.Location = New-Object System.Drawing.Point(380, 30)
+$lblSniperHint.Location = New-Object System.Drawing.Point(360, 30)
 $panelSniper.Controls.Add($lblSniperHint)
 
 $sniperToolbar = New-Object System.Windows.Forms.Panel
@@ -1560,38 +1590,39 @@ $btnDeselectAll.Add_Click({
 # CHECKBOX: GERAR COM IA E FLUXO FINAL
 # ══════════════════════════════════════════════════════════════════
 $chkSendToAI = New-Object System.Windows.Forms.CheckBox
-$chkSendToAI.Text = "Gerar o Prompt Final com IA ao concluir"
+$chkSendToAI.Text = "Gerar o prompt final com IA ao concluir"
 $chkSendToAI.ForeColor = $ThemeText; $chkSendToAI.BackColor = $ThemeBg
-$chkSendToAI.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$chkSendToAI.AutoSize = $true
+$chkSendToAI.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+$chkSendToAI.AutoSize = $false
 $chkSendToAI.Location = New-Object System.Drawing.Point(18, 336)
-$chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$chkSendToAI.Size = New-Object System.Drawing.Size(360, 22)
+$chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($chkSendToAI)
 
 $chkDeterministicDirector = New-Object System.Windows.Forms.CheckBox
-$chkDeterministicDirector.Text = "Gerar meta-prompt determinístico local (sem IA / sem groq-agent.ts)"
+$chkDeterministicDirector.Text = "Gerar meta-prompt determinístico local (sem IA e sem groq-agent.ts)"
 $chkDeterministicDirector.ForeColor = $ThemeText; $chkDeterministicDirector.BackColor = $ThemeBg
-$chkDeterministicDirector.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$chkDeterministicDirector.AutoSize = $true
-$chkDeterministicDirector.Location = New-Object System.Drawing.Point(18, 360)
-$chkDeterministicDirector.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$chkDeterministicDirector.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+$chkDeterministicDirector.AutoSize = $false
+$chkDeterministicDirector.Location = New-Object System.Drawing.Point(18, 362)
+$chkDeterministicDirector.Size = New-Object System.Drawing.Size(520, 22)
+$chkDeterministicDirector.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($chkDeterministicDirector)
 
-
 $panelAIPromptMode = New-Object System.Windows.Forms.GroupBox
-$panelAIPromptMode.Text = "Fluxo Final / Geração com IA"
+$panelAIPromptMode.Text = "3. Fluxo Final / Geração com IA"
 $panelAIPromptMode.ForeColor = $ThemePink
 $panelAIPromptMode.BackColor = $ThemePanel
 $panelAIPromptMode.Size = New-Object System.Drawing.Size(824, 92)
-$panelAIPromptMode.Location = New-Object System.Drawing.Point(18, 370)
-$panelAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-$panelAIPromptMode.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$panelAIPromptMode.Location = New-Object System.Drawing.Point(18, 580)
+$panelAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 9.75, [System.Drawing.FontStyle]::Bold)
+$panelAIPromptMode.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelAIPromptMode)
 
 $lblAIFlowMode = New-Object System.Windows.Forms.Label
-$lblAIFlowMode.Text = "FLUXO FINAL"
+$lblAIFlowMode.Text = "FLUXO DE SAÍDA"
 $lblAIFlowMode.ForeColor = $ThemeCyan; $lblAIFlowMode.BackColor = $ThemePanel
-$lblAIFlowMode.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
+$lblAIFlowMode.Font = New-Object System.Drawing.Font("Segoe UI", 7.75, [System.Drawing.FontStyle]::Bold)
 $lblAIFlowMode.AutoSize = $true
 $lblAIFlowMode.Location = New-Object System.Drawing.Point(18, 30)
 $panelAIPromptMode.Controls.Add($lblAIFlowMode)
@@ -1599,7 +1630,7 @@ $panelAIPromptMode.Controls.Add($lblAIFlowMode)
 $rbAIFlowDirector = New-Object System.Windows.Forms.RadioButton
 $rbAIFlowDirector.Text = "Via Diretor"
 $rbAIFlowDirector.ForeColor = $ThemeText; $rbAIFlowDirector.BackColor = $ThemePanel
-$rbAIFlowDirector.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbAIFlowDirector.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbAIFlowDirector.Location = New-Object System.Drawing.Point(18, 50)
 $rbAIFlowDirector.Size = New-Object System.Drawing.Size(140, 24)
 $rbAIFlowDirector.Checked = $true
@@ -1608,15 +1639,15 @@ $panelAIPromptMode.Controls.Add($rbAIFlowDirector)
 $rbAIFlowExecutor = New-Object System.Windows.Forms.RadioButton
 $rbAIFlowExecutor.Text = "Direto para Executor"
 $rbAIFlowExecutor.ForeColor = $ThemeText; $rbAIFlowExecutor.BackColor = $ThemePanel
-$rbAIFlowExecutor.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$rbAIFlowExecutor.Font = New-Object System.Drawing.Font("Segoe UI", 9.75)
 $rbAIFlowExecutor.Location = New-Object System.Drawing.Point(180, 50)
 $rbAIFlowExecutor.Size = New-Object System.Drawing.Size(180, 24)
 $panelAIPromptMode.Controls.Add($rbAIFlowExecutor)
 
 $lblAIFlowHint = New-Object System.Windows.Forms.Label
-$lblAIFlowHint.Text = "Via Diretor mantém o fluxo atual. Direto para Executor gera contexto final para a IA executora sem intermediação."
+$lblAIFlowHint.Text = "Via Diretor mantém a camada analítica. Direto para Executor entrega contexto final sem intermediação."
 $lblAIFlowHint.ForeColor = $ThemeMuted; $lblAIFlowHint.BackColor = $ThemePanel
-$lblAIFlowHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.5)
+$lblAIFlowHint.Font = New-Object System.Drawing.Font("Segoe UI", 8.25)
 $lblAIFlowHint.AutoSize = $true
 $lblAIFlowHint.Location = New-Object System.Drawing.Point(18, 76)
 $panelAIPromptMode.Controls.Add($lblAIFlowHint)
@@ -1624,7 +1655,7 @@ $panelAIPromptMode.Controls.Add($lblAIFlowHint)
 $lblAIPromptMode = New-Object System.Windows.Forms.Label
 $lblAIPromptMode.Text = "MODO DE CUSTOMIZAÇÃO"
 $lblAIPromptMode.ForeColor = $ThemeCyan; $lblAIPromptMode.BackColor = $ThemePanel
-$lblAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
+$lblAIPromptMode.Font = New-Object System.Drawing.Font("Segoe UI", 7.75, [System.Drawing.FontStyle]::Bold)
 $lblAIPromptMode.AutoSize = $true
 $lblAIPromptMode.Location = New-Object System.Drawing.Point(18, 100)
 $lblAIPromptMode.Visible = $false
@@ -1746,7 +1777,7 @@ $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
 $progressBar.MarqueeAnimationSpeed = 30
 $progressBar.Size = New-Object System.Drawing.Size(824, 10)
 $progressBar.Location = New-Object System.Drawing.Point(18, 474)
-$progressBar.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$progressBar.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $progressBar.Visible = $false
 $form.Controls.Add($progressBar)
 
@@ -1755,25 +1786,25 @@ $form.Controls.Add($progressBar)
 # ══════════════════════════════════════════════════════════════════
 $panelLogHeader = New-Object System.Windows.Forms.Panel
 $panelLogHeader.BackColor = $ThemePanelAlt
-$panelLogHeader.Size = New-Object System.Drawing.Size(824, 32)
-$panelLogHeader.Location = New-Object System.Drawing.Point(18, 492)
-$panelLogHeader.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$panelLogHeader.Size = New-Object System.Drawing.Size(412, 34)
+$panelLogHeader.Location = New-Object System.Drawing.Point(430, 140)
+$panelLogHeader.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($panelLogHeader)
 
 $lblLogTitle = New-Object System.Windows.Forms.Label
-$lblLogTitle.Text = "LOG DE EXECUÇÃO"
+$lblLogTitle.Text = "LOG OPERACIONAL"
 $lblLogTitle.ForeColor = $ThemeMuted; $lblLogTitle.BackColor = $ThemePanelAlt
-$lblLogTitle.Font = New-Object System.Drawing.Font("Segoe UI", 7.5, [System.Drawing.FontStyle]::Bold)
+$lblLogTitle.Font = New-Object System.Drawing.Font("Segoe UI", 7.75, [System.Drawing.FontStyle]::Bold)
 $lblLogTitle.AutoSize = $true
-$lblLogTitle.Location = New-Object System.Drawing.Point(10, 9)
+$lblLogTitle.Location = New-Object System.Drawing.Point(10, 10)
 $panelLogHeader.Controls.Add($lblLogTitle)
 
 $cmbLogFilter = New-Object System.Windows.Forms.ComboBox
 $cmbLogFilter.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $cmbLogFilter.BackColor = $ThemePanelAlt; $cmbLogFilter.ForeColor = $ThemeText
 $cmbLogFilter.Font = New-Object System.Drawing.Font("Segoe UI", 8)
-$cmbLogFilter.Size = New-Object System.Drawing.Size(90, 22)
-$cmbLogFilter.Location = New-Object System.Drawing.Point(600, 5)
+$cmbLogFilter.Size = New-Object System.Drawing.Size(96, 23)
+$cmbLogFilter.Location = New-Object System.Drawing.Point(590, 5)
 $cmbLogFilter.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 [void]$cmbLogFilter.Items.Add("Todos")
 [void]$cmbLogFilter.Items.Add("IA")
@@ -1791,24 +1822,24 @@ function New-LogHeaderButton {
     $b.BackColor = $ThemePanelAlt; $b.ForeColor = $ThemeMuted
     $b.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $b.Location = New-Object System.Drawing.Point($X, 4)
-    $b.Size = New-Object System.Drawing.Size(58, 24)
+    $b.Size = New-Object System.Drawing.Size(62, 24)
     $b.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
     return $b
 }
 
-$btnCopyLog = New-LogHeaderButton -Text "Copiar" -X 698
-$btnExpandLog = New-LogHeaderButton -Text "▲ Expandir" -X 760
-$btnExpandLog.Size = New-Object System.Drawing.Size(56, 24)
+$btnCopyLog = New-LogHeaderButton -Text "Copiar" -X 690
+$btnExpandLog = New-LogHeaderButton -Text "▲ Expandir" -X 758
+$btnExpandLog.Size = New-Object System.Drawing.Size(58, 24)
 $panelLogHeader.Controls.AddRange(@($btnCopyLog, $btnExpandLog))
 
 $logViewer = New-Object System.Windows.Forms.RichTextBox
 $logViewer.BackColor = $ThemePanelAlt; $logViewer.ForeColor = $ThemeText
 $logViewer.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 $logViewer.ReadOnly = $true; $logViewer.DetectUrls = $false
-$logViewer.Font = New-Object System.Drawing.Font("Consolas", 9.5)
-$logViewer.Location = New-Object System.Drawing.Point(18, 532)
-$logViewer.Size = New-Object System.Drawing.Size(824, 260)
-$logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$logViewer.Font = New-Object System.Drawing.Font("Consolas", 9.25)
+$logViewer.Location = New-Object System.Drawing.Point(430, 172)
+$logViewer.Size = New-Object System.Drawing.Size(412, 360)
+$logViewer.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left
 $form.Controls.Add($logViewer)
 
 # ══════════════════════════════════════════════════════════════════
@@ -1838,6 +1869,24 @@ function Update-ProviderStatus {
     $lblCurrentModel.Text = "Modelo: $info"
     $panelProvider.Enabled = $isActive
     $lblProviderDisabled.Visible = -not $isActive
+}
+
+# ══════════════════════════════════════════════════════════════════
+# HELPER: MODE SELECTION HIGHLIGHT
+# ══════════════════════════════════════════════════════════════════
+function Update-ModeSelectionHighlight {
+    $rbFull.ForeColor = if ($rbFull.Checked) { $ThemeCyan } else { $ThemeText }
+    $rbArchitect.ForeColor = if ($rbArchitect.Checked) { $ThemeCyan } else { $ThemeText }
+    $rbSniper.ForeColor = if ($rbSniper.Checked) { $ThemeCyan } else { $ThemeText }
+    $rbTxtExport.ForeColor = if ($rbTxtExport.Checked) { $ThemeCyan } else { $ThemeText }
+
+    $lblFull.ForeColor = if ($rbFull.Checked) { $ThemeText } else { $ThemeMuted }
+    $lblArchitect.ForeColor = if ($rbArchitect.Checked) { $ThemeText } else { $ThemeMuted }
+    $lblSniper.ForeColor = if ($rbSniper.Checked) { $ThemeText } else { $ThemeMuted }
+    $lblTxtExport.ForeColor = if ($rbTxtExport.Checked) { $ThemeText } else { $ThemeMuted }
+
+    $rbAIFlowDirector.ForeColor = if ($rbAIFlowDirector.Checked) { $ThemeCyan } else { $ThemeText }
+    $rbAIFlowExecutor.ForeColor = if ($rbAIFlowExecutor.Checked) { $ThemeCyan } else { $ThemeText }
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -1877,113 +1926,122 @@ function Update-AIPromptModeUi {
 # RESPONSIVE LAYOUT
 # ══════════════════════════════════════════════════════════════════
 function Update-ResponsiveLayout {
-    $clientWidth = [int]$form.ClientSize.Width
+    $clientWidth  = [int]$form.ClientSize.Width
     $clientHeight = [int]$form.ClientSize.Height
 
     $leftGap = 18
     $rightGap = 18
-    $colGap = 20
-    $panelHeight = 192
-    $statusH = 44
-    $topContentY = 84
-    $bottomGap = 20
-    $progressH = 10
+    $colGap = 14
+    $topY = 84
+    $bottomGap = 16
+    $modeH = 238
+    $providerH = 192
+    $statusH = 48
     $logHeaderH = 32
-    $minLogH = if ($script:IsFullscreen) { 100 } else { 120 }
+    $progressH = 4
+    $chkBlockH = 56
 
-    $usableWidth = [int][Math]::Max(320, ($clientWidth - ($leftGap * 2)))
-    $leftWidth = [int][Math]::Floor(($usableWidth - $colGap) / 2)
-    $rightWidth = [int]($usableWidth - $leftWidth - $colGap)
+    $usableW = [int][Math]::Max(560, ($clientWidth - $leftGap - $rightGap))
+    $leftColW = [int][Math]::Min(420, [Math]::Max(396, [Math]::Floor($usableW * 0.48)))
+    $rightColX = $leftGap + $leftColW + $colGap
+    $rightColW = $usableW - $leftColW - $colGap
 
-    $panelMode.Location = New-Object System.Drawing.Point($leftGap, $topContentY)
-    $panelMode.Size = New-Object System.Drawing.Size($leftWidth, $panelHeight)
+    $panelMode.Location = New-Object System.Drawing.Point($leftGap, $topY)
+    $panelMode.Size = New-Object System.Drawing.Size($leftColW, $modeH)
 
-    $providerX = [int]($leftGap + $leftWidth + $colGap)
-    $panelProvider.Location = New-Object System.Drawing.Point($providerX, $topContentY)
-    $panelProvider.Size = New-Object System.Drawing.Size($rightWidth, $panelHeight)
+    $providerTop = $topY + $modeH + 8
+    $panelProvider.Location = New-Object System.Drawing.Point($leftGap, $providerTop)
+    $panelProvider.Size = New-Object System.Drawing.Size($leftColW, $providerH)
 
-    $innerProviderW = [int][Math]::Max(140, ($panelProvider.Width - 36))
-    $providerHint.MaximumSize = New-Object System.Drawing.Size($innerProviderW, 0)
-    $pnlProviderChain.Size = New-Object System.Drawing.Size($innerProviderW, 24)
-    $lblCurrentModel.MaximumSize = New-Object System.Drawing.Size($innerProviderW, 0)
-    $lblFallbackHint.MaximumSize = New-Object System.Drawing.Size($innerProviderW, 0)
+    $innerProviderW = [int][Math]::Max(120, ($leftColW - 36))
+    $providerHint.MaximumSize        = New-Object System.Drawing.Size($innerProviderW, 0)
+    $pnlProviderChain.Size           = New-Object System.Drawing.Size($innerProviderW, 24)
+    $lblCurrentModel.MaximumSize     = New-Object System.Drawing.Size($innerProviderW, 0)
+    $lblFallbackHint.MaximumSize     = New-Object System.Drawing.Size($innerProviderW, 0)
     $lblProviderDisabled.MaximumSize = New-Object System.Drawing.Size($innerProviderW, 0)
 
-    $statusY = [int]($topContentY + $panelHeight + 8)
-    $panelStatus.Location = New-Object System.Drawing.Point($leftGap, $statusY)
-    $panelStatus.Size = New-Object System.Drawing.Size($usableWidth, $statusH)
-    $btnRun.Location = New-Object System.Drawing.Point(($panelStatus.Width - $btnRun.Width - 8), 7)
+    $leftColBottom = $providerTop + $providerH + 10
 
-    $sniperTop = [int]($statusY + $statusH + 8)
-    $desiredSniperH = 290
+    $panelStatus.Location = New-Object System.Drawing.Point($rightColX, $topY)
+    $panelStatus.Size = New-Object System.Drawing.Size($rightColW, $statusH)
 
+    $lblStatusProvider.Location = New-Object System.Drawing.Point(10, 6)
+    $lblStatusInfo.Location = New-Object System.Drawing.Point(10, 26)
+    $btnRun.Location = New-Object System.Drawing.Point(
+        ($panelStatus.Width - $btnRun.Width - 8),
+        ([int](($statusH - $btnRun.Height) / 2))
+    )
+
+    $rightContentTop = $topY + $statusH + 8
     if ($panelSniper.Visible) {
-        $panelSniper.Location = New-Object System.Drawing.Point($leftGap, $sniperTop)
-        $panelSniper.Size = New-Object System.Drawing.Size($usableWidth, $desiredSniperH)
+        $minLogReserve = if ($script:LogExpanded) { 400 } else { 140 }
+        $maxSniperH = [Math]::Max(180, $clientHeight - $rightContentTop - $logHeaderH - $minLogReserve - $bottomGap)
+        $sniperH = [int][Math]::Min(290, $maxSniperH)
+        $panelSniper.Location = New-Object System.Drawing.Point($rightColX, $rightContentTop)
+        $panelSniper.Size = New-Object System.Drawing.Size($rightColW, $sniperH)
 
-        $innerW = [int][Math]::Max(140, ($panelSniper.ClientSize.Width - 36))
-        $treeH = [int][Math]::Max(60, ($panelSniper.Height - 120))
+        $innerW = [int][Math]::Max(100, ($panelSniper.ClientSize.Width - 36))
+        $treeH = [int][Math]::Max(50, ($panelSniper.Height - 120))
         $sniperToolbar.Size = New-Object System.Drawing.Size($innerW, 28)
         $treeFiles.Size = New-Object System.Drawing.Size($innerW, $treeH)
-        $txtSniperSearch.Size = New-Object System.Drawing.Size([int]([Math]::Min(360, $innerW * 0.45)), 22)
+        $txtSniperSearch.Size = New-Object System.Drawing.Size([int]([Math]::Min(300, $innerW * 0.50)), 22)
         $lblFileCount.Location = New-Object System.Drawing.Point(18, ($treeFiles.Bottom + 6))
+        $rightContentTop = $panelSniper.Bottom + 8
+    }
 
-        $chkY = [int]($panelSniper.Bottom + 10)
+    $panelLogHeader.Location = New-Object System.Drawing.Point($rightColX, $rightContentTop)
+    $panelLogHeader.Size = New-Object System.Drawing.Size($rightColW, $logHeaderH)
+    $cmbLogFilter.Location = New-Object System.Drawing.Point(($rightColW - 250), 5)
+    $btnCopyLog.Location = New-Object System.Drawing.Point(($rightColW - 148), 4)
+    $btnExpandLog.Location = New-Object System.Drawing.Point(($rightColW - 84), 4)
+
+    $logTop = $rightContentTop + $logHeaderH
+    $minLogH = if ($script:IsFullscreen) { 80 } else { 100 }
+    $logMaxBottom = if ($script:LogExpanded) {
+        $clientHeight - $bottomGap
     }
     else {
-        $chkY = $sniperTop
+        [int][Math]::Max($leftColBottom, $logTop + $minLogH + 8)
     }
+    $logH = [Math]::Max($minLogH, $logMaxBottom - $logTop)
+    $logViewer.Location = New-Object System.Drawing.Point($rightColX, $logTop)
+    $logViewer.Size = New-Object System.Drawing.Size($rightColW, $logH)
 
-    $chkSendToAI.Location = New-Object System.Drawing.Point($leftGap, $chkY)
-    $chkDeterministicDirector.Location = New-Object System.Drawing.Point($leftGap, [int]($chkY + 24))
+    $fwY = [int][Math]::Max($leftColBottom, $logViewer.Bottom + 8)
+    $fwW = $usableW
 
-    $aiPanelTop = [int]($chkY + 56)
+    $chkSendToAI.Location = New-Object System.Drawing.Point($leftGap, $fwY)
+    $chkDeterministicDirector.Location = New-Object System.Drawing.Point($leftGap, ($fwY + 26))
+
     $promptVis = $chkSendToAI.Checked
     $tplVis = $promptVis -and $rbPromptModeTemplate.Checked
     $expVis = $promptVis -and $rbPromptModeExpert.Checked
-    
     $aiPanelH = if ($tplVis) { 320 } elseif ($expVis) { 246 } elseif ($promptVis) { 156 } else { 92 }
 
+    $aiPanelTop = $fwY + $chkBlockH
     $panelAIPromptMode.Location = New-Object System.Drawing.Point($leftGap, $aiPanelTop)
-    $panelAIPromptMode.Size = New-Object System.Drawing.Size($usableWidth, $aiPanelH)
+    $panelAIPromptMode.Size = New-Object System.Drawing.Size($fwW, $aiPanelH)
 
-    $innerAI = [int][Math]::Max(140, ($panelAIPromptMode.Width - 36))
+    $innerAI = [int][Math]::Max(200, ($fwW - 36))
     $lblAIFlowHint.MaximumSize = New-Object System.Drawing.Size($innerAI, 0)
-    
     if ($expVis) { $txtCustomSystemPrompt.Size = New-Object System.Drawing.Size($innerAI, 86) }
-    if ($tplVis) { 
+    if ($tplVis) {
         $pnlTemplateFields.Size = New-Object System.Drawing.Size($innerAI, 164)
         $txtTemplateAdditional.Size = New-Object System.Drawing.Size([int]($innerAI - 76), 60)
     }
 
-    $progressY = [int]($panelAIPromptMode.Bottom + 8)
-    $progressBar.Location = New-Object System.Drawing.Point($leftGap, $progressY)
-    $progressBar.Size = New-Object System.Drawing.Size($usableWidth, $progressH)
+    $progressTop = $aiPanelTop + $aiPanelH + 6
+    $progressBar.Location = New-Object System.Drawing.Point($leftGap, $progressTop)
+    $progressBar.Size = New-Object System.Drawing.Size($fwW, $progressH)
 
-    $logHeaderY = [int]($progressY + $progressH + 6)
-    $panelLogHeader.Location = New-Object System.Drawing.Point($leftGap, $logHeaderY)
-    $panelLogHeader.Size = New-Object System.Drawing.Size($usableWidth, $logHeaderH)
-
-    $cmbLogFilter.Location = New-Object System.Drawing.Point(($panelLogHeader.Width - 250), 5)
-    $btnCopyLog.Location = New-Object System.Drawing.Point(($panelLogHeader.Width - 148), 4)
-    $btnExpandLog.Location = New-Object System.Drawing.Point(($panelLogHeader.Width - 84), 4)
-
-    $logTop = [int]($logHeaderY + $logHeaderH)
-    $remainingVisibleSpace = [int]($clientHeight - $logTop - $bottomGap)
-    $logH = if ($script:LogExpanded) {
-        [Math]::Max(400, $remainingVisibleSpace)
-    }
-    else {
-        [Math]::Max($minLogH, $remainingVisibleSpace)
-    }
-    $logViewer.Location = New-Object System.Drawing.Point($leftGap, $logTop)
-    $logViewer.Size = New-Object System.Drawing.Size($usableWidth, $logH)
-
-    $contentBottom = [int]($logViewer.Bottom + $bottomGap)
+    $contentBottom = $progressTop + $progressH + $bottomGap
     $form.AutoScrollMinSize = New-Object System.Drawing.Size(0, [Math]::Max($clientHeight, $contentBottom))
 
     $resizeGrip.Visible = -not $script:IsFullscreen
-    $resizeGrip.Location = New-Object System.Drawing.Point(($clientWidth - $resizeGrip.Width), ($clientHeight - $resizeGrip.Height))
+    $resizeGrip.Location = New-Object System.Drawing.Point(
+        ($clientWidth - $resizeGrip.Width),
+        ($clientHeight - $resizeGrip.Height)
+    )
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -2005,10 +2063,10 @@ function Set-SniperLayout {
 # ══════════════════════════════════════════════════════════════════
 # EVENT WIRING
 # ══════════════════════════════════════════════════════════════════
-$rbSniper.Add_CheckedChanged({ Set-SniperLayout -Visible $rbSniper.Checked; Update-StatusBar })
-$rbFull.Add_CheckedChanged({ if ($rbFull.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
-$rbArchitect.Add_CheckedChanged({ if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
-$rbTxtExport.Add_CheckedChanged({ if ($rbTxtExport.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar })
+$rbSniper.Add_CheckedChanged({ Set-SniperLayout -Visible $rbSniper.Checked; Update-StatusBar; Update-ModeSelectionHighlight })
+$rbFull.Add_CheckedChanged({ if ($rbFull.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar; Update-ModeSelectionHighlight })
+$rbArchitect.Add_CheckedChanged({ if ($rbArchitect.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar; Update-ModeSelectionHighlight })
+$rbTxtExport.Add_CheckedChanged({ if ($rbTxtExport.Checked) { Set-SniperLayout -Visible $false }; Update-StatusBar; Update-ModeSelectionHighlight })
 
 $chkSendToAI.Add_CheckedChanged({
     if ($chkSendToAI.Checked) {
@@ -2019,15 +2077,14 @@ $chkSendToAI.Add_CheckedChanged({
 $chkDeterministicDirector.Add_CheckedChanged({
     if ($chkDeterministicDirector.Checked) {
         $chkSendToAI.Checked = $false
-        $rbAIFlowDirector.Checked = $true
     }
     Update-AIPromptModeUi
 })
 $rbPromptModeDefault.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbPromptModeTemplate.Add_CheckedChanged({ Update-AIPromptModeUi })
 $rbPromptModeExpert.Add_CheckedChanged({ Update-AIPromptModeUi })
-$rbAIFlowDirector.Add_CheckedChanged({ Update-AIPromptModeUi })
-$rbAIFlowExecutor.Add_CheckedChanged({ Update-AIPromptModeUi })
+$rbAIFlowDirector.Add_CheckedChanged({ Update-AIPromptModeUi; Update-ModeSelectionHighlight })
+$rbAIFlowExecutor.Add_CheckedChanged({ Update-AIPromptModeUi; Update-ModeSelectionHighlight })
 
 $rbGroq.Add_CheckedChanged({ Update-ProviderStatus })
 $rbGemini.Add_CheckedChanged({ Update-ProviderStatus })
@@ -2038,6 +2095,7 @@ $form.Add_Shown({
         Set-SniperLayout -Visible $false
         Update-AIPromptModeUi
         Update-StatusBar
+        Update-ModeSelectionHighlight
         Set-HudNormalSize
         Ensure-FormVisible
     })
@@ -2054,6 +2112,20 @@ $form.Add_SizeChanged({
         if (-not $script:IsFullscreen) { $script:StoredNormalBounds = $form.Bounds }
         Update-ResponsiveLayout
     })
+
+# ══════════════════════════════════════════════════════════════════
+# ENERGIZE HOVER EFFECTS
+# ══════════════════════════════════════════════════════════════════
+$btnRun.Add_MouseEnter({
+    if ($btnRun.Enabled) {
+        $btnRun.BackColor = $ThemeCyan
+        $btnRun.ForeColor = $ThemeBg
+    }
+})
+$btnRun.Add_MouseLeave({
+    $btnRun.BackColor = $ThemeCyanDark
+    $btnRun.ForeColor = $ThemeCyan
+})
 
 # ══════════════════════════════════════════════════════════════════
 # LOG ENGINE
@@ -2335,7 +2407,32 @@ function Get-DirectorEliteV3ProtocolSection2 { return (Get-VibeDirectorEliteV3Pr
 
 function Get-DirectorEliteV3ProtocolSection3 { return (Get-VibeDirectorEliteV3ProtocolSection3) }
 
-function Get-DirectorEliteV3ProtocolSection4 { return (Get-VibeDirectorEliteV3ProtocolSection4) }
+function Get-DirectorHighFidelityMetadataSection {
+    param(
+        [string]$ProjectNameValue,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$GeneratedAt,
+        [string]$SourceArtifactFileName,
+        [string]$OutputArtifactFileName,
+        [string]$ExecutorTargetValue
+    )
+    return (Get-VibeDirectorHighFidelityMetadataSection -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -DocumentMode $DocumentMode -GeneratedAt $GeneratedAt -SourceArtifactFileName $SourceArtifactFileName -OutputArtifactFileName $OutputArtifactFileName -ExecutorTargetValue $ExecutorTargetValue)
+}
+
+function Get-DirectorHighFidelitySystemGovernanceSection { return (Get-VibeDirectorHighFidelitySystemGovernanceSection) }
+
+function Get-DirectorHighFidelityMetaPromptEngineeringLayersSection {
+    param([string[]]$TargetFiles)
+    return (Get-VibeDirectorHighFidelityMetaPromptEngineeringLayersSection -TargetFiles $TargetFiles)
+}
+
+function Get-DirectorHighFidelityResponseTemplateSection { return (Get-VibeDirectorHighFidelityResponseTemplateSection) }
+
+function Get-DirectorHighFidelityContextMomentumSection {
+    param([string]$MomentumState, [string]$MomentumSource)
+    return (Get-VibeDirectorHighFidelityContextMomentumSection -MomentumState $MomentumState -MomentumSource $MomentumSource)
+}
 
 function Get-ProtocolHeaderContent {
     param([string]$RouteMode, [string]$ExtractionMode, [string]$ExecutorTargetValue)
@@ -2423,6 +2520,7 @@ $btnRun.Add_Click({
         $currentAIPromptMode = Resolve-AIPromptModeFromUI -RbDefault $rbPromptModeDefault -RbTemplate $rbPromptModeTemplate -RbExpert $rbPromptModeExpert
         $currentAIFlowMode = Resolve-AIFlowModeFromUI -RbDirector $rbAIFlowDirector -RbExecutor $rbAIFlowExecutor
         $currentExtractionMode = Resolve-ExtractionModeFromChoice -Choice $currentChoice
+        $currentDocumentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $currentExtractionMode
 
         if (-not $currentChoice) {
             [System.Windows.Forms.MessageBox]::Show("Selecione um modo de extração.", "VibeToolkit",
@@ -2469,7 +2567,7 @@ $btnRun.Add_Click({
         $FilesToProcess = @($selectedFiles)
         $SendToAI = $chkSendToAI.Checked
         $UseDeterministicDirector = $chkDeterministicDirector.Checked
-        $ResolvedOutputRouteMode = if ($UseDeterministicDirector) { 'director' } else { $currentAIFlowMode }
+        $ResolvedOutputRouteMode = $currentAIFlowMode
         $CallFinalGenerator = $SendToAI -or $UseDeterministicDirector
         $TempPromptConfigPath = $null
         $TempBundlePath = $null
@@ -2521,41 +2619,16 @@ $btnRun.Add_Click({
                 return
             }
 
-            if ($ResolvedOutputRouteMode -eq 'director') {
-                $directorParts = @(
-                    (Get-DirectorEliteV3ProtocolSection0 -ExecutorTargetValue $ExecutorTarget),
-                    (Get-DirectorEliteV3ProtocolSection1 -ExtractionMode $currentExtractionMode),
-                    (Get-DirectorEliteV3ProtocolSection2),
-                    (Get-DirectorEliteV3ProtocolSection3),
-                    (Get-DirectorEliteV3ProtocolSection4)
-                )
-
-                $HeaderContent = (($directorParts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
-            }
-            else {
-                $headerParts = New-Object System.Collections.Generic.List[string]
-                $headerParts.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v2')
-                $headerParts.Add((Get-ProtocolSliceSection0))
-                $headerParts.Add((Get-ProtocolSliceSection1 -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode))
-                $headerParts.Add((Get-ProtocolSliceExecutorMode))
-
-                if ($currentExtractionMode -eq 'blueprint') {
-                    $headerParts.Add((Get-ProtocolSliceBlueprintMode))
-                }
-                elseif ($currentExtractionMode -eq 'sniper') {
-                    $headerParts.Add((Get-ProtocolSliceSniperMode))
-                }
-
-                $headerParts.Add((Get-ProtocolSliceSection3 -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode))
-                $headerParts.Add((Get-ProtocolSliceSection4 -ExecutorTargetValue $ExecutorTarget))
-
-                $HeaderContent = (($headerParts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n`n")
-            }
+            $HeaderContent = Get-ProtocolHeaderContent `
+                -RouteMode $ResolvedOutputRouteMode `
+                -ExtractionMode $currentExtractionMode `
+                -ExecutorTargetValue $ExecutorTarget
 
             $FinalContent = $HeaderContent + "`n`n"
             $MomentumContext = $null
+            $ShouldLoadMomentumContext = ($ResolvedOutputRouteMode -eq 'director') -or $UseDeterministicDirector
 
-            if ($ResolvedOutputRouteMode -eq 'director') {
+            if ($ShouldLoadMomentumContext) {
                 $MomentumContext = Resolve-LatestMomentumContext -SearchRoot (Get-Location).Path
 
                 foreach ($MomentumWarning in @($MomentumContext.Warnings)) {
@@ -2568,7 +2641,9 @@ $btnRun.Add_Click({
                 else {
                     Write-UILog -Message $MomentumContext.Message -Color $ThemeWarn
                 }
+            }
 
+            if ($ResolvedOutputRouteMode -eq 'director') {
                 $FinalContent += (Get-MomentumSectionContent -MomentumContext $MomentumContext) + "`n`n"
             }
 
@@ -2668,13 +2743,14 @@ $btnRun.Add_Click({
                 $DeterministicOutputFullPath = Join-Path (Get-Location) $DeterministicOutputFile
 
                 Write-UILog -Message "Fluxo determinístico local ignorará o pre-flight diff gate." -Color $ThemeCyan
-                Write-UILog -Message "Compilando meta-prompt determinístico local diretamente no bundler..." -Color $ThemeCyan
+                Write-UILog -Message ("Compilando meta-prompt determinístico local diretamente no bundler ({0})..." -f $(if ($ResolvedOutputRouteMode -eq 'executor') { 'executor' } else { 'director' })) -Color $ThemeCyan
 
                 $DeterministicContent = New-DeterministicMetaPromptArtifact `
                     -ProjectNameValue $ProjectName `
                     -ExecutorTargetValue $ExecutorTarget `
+                    -RouteMode $ResolvedOutputRouteMode `
                     -ExtractionMode $currentExtractionMode `
-                    -DocumentMode $currentExtractionMode `
+                    -DocumentMode $currentDocumentMode `
                     -SourceArtifactFileName $OutputFile `
                     -OutputArtifactFileName $DeterministicOutputFile `
                     -BundleContent $FinalContent `

@@ -8,6 +8,7 @@ node_modules/
 # Build e arquivos compilados
 dist/
 out/
+COMMITS/
 
 # Logs
 *.log
@@ -24,6 +25,7 @@ _executor_COPIAR_TUDO_*
 _executor_INTELIGENTE_*
 _TXT_EXPORT_*
 _meta-prompt_COPIAR_TUDO_*
+_Executor_MANUAL_*
 
 # Sistema Operacional
 .DS_Store

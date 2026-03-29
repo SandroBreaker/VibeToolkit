@@ -655,16 +655,16 @@ function New-DeterministicMetaPromptArtifact {
     if ($normalizedRouteMode -eq 'executor') {
         $lines.Add("### <metadata>")
         $lines.Add("")
-        $lines.Add("* **Projeto:** `$ProjectNameValue`")
-        $lines.Add("* **Protocolo:** `ELITE v4.1 (Sniper Mode)`")
-        $lines.Add("* **Route Mode:** `$normalizedRouteMode`")
-        $lines.Add("* **Extração:** `$(Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)`")
-        $lines.Add("* **Document Mode:** `$DocumentMode`")
-        $lines.Add("* **Artefato Fonte:** `$SourceArtifactFileName`")
-        $lines.Add("* **Artefato Final:** `$OutputArtifactFileName`")
-        $lines.Add("* **Contexto Momentum:** `$momentumState`")
-        $lines.Add("* **Executor Alvo:** `$ExecutorTargetValue`")
-        $lines.Add("* **Gerado em:** `$generatedAt`")
+        $lines.Add("* **Projeto:** ``$ProjectNameValue``")
+        $lines.Add("* **Protocolo:** ``ELITE v4.1 (Sniper Mode)``")
+        $lines.Add("* **Route Mode:** ``$normalizedRouteMode``")
+        $lines.Add("* **Extração:** ``$(Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)``")
+        $lines.Add("* **Document Mode:** ``$DocumentMode``")
+        $lines.Add("* **Artefato Fonte:** ``$SourceArtifactFileName``")
+        $lines.Add("* **Artefato Final:** ``$OutputArtifactFileName``")
+        $lines.Add("* **Contexto Momentum:** ``$momentumState``")
+        $lines.Add("* **Executor Alvo:** ``$ExecutorTargetValue``")
+        $lines.Add("* **Gerado em:** ``$generatedAt``")
         $lines.Add("")
         $lines.Add("</metadata>")
         $lines.Add("")
@@ -687,9 +687,9 @@ function New-DeterministicMetaPromptArtifact {
         $lines.Add("")
         $lines.Add("### <technical_blueprint>")
         $lines.Add("")
-        $lines.Add("* **Objetivo:** Materializar ajustes no pipeline estruturado de `$ProjectNameValue` para gerar contexto executor determinístico local, sem provider remoto.")
-        $lines.Add("* **Arquivos-Alvo:** `$relevantFilesValue`")
-        $lines.Add("* **Injeção de Momentum:** Utilize o estado de `$momentumMemoryLabel` como memória de trabalho para evitar regressões sistêmicas.")
+        $lines.Add("* **Objetivo:** Materializar ajustes no pipeline estruturado de ``$ProjectNameValue`` para gerar contexto executor determinístico local, sem provider remoto.")
+        $lines.Add("* **Arquivos-Alvo:** ``$relevantFilesValue``")
+        $lines.Add("* **Injeção de Momentum:** Utilize o estado de ``$momentumMemoryLabel`` como memória de trabalho para evitar regressões sistêmicas.")
         $lines.Add("")
         $lines.Add("</technical_blueprint>")
         $lines.Add("")
@@ -2467,14 +2467,7 @@ function Read-NormalizedBundleFile {
 
 function Confirm-IdenticalBundleProceed {
     param([string]$BundlePath)
-    $message = @"
-Conteúdo idêntico detectado.
-
-Arquivo:
-$BundlePath
-
-Deseja prosseguir com a IA mesmo assim?
-"@
+    $message = "Conteúdo idêntico detectado.`n`nArquivo:`n$BundlePath`n`nDeseja prosseguir com a IA mesmo assim?"
     $dialogResult = [System.Windows.Forms.MessageBox]::Show(
         $message, "Bundle idêntico detectado",
         [System.Windows.Forms.MessageBoxButtons]::YesNo,

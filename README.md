@@ -1,6 +1,3 @@
-Gerando arquivo README.md para VibeToolkit
-bash -lc cat > /mnt/data/README.md <<'EOF'
-
 # VibeToolkit
 
 Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturados do projeto** e **gerar artefatos prontos para Diretor/Executor** no fluxo de engenharia agêntica.
@@ -49,7 +46,7 @@ A HUD usa a biblioteca `SentinelUI.ps1` para identidade visual e feedback de exe
 
 - header ASCII “SENTINEL”;
 - mensagens de status coloridas;
-- menu e spinner simples no console. fileciteturn2file0
+- menu e spinner simples no console.
 
 ### 2. Camada de utilitários PowerShell
 
@@ -61,7 +58,7 @@ Fornece funções de IO e serialização seguras:
 - escrita UTF-8 com ou sem BOM;
 - geração de fences Markdown seguros;
 - resolução e materialização de contexto momentum;
-- mapeamento de extensões para linguagem de bloco de código. fileciteturn2file0
+- mapeamento de extensões para linguagem de bloco de código.
 
 #### `modules/VibeDirectorProtocol.psm1`
 
@@ -71,7 +68,7 @@ Centraliza a construção de slices e headers de protocolo para os dois papéis 
 - slices de modo Diretor;
 - slices de modo Executor;
 - cabeçalhos ELITE v3.1 e ELITE v4.1;
-- seções de metadata, governança, engenharia de meta-prompt e contexto momentum. fileciteturn2file0turn2file1
+- seções de metadata, governança, engenharia de meta-prompt e contexto momentum.
 
 #### `modules/VibeFileDiscovery.psm1`
 
@@ -84,7 +81,7 @@ Responsável por descoberta recursiva de arquivos relevantes e exclusão de arte
 - `_INTELIGENTE__*`
 - `_MANUAL__*`
 - `_AI_CONTEXT_*`
-- `_AI_RESULT_*` fileciteturn2file1
+- `_AI_RESULT_*`
 
 #### `modules/VibeSignatureExtractor.psm1`
 
@@ -92,7 +89,7 @@ Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, co
 
 - PowerShell (`function`, `filter`, `param`);
 - TypeScript/JavaScript (`interface`, `type`, `enum`, `const`, `function`, `class`);
-- além de padrões para outras linguagens como C#, Python, Go e Rust. fileciteturn2file1
+- além de padrões para outras linguagens como C#, Python, Go e Rust.
 
 ### 3. Camada de agente TypeScript
 
@@ -108,7 +105,7 @@ Responsabilidades visíveis:
 - classificação de falhas de provider (`AUTH_ERROR`, `RATE_LIMIT`, `NETWORK_ERROR`, `PARSE_ERROR`, `PROVIDER_DOWN`, `CONFIG_ERROR`, `PAYLOAD_TOO_LARGE`);
 - geração de saída estruturada para Director/Executor;
 - suporte a template determinístico `director_meta_v1`;
-- emissão de marcadores estruturados como `[AI_RESULT]` e `[AI_ERROR]` para consumo pelo PowerShell. fileciteturn2file1turn3file1
+- emissão de marcadores estruturados como `[AI_RESULT]` e `[AI_ERROR]` para consumo pelo PowerShell.
 
 ### 4. Camada de reparo local
 
@@ -120,7 +117,7 @@ Função:
 
 - aplicar reparos conhecidos e seguros no `groq-agent.ts`;
 - validar se fragmentos sintaticamente perigosos ainda existem;
-- gerar backup `.bak` antes de sobrescrever o agente quando houver mudança. fileciteturn3file0turn3file4
+- gerar backup `.bak` antes de sobrescrever o agente quando houver mudança.
 
 ---
 
@@ -142,68 +139,70 @@ Função:
 ├─ tsconfig.json
 ├─ PROTOCOLO-OPERACIONAL-ajustado.md
 └─ PROTOCOLO-OPERACIONAL.json
-Estrutura confirmada pelo bundle manual enviado. fileciteturn1file3
+```
 
-Modos operacionais
-Route mode
-director: prepara contexto analítico e meta-prompt para o Executor.
+Estrutura confirmada pelo bundle manual enviado.
 
-executor: prepara contexto direto para implementação. fileciteturn2file1turn2file2
+---
 
-Extraction mode
-full: visão ampla do projeto contido no bundle.
+## Modos operacionais
 
-blueprint: foco em contratos, assinaturas e organização.
+### Route mode
 
-sniper: recorte manual/parcial, sem extrapolação. fileciteturn2file1
+- `director`: prepara contexto analítico e meta-prompt para o Executor.
+- `executor`: prepara contexto direto para implementação.
 
-Document mode
-full
+### Extraction mode
 
-manual fileciteturn2file1
+- `full`: visão ampla do projeto contido no bundle.
+- `blueprint`: foco em contratos, assinaturas e organização.
+- `sniper`: recorte manual/parcial, sem extrapolação.
 
-Prompt modes visíveis no agente
-default
+### Document mode
 
-template
+- `full`
+- `manual`
 
-expertOverride fileciteturn2file1
+### Prompt modes visíveis no agente
 
-Providers tipados no agente
-groq
+- `default`
+- `template`
+- `expertOverride`
 
-gemini
+### Providers tipados no agente
 
-openai
+- `groq`
+- `gemini`
+- `openai`
+- `anthropic`
+- `local`
 
-anthropic
+---
 
-local fileciteturn2file1
+## Templates operacionais visíveis
 
-Templates operacionais visíveis
-No groq-agent.ts, o registro de presets inclui, entre outros:
+No `groq-agent.ts`, o registro de presets inclui, entre outros:
 
-Para Director
-director.full.diagnostic
+### Para Director
 
-director.full.feature-planning
+- `director.full.diagnostic`
+- `director.full.feature-planning`
+- `director.full.architecture-review`
+- `director.full.hardening`
+- `director_meta_v1` (template determinístico local)
 
-director.full.architecture-review
+### Para Executor
 
-director.full.hardening
+- `executor.full.surgical-patch`
+- `executor.full.feature-implementation`
+- `executor.full.safe-refactor`
+- `executor.full.regression-fix`
 
-director_meta_v1 (template determinístico local) fileciteturn2file1turn2file2
+---
 
-Para Executor
-executor.full.surgical-patch
+## Fluxo operacional resumido
 
-executor.full.feature-implementation
-
-executor.full.safe-refactor
-
-executor.full.regression-fix fileciteturn2file1
-
-Fluxo operacional resumido
+```text
 Projeto alvo
    ↓
 project-bundler.ps1
@@ -219,23 +218,29 @@ monta artefato conforme routeMode + extractionMode
 (opcional) delega ao groq-agent.ts
    ↓
 gera saída final Markdown/JSON pronta para uso
-Esse desenho é sustentado pela combinação do bootstrap do project-bundler.ps1, pelos módulos de descoberta/escrita/protocolo e pelos tipos e templates do groq-agent.ts. fileciteturn3file4turn2file0turn2file1
+```
 
-Requisitos
-Ambiente Windows
+Esse desenho é sustentado pela combinação do bootstrap do `project-bundler.ps1`, pelos módulos de descoberta/escrita/protocolo e pelos tipos e templates do `groq-agent.ts`.
+
+---
+
+## Requisitos
+
+### Ambiente Windows
+
 O projeto usa:
 
-PowerShell;
+- **PowerShell**;
+- **System.Windows.Forms**;
+- **System.Drawing**.
 
-System.Windows.Forms;
+Isso indica execução primária em ambiente Windows com .NET disponível para WinForms.
 
-System.Drawing.
+### Node.js / TypeScript
 
-Isso indica execução primária em ambiente Windows com .NET disponível para WinForms. fileciteturn3file4
-
-Node.js / TypeScript
 Dependências declaradas:
 
+```json
 {
   "dependencies": {
     "dotenv": "^17.3.1",
@@ -247,139 +252,151 @@ Dependências declaradas:
     "typescript": "^5.9.3"
   }
 }
-O tsconfig.json compila com:
+```
 
-target: ES2022
+O `tsconfig.json` compila com:
 
-module: CommonJS
+- `target: ES2022`
+- `module: CommonJS`
+- `strict: true`
+- `outDir: ./dist`
 
-strict: true
+---
 
-outDir: ./dist fileciteturn3file0turn3file3
+## Instalação
 
-Instalação
-1. Instalar dependências Node
+### 1. Instalar dependências Node
+
+```bash
 npm install
-2. Garantir política de execução adequada no PowerShell
+```
+
+### 2. Garantir política de execução adequada no PowerShell
+
 Exemplo comum para sessão atual:
 
+```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-Necessário quando o ambiente bloquear scripts .ps1 não assinados.
+```
 
-3. Configurar variáveis de ambiente
-Crie um arquivo .env na raiz quando for usar provider remoto.
+> Necessário quando o ambiente bloquear scripts `.ps1` não assinados.
+
+### 3. Configurar variáveis de ambiente
+
+Crie um arquivo `.env` na raiz quando for usar provider remoto.
 
 Exemplo mínimo para Groq:
 
+```env
 GROQ_API_KEY=seu_token_aqui
-O bundle visível mostra uso de dotenv/config no agente TypeScript. fileciteturn2file1
+```
 
-Como executar
-Executar o bundler na pasta atual
+> O bundle visível mostra uso de `dotenv/config` no agente TypeScript.
+
+---
+
+## Como executar
+
+### Executar o bundler na pasta atual
+
+```powershell
 .\project-bundler.ps1
-Executar apontando para uma pasta-alvo
+```
+
+### Executar apontando para uma pasta-alvo
+
+```powershell
 .\project-bundler.ps1 -Path "C:\dev\SeuProjeto"
-O script recebe um parâmetro Path com default ".". fileciteturn3file4
+```
 
-Utilitário de reparo do agente
-Quando houver quebra conhecida no groq-agent.ts, execute:
+O script recebe um parâmetro `Path` com default `"."`.
 
+---
+
+## Utilitário de reparo do agente
+
+Quando houver quebra conhecida no `groq-agent.ts`, execute:
+
+```bash
 node patch_agent.js
+```
+
 Comportamento esperado:
 
-verifica se groq-agent.ts existe;
+- verifica se `groq-agent.ts` existe;
+- aplica correções de ranges conhecidos;
+- valida fragmentos perigosos;
+- cria backup `groq-agent.ts.bak` antes de sobrescrever.
 
-aplica correções de ranges conhecidos;
+---
 
-valida fragmentos perigosos;
+## Artefatos e convenções
 
-cria backup groq-agent.ts.bak antes de sobrescrever. fileciteturn3file0turn3file4
-
-Artefatos e convenções
 O toolkit diferencia arquivos-fonte de artefatos gerados. Alguns padrões ignorados pela descoberta:
 
-_Diretor_BUNDLER__*
+- `_Diretor_BUNDLER__*`
+- `_Executor_BUNDLER__*`
+- `_BLUEPRINT__*`
+- `_SELECTIVE__*`
+- `_COPIAR_TUDO__*`
+- `_INTELIGENTE__*`
+- `_MANUAL__*`
+- `_AI_CONTEXT_*`
+- `_AI_RESULT_*`
 
-_Executor_BUNDLER__*
+Também há suporte a **context momentum**, buscando o JSON mais recente com padrão `AI_RESULT` válido para enriquecer o próximo ciclo.
 
-_BLUEPRINT__*
+---
 
-_SELECTIVE__*
+## Padrões de projeto observados
 
-_COPIAR_TUDO__*
+- **Strict mode** em módulos PowerShell.
+- **Tipagem forte** no agente TypeScript.
+- **Compatibilidade com leitura parcial/manual**, evitando inferência fora do recorte.
+- **Saída operacional estruturada**, com protocolos explícitos para Diretor e Executor.
+- **Blindagem de encoding** para reduzir corrupção de texto e mojibake.
+- **Tratamento de erro classificado** no agente remoto/local.
 
-_INTELIGENTE__*
+---
 
-_MANUAL__*
+## Limitações visíveis neste recorte
 
-_AI_CONTEXT_*
-
-_AI_RESULT_* fileciteturn2file1
-
-Também há suporte a context momentum, buscando o JSON mais recente com padrão AI_RESULT válido para enriquecer o próximo ciclo. fileciteturn2file0
-
-Padrões de projeto observados
-Strict mode em módulos PowerShell. fileciteturn2file0turn2file1
-
-Tipagem forte no agente TypeScript. fileciteturn2file1
-
-Compatibilidade com leitura parcial/manual, evitando inferência fora do recorte. fileciteturn1file3turn2file1
-
-Saída operacional estruturada, com protocolos explícitos para Diretor e Executor. fileciteturn2file1
-
-Blindagem de encoding para reduzir corrupção de texto e mojibake. fileciteturn2file0
-
-Tratamento de erro classificado no agente remoto/local. fileciteturn2file1turn3file1
-
-Limitações visíveis neste recorte
 Este README foi atualizado com base no material visível do bundle/manual enviado. Portanto:
 
-o comportamento completo da HUD WinForms não está totalmente documentado neste recorte;
+- o comportamento completo da HUD WinForms não está totalmente documentado neste recorte;
+- scripts adicionais de build, publish ou automação não aparecem além do que foi anexado;
+- o conteúdo integral do `README.md` antigo não estava claramente disponível no recorte principal, então esta versão foi reestruturada a partir da arquitetura real visível.
 
-scripts adicionais de build, publish ou automação não aparecem além do que foi anexado;
+---
 
-o conteúdo integral do README.md antigo não estava claramente disponível no recorte principal, então esta versão foi reestruturada a partir da arquitetura real visível. fileciteturn1file3turn3file4
+## Próximos pontos naturais para documentação futura
 
-Próximos pontos naturais para documentação futura
-mapa completo da HUD e seus controles;
+- mapa completo da HUD e seus controles;
+- exemplos de artefatos gerados por cada modo;
+- CLI/flags documentadas por cenário;
+- fluxo determinístico local versus fluxo com provider remoto;
+- troubleshooting de policy do PowerShell e parsing do agente.
 
-exemplos de artefatos gerados por cada modo;
+---
 
-CLI/flags documentadas por cenário;
+## Referência rápida
 
-fluxo determinístico local versus fluxo com provider remoto;
+### Arquivos centrais
 
-troubleshooting de policy do PowerShell e parsing do agente.
+- `project-bundler.ps1`
+- `lib/SentinelUI.ps1`
+- `modules/VibeBundleWriter.psm1`
+- `modules/VibeDirectorProtocol.psm1`
+- `modules/VibeFileDiscovery.psm1`
+- `modules/VibeSignatureExtractor.psm1`
+- `groq-agent.ts`
+- `patch_agent.js`
 
-Referência rápida
-Arquivos centrais
-project-bundler.ps1
+### Stack visível
 
-lib/SentinelUI.ps1
-
-modules/VibeBundleWriter.psm1
-
-modules/VibeDirectorProtocol.psm1
-
-modules/VibeFileDiscovery.psm1
-
-modules/VibeSignatureExtractor.psm1
-
-groq-agent.ts
-
-patch_agent.js fileciteturn1file3turn3file0
-
-Stack visível
-PowerShell
-
-WinForms
-
-Node.js
-
-TypeScript
-
-dotenv
-
-groq-sdk fileciteturn3file0turn3file3
-EOF
-
+- PowerShell
+- WinForms
+- Node.js
+- TypeScript
+- dotenv
+- groq-sdk

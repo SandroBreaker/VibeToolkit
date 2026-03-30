@@ -32,7 +32,6 @@ Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-
 public static class Win32 {
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetConsoleWindow();
@@ -43,9 +42,8 @@ public static class Win32 {
 "@
 
 $consoleHandle = [Win32]::GetConsoleWindow()
-$script:IsConsoleHost = $Host.Name -match "ConsoleHost|Visual Studio Code Host"
-if (-not $script:IsConsoleHost -and $consoleHandle -ne [IntPtr]::Zero) {
-    [Win32]::ShowWindow($consoleHandle, 0) | Out-Null
+if ($consoleHandle -ne [IntPtr]::Zero) {
+    [Win32]::ShowWindow($consoleHandle, 2) | Out-Null
 }
 
 $ProjectName = (Get-Item .).Name
@@ -552,6 +550,93 @@ function Get-AIContextOutputFileName {
 function Get-AIResultOutputFileName {
     param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
     return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "_ai_" -Extension ".json"
+}
+
+function New-LocalExecutionMeta {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$PromptMode = "local",
+        [AllowNull()][string]$TemplateId = $null,
+        [string]$Provider = "local",
+        [string]$Model = "local",
+        [AllowNull()][string]$BundlePath = $null,
+        [AllowNull()][string]$OutputPath = $null,
+        [AllowNull()][string]$ResultMetaPath = $null,
+        [hashtable]$ExtraData
+    )
+
+    $meta = [ordered]@{
+        ok                       = $true
+        provider                 = $Provider
+        model                    = $Model
+        routeMode                = $RouteMode
+        extractionMode           = $ExtractionMode
+        documentMode             = $DocumentMode
+        promptMode               = $PromptMode
+        templateId               = $TemplateId
+        outputPath               = $OutputPath
+        resultMetaPath           = $ResultMetaPath
+        bundlePath               = $BundlePath
+        generatedAt              = [DateTime]::UtcNow.ToString("o")
+        generatedWithoutProvider = $true
+    }
+
+    if ($ExtraData) {
+        foreach ($key in $ExtraData.Keys) {
+            $meta[$key] = $ExtraData[$key]
+        }
+    }
+
+    return [pscustomobject]$meta
+}
+
+function Write-LocalExecutionMeta {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$PromptMode = "local",
+        [AllowNull()][string]$TemplateId = $null,
+        [string]$Provider = "local",
+        [string]$Model = "local",
+        [AllowNull()][string]$BundlePath = $null,
+        [AllowNull()][string]$OutputPath = $null,
+        [AllowNull()][string]$ResultMetaPath = $null,
+        [hashtable]$ExtraData
+    )
+
+    $resolvedResultMetaPath = if ([string]::IsNullOrWhiteSpace($ResultMetaPath)) {
+        Join-Path (Get-Location).Path (Get-AIResultOutputFileName -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
+    }
+    else {
+        $ResultMetaPath
+    }
+
+    $meta = New-LocalExecutionMeta `
+        -ProjectNameValue $ProjectNameValue `
+        -RouteMode $RouteMode `
+        -ExtractionMode $ExtractionMode `
+        -DocumentMode $DocumentMode `
+        -PromptMode $PromptMode `
+        -TemplateId $TemplateId `
+        -Provider $Provider `
+        -Model $Model `
+        -BundlePath $BundlePath `
+        -OutputPath $OutputPath `
+        -ResultMetaPath $resolvedResultMetaPath `
+        -ExtraData $ExtraData
+
+    $metaJson = $meta | ConvertTo-Json -Depth 12
+    Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
+
+    return [pscustomobject]@{
+        Meta           = $meta
+        ResultMetaPath = $resolvedResultMetaPath
+    }
 }
 
 function Get-DeterministicMetaPromptOutputFileName {
@@ -2253,10 +2338,33 @@ function Invoke-OrchestratorAgent {
     $winner = [ordered]@{ Provider = $null; Model = $null }
     $failure = [ordered]@{ Type = $null; Status = $null; Message = $null; Details = $null }
     $script:LastAgentFailure = $null
+    $stdoutTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $stderrTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $combinedTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $processStartedAtUtc = $null
+    $processFinishedAtUtc = $null
+    $processDurationMs = 0
+    $processId = $null
 
     $handleAgentLine = {
-        param([string]$Line, [System.Drawing.Color]$DefaultColor)
+        param([string]$Line, [System.Drawing.Color]$DefaultColor, [string]$StreamName = "stdout")
         if ([string]::IsNullOrWhiteSpace($Line)) { return }
+
+        $capturedAt = [DateTime]::UtcNow.ToString("o")
+        $transcriptEntry = @{
+            stream     = $StreamName
+            capturedAt = $capturedAt
+            line       = $Line
+        }
+
+        if ($StreamName -eq "stderr") {
+            $stderrTranscript.Add($transcriptEntry) | Out-Null
+        }
+        else {
+            $stdoutTranscript.Add($transcriptEntry) | Out-Null
+        }
+
+        $combinedTranscript.Add($transcriptEntry) | Out-Null
 
         if ($Line -match '^\[AI_ERROR\]\s+(.+)$') {
             try {
@@ -2317,14 +2425,17 @@ function Invoke-OrchestratorAgent {
         $commandParts += "`"$CustomPromptConfigPath`""
     }
 
+    $entrypointDisplay = "npx --quiet tsx $([System.IO.Path]::GetFileName($AgentScriptPath))"
+    $commandLine = "/c " + ($commandParts -join " ")
+
     Write-UILog -Message "Host de execução do agente: cmd.exe /c" -Color $ThemeCyan
-    Write-UILog -Message "Entrypoint do agente: npx --quiet tsx $([System.IO.Path]::GetFileName($AgentScriptPath))" -Color $ThemeCyan
+    Write-UILog -Message "Entrypoint do agente: $entrypointDisplay" -Color $ThemeCyan
     Write-UILog -Message "Provider alvo: $PrimaryProviderValue | Bundle: $([System.IO.Path]::GetFileName($BundlePath))" -Color $ThemeCyan
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $process.StartInfo.FileName = "cmd.exe"
-    $process.StartInfo.Arguments = "/c " + ($commandParts -join " ")
+    $process.StartInfo.Arguments = $commandLine
     $process.StartInfo.WorkingDirectory = $ToolkitDir
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
@@ -2336,17 +2447,25 @@ function Invoke-OrchestratorAgent {
 
     if (-not $process.Start()) { throw "Falha ao iniciar o processo do agente de IA." }
 
+    $processStartedAtUtc = [DateTime]::UtcNow
+    $processId = $process.Id
+
     while (-not $process.HasExited) {
-        while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-        while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
+        while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan "stdout" }
+        while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink "stderr" }
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 100
     }
 
     $process.WaitForExit()
 
-    while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-    while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
+    while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan "stdout" }
+    while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink "stderr" }
+
+    $processFinishedAtUtc = [DateTime]::UtcNow
+    if ($processStartedAtUtc) {
+        $processDurationMs = [int][Math]::Round(($processFinishedAtUtc - $processStartedAtUtc).TotalMilliseconds)
+    }
 
     if ($process.ExitCode -ne 0) {
         throw "groq-agent.ts finalizou com código $($process.ExitCode)."
@@ -2361,7 +2480,49 @@ function Invoke-OrchestratorAgent {
 
     if ($resultMetaPathFromDisk) {
         try {
-            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json
+            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
+            if ($null -eq $meta) { $meta = @{} }
+
+            $processAudit = @{}
+            if ($meta.ContainsKey('processAudit') -and $meta.processAudit -is [System.Collections.IDictionary]) {
+                $processAudit = @{} + $meta.processAudit
+            }
+
+            $processAudit.launcher = @{
+                host             = 'cmd.exe /c'
+                entrypoint       = $entrypointDisplay
+                commandLine      = ('cmd.exe {0}' -f $commandLine)
+                workingDirectory = $ToolkitDir
+                bundlePath       = $BundlePath
+                startedAt        = if ($processStartedAtUtc) { $processStartedAtUtc.ToString('o') } else { $null }
+                finishedAt       = if ($processFinishedAtUtc) { $processFinishedAtUtc.ToString('o') } else { $null }
+                durationMs       = $processDurationMs
+                exitCode         = $process.ExitCode
+                processId        = $processId
+            }
+
+            $processAudit.streamTranscript = @{
+                stdout   = @($stdoutTranscript.ToArray())
+                stderr   = @($stderrTranscript.ToArray())
+                combined = @($combinedTranscript.ToArray())
+            }
+
+            $processAudit.auxiliaryScripts = @{
+                patchAgent = @{
+                    path     = (Join-Path $ToolkitDir 'patch_agent.js')
+                    invoked  = $false
+                    evidence = 'Nenhuma execução automática de patch_agent.js foi registrada nesta chamada do orquestrador.'
+                }
+            }
+
+            $meta.processAudit = $processAudit
+            $meta.resultMetaPath = $resultMetaPathFromDisk
+            $meta.winnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
+            $meta.winnerModel = if ($winner.Model) { $winner.Model } else { $meta.model }
+
+            $metaJson = $meta | ConvertTo-Json -Depth 20
+            Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson
+
             return [pscustomobject]@{
                 OutputPath     = $meta.outputPath
                 ResultMetaPath = $resultMetaPathFromDisk
@@ -2632,6 +2793,26 @@ $btnRun.Add_Click({
                     Write-UILog -Message "Arquivos ignorados por incompatibilidade/erro: $($TxtExportResult.SkippedFiles.Count)" -Color $ThemeWarn
                 }
 
+                $TxtExportMetaResult = Write-LocalExecutionMeta `
+                    -ProjectNameValue $ProjectName `
+                    -RouteMode $ResolvedOutputRouteMode `
+                    -ExtractionMode $currentExtractionMode `
+                    -DocumentMode "txt_export" `
+                    -PromptMode "local" `
+                    -Provider "local" `
+                    -Model "txt-export" `
+                    -OutputPath $TxtExportResult.ZipFilePath `
+                    -ExtraData @{
+                        outputDirectory   = $TxtExportResult.OutputDirectory
+                        zipFilePath       = $TxtExportResult.ZipFilePath
+                        exportedFiles     = @($TxtExportResult.ExportedFiles)
+                        skippedFiles      = @($TxtExportResult.SkippedFiles)
+                        exportedFileCount = $TxtExportResult.ExportedFiles.Count
+                        skippedFileCount  = $TxtExportResult.SkippedFiles.Count
+                    }
+
+                Write-UILog -Message "Metadados locais salvos em: $($TxtExportMetaResult.ResultMetaPath)" -Color $ThemeSuccess
+
                 return
             }
 
@@ -2775,6 +2956,24 @@ $btnRun.Add_Click({
 
                 Write-LocalTextArtifact -Path $DeterministicOutputFullPath -Content $DeterministicContent -UseBom
 
+                $DeterministicMetaResult = Write-LocalExecutionMeta `
+                    -ProjectNameValue $ProjectName `
+                    -RouteMode $ResolvedOutputRouteMode `
+                    -ExtractionMode $currentExtractionMode `
+                    -DocumentMode $currentDocumentMode `
+                    -PromptMode "deterministic_local" `
+                    -TemplateId $(if ($ResolvedOutputRouteMode -eq "executor") { "executor_meta_v1" } else { "director_meta_v1" }) `
+                    -Provider "local" `
+                    -Model $(if ($ResolvedOutputRouteMode -eq "executor") { "deterministic-executor_meta_v1" } else { "deterministic-director_meta_v1" }) `
+                    -BundlePath $OutputFullPath `
+                    -OutputPath $DeterministicOutputFullPath `
+                    -ExtraData @{
+                        sourceArtifactFile = $OutputFile
+                        outputArtifactFile = $DeterministicOutputFile
+                    }
+
+                Write-UILog -Message "Metadados locais salvos em: $($DeterministicMetaResult.ResultMetaPath)" -Color $ThemeSuccess
+
                 $DeterministicTokenEstimate = [math]::Round($DeterministicContent.Length / 4)
 
                 try {
@@ -2863,7 +3062,28 @@ $btnRun.Add_Click({
                 Write-UILog -Message "Bundle oficial preservado sem regravação por não haver diferença de conteúdo." -Color $ThemeSuccess
             }
 
+                        $LocalMetaResult = $null
+            if (-not ($SendToAI -and $ShouldCallAI)) {
+                $LocalMetaResult = Write-LocalExecutionMeta `
+                    -ProjectNameValue $ProjectName `
+                    -RouteMode $ResolvedOutputRouteMode `
+                    -ExtractionMode $currentExtractionMode `
+                    -DocumentMode $currentDocumentMode `
+                    -PromptMode $(if ($SendToAI) { "local_no_provider" } else { "local" }) `
+                    -Provider "local" `
+                    -Model "bundler-local" `
+                    -BundlePath $OutputFullPath `
+                    -OutputPath $OutputFullPath `
+                    -ExtraData @{
+                        promptGenerationSkipped = $true
+                        skippedReason = $(if ($SendToAI) { "identical_bundle_user_cancelled_ai" } else { "provider_not_requested" })
+                    }
+
+                Write-UILog -Message "Metadados locais salvos em: $($LocalMetaResult.ResultMetaPath)" -Color $ThemeSuccess
+            }
+
             $TokenEstimate = [math]::Round($FinalContent.Length / 4)
+
 
             try { $FinalContent | Set-Clipboard; $Copied = $true } catch { $Copied = $false }
 
@@ -3091,36 +3311,3 @@ $btnRun.Add_Click({
 Update-StatusBar
 Write-UILog -Message "Pronto. Configure o modo, o executor e energize." -Color $ThemeCyan
 [void]$form.ShowDialog()
-# SIG # Begin signature block
-# MIIFuQYJKoZIhvcNAQcCoIIFqjCCBaYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
-# BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCB2FQcA1T6pdxSM
-# b3eusCH2RLMs7Ej9Zdza0iJ+58zthKCCAyIwggMeMIICBqADAgECAhAcFjwdvC4r
-# pEKLSn91yN5dMA0GCSqGSIb3DQEBCwUAMCcxJTAjBgNVBAMMHFZpYmVUb29sa2l0
-# IERldiBDb2RlIFNpZ25pbmcwHhcNMjYwMzMwMTQyMTUzWhcNMjcwMzMwMTQ0MTUz
-# WjAnMSUwIwYDVQQDDBxWaWJlVG9vbGtpdCBEZXYgQ29kZSBTaWduaW5nMIIBIjAN
-# BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuptAnyghPTgYHSqxi/7cqAdDmsJI
-# 5BsmeTnQU9CHJgKu7eNz0Zr/xrK0LUDaOnLsl2OzwSF9xEFJBNCiA10K8+jBeef3
-# aZLfZ3x6FOO2AfuQ6m8QPGGjXaoZI5mFDm9+yMNIN4FdxXXKkO5YX0zm0HDxcRCX
-# idApXbNp2CQUEl4ChQbUD9vCD3Z4zgTEqIsUbfUGgkJEIWnK2ciJr65F4g/ke9Fg
-# 1DItL4X7MLv585k/mWkCz+ak/Tmf9UDbJaEF999Q8vVD0xaTB1KtEwWZ52MLaThk
-# TuykgzVHQDJHkWSp30XNB3eFygLugcbRGVFTGB3t58LuKBxeoetICRqzBQIDAQAB
-# o0YwRDAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwMwHQYDVR0O
-# BBYEFN6/fvmie8yDQXUs9EgF7KOOhndSMA0GCSqGSIb3DQEBCwUAA4IBAQAdLCBI
-# zlSl2aeFseJefhm8b9i9HKFrVf+qcpCLGt6J6OUcHqE09BIBzUyMU+WJ+3NrNZPm
-# hOZ6fNuWlWJypANLXesqBYbwFEkXRqwua2JxmXard0OIPGkfkqMTL0TvMrakUsA6
-# Zj0ZVwzWnZUFk6aYGIwAEG9Kk6GmjjPxDTKNW5RTgtXT8j6U0zERr0qfm0iNzH+W
-# 8/guu3a9pjHJJkZJzZpOXPNmgfxUZyzakeBxxzT5aaAs5CVeXI8Z1TKt/WEHkycB
-# XLf8+4ldM8Wn4b2l8LZ1+Riv6j2wTQgli/ngCIIjhXH3HXQYBcP13+ZtE8fk9Vlx
-# 6TXUuTo1w5HVU5WYMYIB7TCCAekCAQEwOzAnMSUwIwYDVQQDDBxWaWJlVG9vbGtp
-# dCBEZXYgQ29kZSBTaWduaW5nAhAcFjwdvC4rpEKLSn91yN5dMA0GCWCGSAFlAwQC
-# AQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwG
-# CisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQBgjcCARUwLwYJKoZI
-# hvcNAQkEMSIEIMoNd79gjApjB5qCVOLF6PW0/LNlQgxgwX5vbCRDTzOiMA0GCSqG
-# SIb3DQEBAQUABIIBAIRY0090RvUzW3EnaEuY5vwKeFdGZlcOdCY4jv/ihKD5TMVh
-# dgeu2UI+oo1XiPikvTlDg6cv/p/pApbu4U0TWh0kkvRbG+e1zAmZOGXeviKf99hA
-# pGq5L/yYt0cHBHHJkadWa25CR0IbxYITBYp573QycNr582xPM/AamNdOoVJAxuud
-# bNsftPqeJc/n/Ua/sklmRXksveNGAEHEoeavP0mY9bbP4AIl59l/xLuo3I2L7ibs
-# LOuRz/C2ci+i9dDVG3do0sIHSDapm7YPhBouZ68q4qKHVVsG5ws3OyGJ9/it3E13
-# IKPxvtogXb16ur/79X2FjExoJoLCNCYHFck4Qzs=
-# SIG # End signature block

@@ -9,6 +9,30 @@ function Get-VibeUtf8Encoding {
     return $script:VibeUtf8NoBom
 }
 
+function Remove-VibeAuthenticodeSignatureBlock {
+    param(
+        [AllowNull()][string]$Content
+    )
+
+    if ($null -eq $Content) {
+        return ''
+    }
+
+    $text = [string]$Content
+    if ([string]::IsNullOrEmpty($text)) {
+        return $text
+    }
+
+    $marker = '# SIG # Begin signature block'
+    $index = $text.IndexOf($marker, [System.StringComparison]::Ordinal)
+
+    if ($index -lt 0) {
+        return $text
+    }
+
+    return $text.Substring(0, $index).TrimEnd()
+}
+
 function Read-VibeTextFile {
     param([string]$Path)
 
@@ -22,38 +46,38 @@ function Read-VibeTextFile {
     }
 
     if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-        return ([System.Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3))
+        return (Remove-VibeAuthenticodeSignatureBlock ([System.Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3)))
     }
 
     if ($bytes.Length -ge 4 -and $bytes[0] -eq 0x00 -and $bytes[1] -eq 0x00 -and $bytes[2] -eq 0xFE -and $bytes[3] -eq 0xFF) {
         $utf32Be = New-Object System.Text.UTF32Encoding($true, $true)
-        return $utf32Be.GetString($bytes, 4, $bytes.Length - 4)
+        return (Remove-VibeAuthenticodeSignatureBlock ($utf32Be.GetString($bytes, 4, $bytes.Length - 4)))
     }
 
     if ($bytes.Length -ge 4 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE -and $bytes[2] -eq 0x00 -and $bytes[3] -eq 0x00) {
-        return ([System.Text.Encoding]::UTF32.GetString($bytes, 4, $bytes.Length - 4))
+        return (Remove-VibeAuthenticodeSignatureBlock ([System.Text.Encoding]::UTF32.GetString($bytes, 4, $bytes.Length - 4)))
     }
 
     if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
-        return ([System.Text.Encoding]::BigEndianUnicode.GetString($bytes, 2, $bytes.Length - 2))
+        return (Remove-VibeAuthenticodeSignatureBlock ([System.Text.Encoding]::BigEndianUnicode.GetString($bytes, 2, $bytes.Length - 2)))
     }
 
     if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-        return ([System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2))
+        return (Remove-VibeAuthenticodeSignatureBlock ([System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2)))
     }
 
     try {
         $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
-        return $strictUtf8.GetString($bytes)
+        return (Remove-VibeAuthenticodeSignatureBlock ($strictUtf8.GetString($bytes)))
     }
     catch {
         # Fallback tolerante: continua em UTF-8 e substitui bytes inválidos,
         # evitando mojibake massivo causado por fallback para codepage local.
         try {
-            return $script:VibeUtf8NoBom.GetString($bytes)
+            return (Remove-VibeAuthenticodeSignatureBlock ($script:VibeUtf8NoBom.GetString($bytes)))
         }
         catch {
-            return ([System.Text.Encoding]::Default.GetString($bytes))
+            return (Remove-VibeAuthenticodeSignatureBlock ([System.Text.Encoding]::Default.GetString($bytes)))
         }
     }
 }
@@ -235,36 +259,3 @@ function Get-VibeCodeFenceLanguageFromExtension {
 }
 
 Export-ModuleMember -Function Get-VibeUtf8Encoding, Read-VibeTextFile, Write-VibeTextFile, Test-VibeMomentumResultFileName, Resolve-VibeLatestMomentumContext, Get-VibeMarkdownFenceToken, ConvertTo-VibeSafeMarkdownCodeBlock, Get-VibeMomentumSectionContent, Get-VibeCodeFenceLanguageFromExtension
-# SIG # Begin signature block
-# MIIFuQYJKoZIhvcNAQcCoIIFqjCCBaYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
-# BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCA1yQi1qX9ILkqs
-# YWHkoNd/AuuuOO19zyB9AJjWLHYuH6CCAyIwggMeMIICBqADAgECAhAcFjwdvC4r
-# pEKLSn91yN5dMA0GCSqGSIb3DQEBCwUAMCcxJTAjBgNVBAMMHFZpYmVUb29sa2l0
-# IERldiBDb2RlIFNpZ25pbmcwHhcNMjYwMzMwMTQyMTUzWhcNMjcwMzMwMTQ0MTUz
-# WjAnMSUwIwYDVQQDDBxWaWJlVG9vbGtpdCBEZXYgQ29kZSBTaWduaW5nMIIBIjAN
-# BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuptAnyghPTgYHSqxi/7cqAdDmsJI
-# 5BsmeTnQU9CHJgKu7eNz0Zr/xrK0LUDaOnLsl2OzwSF9xEFJBNCiA10K8+jBeef3
-# aZLfZ3x6FOO2AfuQ6m8QPGGjXaoZI5mFDm9+yMNIN4FdxXXKkO5YX0zm0HDxcRCX
-# idApXbNp2CQUEl4ChQbUD9vCD3Z4zgTEqIsUbfUGgkJEIWnK2ciJr65F4g/ke9Fg
-# 1DItL4X7MLv585k/mWkCz+ak/Tmf9UDbJaEF999Q8vVD0xaTB1KtEwWZ52MLaThk
-# TuykgzVHQDJHkWSp30XNB3eFygLugcbRGVFTGB3t58LuKBxeoetICRqzBQIDAQAB
-# o0YwRDAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwMwHQYDVR0O
-# BBYEFN6/fvmie8yDQXUs9EgF7KOOhndSMA0GCSqGSIb3DQEBCwUAA4IBAQAdLCBI
-# zlSl2aeFseJefhm8b9i9HKFrVf+qcpCLGt6J6OUcHqE09BIBzUyMU+WJ+3NrNZPm
-# hOZ6fNuWlWJypANLXesqBYbwFEkXRqwua2JxmXard0OIPGkfkqMTL0TvMrakUsA6
-# Zj0ZVwzWnZUFk6aYGIwAEG9Kk6GmjjPxDTKNW5RTgtXT8j6U0zERr0qfm0iNzH+W
-# 8/guu3a9pjHJJkZJzZpOXPNmgfxUZyzakeBxxzT5aaAs5CVeXI8Z1TKt/WEHkycB
-# XLf8+4ldM8Wn4b2l8LZ1+Riv6j2wTQgli/ngCIIjhXH3HXQYBcP13+ZtE8fk9Vlx
-# 6TXUuTo1w5HVU5WYMYIB7TCCAekCAQEwOzAnMSUwIwYDVQQDDBxWaWJlVG9vbGtp
-# dCBEZXYgQ29kZSBTaWduaW5nAhAcFjwdvC4rpEKLSn91yN5dMA0GCWCGSAFlAwQC
-# AQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwG
-# CisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQBgjcCARUwLwYJKoZI
-# hvcNAQkEMSIEIA4cTQ2kTKCOBqoFMf6Mxe0kQPxf174ncLvZ5zJvpDCMMA0GCSqG
-# SIb3DQEBAQUABIIBAGAMbIz0573asrK5rBL0OJcShwAeDs0vtEs6G1Rf3LDM+6Ia
-# TnppYVSy7i0vTAY/qxAYAO5z7dxsweiPB/IY9chFB4z0CPYP++HbMvvnEoD92ly8
-# sSNOCLhUerYblDYkNM0c0c5dBvlMq43ogxhuPZXYor+LP1jcHFobCj1Rf3gCsFdt
-# 5CeSoMTtTXZrqk1lFWI+J1YgoDm4ouH7F78USoL3D6PF4d6yQRzRyKko9VOCauq4
-# kJIaTXzSWY/9AYcI3QbHqc0ZbgSW+eMhIaptpbyKydCOT9CFp41kz/C/t9yJOTXJ
-# OKpOvJ1yb5jI5XBJCSM/tX+wX3fYwXiA8ehCtkM=
-# SIG # End signature block

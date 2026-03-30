@@ -497,6 +497,13 @@ function Invoke-OrchestratorAgent {
     $winner = [ordered]@{ Provider = $null; Model = $null }
     $failure = [ordered]@{ Type = $null; Status = $null; Message = $null; Details = $null }
     $script:LastAgentFailure = $null
+    $stdoutTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $stderrTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $combinedTranscript = New-Object 'System.Collections.Generic.List[object]'
+    $processStartedAtUtc = $null
+    $processFinishedAtUtc = $null
+    $processDurationMs = 0
+    $processId = $null
 
     $emitAgentLog = {
         param([string]$Message, [string]$Color)
@@ -519,8 +526,24 @@ function Invoke-OrchestratorAgent {
     }.GetNewClosure()
 
     $handleAgentLine = {
-        param([string]$Line, [string]$DefaultColor)
+        param([string]$Line, [string]$DefaultColor, [string]$StreamName = 'stdout')
         if ([string]::IsNullOrWhiteSpace($Line)) { return }
+
+        $capturedAt = [DateTime]::UtcNow.ToString('o')
+        $transcriptEntry = @{
+            stream     = $StreamName
+            capturedAt = $capturedAt
+            line       = $Line
+        }
+
+        if ($StreamName -eq 'stderr') {
+            $stderrTranscript.Add($transcriptEntry) | Out-Null
+        }
+        else {
+            $stdoutTranscript.Add($transcriptEntry) | Out-Null
+        }
+
+        $combinedTranscript.Add($transcriptEntry) | Out-Null
 
         if ($Line -match '^\[AI_ERROR\]\s+(.+)$') {
             try {
@@ -581,14 +604,17 @@ function Invoke-OrchestratorAgent {
         $commandParts += ('"{0}"' -f $CustomPromptConfigPath)
     }
 
+    $entrypointDisplay = ('npx --quiet tsx {0}' -f [System.IO.Path]::GetFileName($AgentScriptPath))
+    $commandLine = '/c ' + ($commandParts -join ' ')
+
     Write-UILog -Message 'Host de execução do agente: cmd.exe /c' -Color $ThemeCyan
-    Write-UILog -Message ("Entrypoint do agente: npx --quiet tsx {0}" -f [System.IO.Path]::GetFileName($AgentScriptPath)) -Color $ThemeCyan
+    Write-UILog -Message ("Entrypoint do agente: {0}" -f $entrypointDisplay) -Color $ThemeCyan
     Write-UILog -Message ("Provider alvo: {0} | Bundle: {1}" -f $PrimaryProviderValue, [System.IO.Path]::GetFileName($BundlePath)) -Color $ThemeCyan
 
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
     $process.StartInfo.FileName = 'cmd.exe'
-    $process.StartInfo.Arguments = '/c ' + ($commandParts -join ' ')
+    $process.StartInfo.Arguments = $commandLine
     $process.StartInfo.WorkingDirectory = $script:ToolkitDir
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
@@ -600,16 +626,24 @@ function Invoke-OrchestratorAgent {
 
     if (-not $process.Start()) { throw 'Falha ao iniciar o processo do agente de IA.' }
 
+    $processStartedAtUtc = [DateTime]::UtcNow
+    $processId = $process.Id
+
     while (-not $process.HasExited) {
-        while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-        while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
+        while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan 'stdout' }
+        while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink 'stderr' }
         Start-Sleep -Milliseconds 100
     }
 
     $process.WaitForExit()
 
-    while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan }
-    while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink }
+    while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan 'stdout' }
+    while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink 'stderr' }
+
+    $processFinishedAtUtc = [DateTime]::UtcNow
+    if ($processStartedAtUtc) {
+        $processDurationMs = [int][Math]::Round(($processFinishedAtUtc - $processStartedAtUtc).TotalMilliseconds)
+    }
 
     if ($process.ExitCode -ne 0) {
         throw "groq-agent.ts finalizou com código $($process.ExitCode)."
@@ -624,7 +658,49 @@ function Invoke-OrchestratorAgent {
 
     if ($resultMetaPathFromDisk) {
         try {
-            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json
+            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
+            if ($null -eq $meta) { $meta = @{} }
+
+            $processAudit = @{}
+            if ($meta.ContainsKey('processAudit') -and $meta.processAudit -is [System.Collections.IDictionary]) {
+                $processAudit = @{} + $meta.processAudit
+            }
+
+            $processAudit.launcher = @{
+                host             = 'cmd.exe /c'
+                entrypoint       = $entrypointDisplay
+                commandLine      = ('cmd.exe {0}' -f $commandLine)
+                workingDirectory = $ToolkitDir
+                bundlePath       = $BundlePath
+                startedAt        = if ($processStartedAtUtc) { $processStartedAtUtc.ToString('o') } else { $null }
+                finishedAt       = if ($processFinishedAtUtc) { $processFinishedAtUtc.ToString('o') } else { $null }
+                durationMs       = $processDurationMs
+                exitCode         = $process.ExitCode
+                processId        = $processId
+            }
+
+            $processAudit.streamTranscript = @{
+                stdout   = @($stdoutTranscript.ToArray())
+                stderr   = @($stderrTranscript.ToArray())
+                combined = @($combinedTranscript.ToArray())
+            }
+
+            $processAudit.auxiliaryScripts = @{
+                patchAgent = @{
+                    path     = (Join-Path $ToolkitDir 'patch_agent.js')
+                    invoked  = $false
+                    evidence = 'Nenhuma execução automática de patch_agent.js foi registrada nesta chamada do orquestrador.'
+                }
+            }
+
+            $meta.processAudit = $processAudit
+            $meta.resultMetaPath = $resultMetaPathFromDisk
+            $meta.winnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
+            $meta.winnerModel = if ($winner.Model) { $winner.Model } else { $meta.model }
+
+            $metaJson = $meta | ConvertTo-Json -Depth 20
+            Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson
+
             return [pscustomobject]@{
                 OutputPath     = $meta.outputPath
                 ResultMetaPath = $resultMetaPathFromDisk
@@ -1947,36 +2023,3 @@ finally {
         }
     }
 }
-# SIG # Begin signature block
-# MIIFuQYJKoZIhvcNAQcCoIIFqjCCBaYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
-# BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCMPHpqY0n4QgCv
-# YANe0TLhAM3D9pMKrOEbFxQtYou42qCCAyIwggMeMIICBqADAgECAhAcFjwdvC4r
-# pEKLSn91yN5dMA0GCSqGSIb3DQEBCwUAMCcxJTAjBgNVBAMMHFZpYmVUb29sa2l0
-# IERldiBDb2RlIFNpZ25pbmcwHhcNMjYwMzMwMTQyMTUzWhcNMjcwMzMwMTQ0MTUz
-# WjAnMSUwIwYDVQQDDBxWaWJlVG9vbGtpdCBEZXYgQ29kZSBTaWduaW5nMIIBIjAN
-# BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuptAnyghPTgYHSqxi/7cqAdDmsJI
-# 5BsmeTnQU9CHJgKu7eNz0Zr/xrK0LUDaOnLsl2OzwSF9xEFJBNCiA10K8+jBeef3
-# aZLfZ3x6FOO2AfuQ6m8QPGGjXaoZI5mFDm9+yMNIN4FdxXXKkO5YX0zm0HDxcRCX
-# idApXbNp2CQUEl4ChQbUD9vCD3Z4zgTEqIsUbfUGgkJEIWnK2ciJr65F4g/ke9Fg
-# 1DItL4X7MLv585k/mWkCz+ak/Tmf9UDbJaEF999Q8vVD0xaTB1KtEwWZ52MLaThk
-# TuykgzVHQDJHkWSp30XNB3eFygLugcbRGVFTGB3t58LuKBxeoetICRqzBQIDAQAB
-# o0YwRDAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwMwHQYDVR0O
-# BBYEFN6/fvmie8yDQXUs9EgF7KOOhndSMA0GCSqGSIb3DQEBCwUAA4IBAQAdLCBI
-# zlSl2aeFseJefhm8b9i9HKFrVf+qcpCLGt6J6OUcHqE09BIBzUyMU+WJ+3NrNZPm
-# hOZ6fNuWlWJypANLXesqBYbwFEkXRqwua2JxmXard0OIPGkfkqMTL0TvMrakUsA6
-# Zj0ZVwzWnZUFk6aYGIwAEG9Kk6GmjjPxDTKNW5RTgtXT8j6U0zERr0qfm0iNzH+W
-# 8/guu3a9pjHJJkZJzZpOXPNmgfxUZyzakeBxxzT5aaAs5CVeXI8Z1TKt/WEHkycB
-# XLf8+4ldM8Wn4b2l8LZ1+Riv6j2wTQgli/ngCIIjhXH3HXQYBcP13+ZtE8fk9Vlx
-# 6TXUuTo1w5HVU5WYMYIB7TCCAekCAQEwOzAnMSUwIwYDVQQDDBxWaWJlVG9vbGtp
-# dCBEZXYgQ29kZSBTaWduaW5nAhAcFjwdvC4rpEKLSn91yN5dMA0GCWCGSAFlAwQC
-# AQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwG
-# CisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQBgjcCARUwLwYJKoZI
-# hvcNAQkEMSIEIO2M5e/CR3y9UtYkvC09TjwAfpGPK5amAtcognl3GLnKMA0GCSqG
-# SIb3DQEBAQUABIIBACXsmltXTlVSxpm/2SD02j0TJ7aKBEx89o+XdEiF4wZdswsH
-# Yj0LZ6V94ODUhY2hXgrhUPHql/1D1ccjd2dgjbEbUgqBP2IJZ1tEV3SNO92PY3Ig
-# igAF3ec+IMIPiIC7q+kME+95ptQ98TreHNnzR8geCEPTbP0dfJKTPA+h6C4ENWKi
-# lWbGR7TRSSoK5bBHv/Lcm4jbXuGCTZx/PjShLVGFPNHlsPlWKGrVHpClKvzrWgBP
-# 0L2ohxvY3bv0eWlLLmV+KyTW6k4ljd1uyF9xdKXrvwmo0xv3oTnzKlrSANZdAX5R
-# sNWCFH4WkOKRMCJyLgO/VAEHM5H2L8W+zIPO4zQ=
-# SIG # End signature block

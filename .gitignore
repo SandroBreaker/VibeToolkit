@@ -23,11 +23,14 @@ _manual_diretor_*
 _manual_executor_*
 _meta-prompt_blueprint_diretor_*
 _meta-prompt_blueprint_executor_*
+post*
+
 
 # Artefatos gerados por provider
 _blueprint_*__*.md
 _blueprint_*__*.json
 __ai__*.json
+post.md
 
 # Sistema Operacional
 .DS_Store

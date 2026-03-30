@@ -99,6 +99,48 @@ interface ProviderResponse {
     content: string;
 }
 
+interface PromptAuditMessage {
+    role: "system" | "user";
+    content: string;
+    charLength: number;
+    sha256: string;
+}
+
+interface PromptAudit {
+    interactionMode: "remote-provider" | "deterministic-local";
+    systemPrompt: string | null;
+    userPrompt: string | null;
+    finalPrompt: string | null;
+    messages: PromptAuditMessage[];
+    estimatedChars: number;
+    redactions: string[];
+}
+
+interface ResponseAudit {
+    interactionMode: "remote-provider" | "deterministic-local";
+    providerRawContent: string | null;
+    providerRawContentSha256: string | null;
+    providerRawContentPreview: string | null;
+    finalMarkdownSha256: string;
+    finalMarkdownPreview: string;
+    finalMarkdownCharLength: number;
+}
+
+interface ProcessingAuditStep {
+    name: string;
+    status: "success" | "error";
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    details?: string;
+}
+
+interface ProcessingAuditStepHandle {
+    name: string;
+    startedAt: string;
+    startedAtMs: number;
+}
+
 interface UserExecutionContext {
     identity: string;
     username: string | null;
@@ -813,7 +855,7 @@ function tryExecCapture(command: string, args: string[]): string | null {
 }
 
 function detectPowerShellVersion(): string | null {
-    const candidates = ["pwsh", "pwsh.exe", "powershell", "powershell.exe"];
+    const candidates = ["pwsh", "pwsh.exe"];
 
     for (const executable of candidates) {
         const value = tryExecCapture(executable, [
@@ -832,7 +874,7 @@ function detectPowerShellVersion(): string | null {
 
 function detectIsElevated(): boolean {
     if (process.platform === "win32") {
-        const candidates = ["pwsh", "pwsh.exe", "powershell", "powershell.exe"];
+        const candidates = ["pwsh", "pwsh.exe"];
         const elevationScript =
             "$p = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); if ($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'true' } else { 'false' }";
 
@@ -1241,6 +1283,106 @@ function getCurrentTimestampIso(): string {
 
 function normalizeWhitespace(value: string): string {
     return value.replace(/\r\n/g, "\n").trim();
+}
+
+function computeSha256FromString(value: string): string {
+    return crypto.createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function createAuditPreview(value: string | null | undefined, maxLength = 4000): string | null {
+    if (!value) {
+        return null;
+    }
+
+    const normalized = value.replace(/\r\n/g, "\n").trim();
+    if (normalized.length === 0) {
+        return null;
+    }
+
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}
+
+function startProcessingAuditStep(name: string): ProcessingAuditStepHandle {
+    const startedAtMs = Date.now();
+    return {
+        name,
+        startedAt: new Date(startedAtMs).toISOString(),
+        startedAtMs
+    };
+}
+
+function finishProcessingAuditStep(
+    steps: ProcessingAuditStep[],
+    handle: ProcessingAuditStepHandle,
+    status: "success" | "error",
+    details?: string
+): void {
+    const finishedAtMs = Date.now();
+    steps.push({
+        name: handle.name,
+        status,
+        startedAt: handle.startedAt,
+        finishedAt: new Date(finishedAtMs).toISOString(),
+        durationMs: finishedAtMs - handle.startedAtMs,
+        ...(details ? { details } : {})
+    });
+}
+
+function buildPromptAudit(
+    interactionMode: "remote-provider" | "deterministic-local",
+    payload: ProviderRequestPayload | null
+): PromptAudit {
+    const systemPrompt = payload?.systemPrompt ?? null;
+    const userPrompt = payload?.userPrompt ?? null;
+    const finalPrompt =
+        systemPrompt && userPrompt
+            ? [systemPrompt, "", userPrompt].join("\n")
+            : systemPrompt ?? userPrompt ?? null;
+
+    const messages: PromptAuditMessage[] = [];
+    if (systemPrompt) {
+        messages.push({
+            role: "system",
+            content: systemPrompt,
+            charLength: systemPrompt.length,
+            sha256: computeSha256FromString(systemPrompt)
+        });
+    }
+
+    if (userPrompt) {
+        messages.push({
+            role: "user",
+            content: userPrompt,
+            charLength: userPrompt.length,
+            sha256: computeSha256FromString(userPrompt)
+        });
+    }
+
+    return {
+        interactionMode,
+        systemPrompt,
+        userPrompt,
+        finalPrompt,
+        messages,
+        estimatedChars: finalPrompt?.length ?? 0,
+        redactions: []
+    };
+}
+
+function buildResponseAudit(params: {
+    interactionMode: "remote-provider" | "deterministic-local";
+    providerRawContent: string | null;
+    finalMarkdown: string;
+}): ResponseAudit {
+    return {
+        interactionMode: params.interactionMode,
+        providerRawContent: params.providerRawContent,
+        providerRawContentSha256: params.providerRawContent ? computeSha256FromString(params.providerRawContent) : null,
+        providerRawContentPreview: createAuditPreview(params.providerRawContent),
+        finalMarkdownSha256: computeSha256FromString(params.finalMarkdown),
+        finalMarkdownPreview: createAuditPreview(params.finalMarkdown) ?? "",
+        finalMarkdownCharLength: params.finalMarkdown.length
+    };
 }
 
 function escapeMarkdown(value: string): string {
@@ -1914,19 +2056,42 @@ async function repairDirectorResponseContract(
     content: string,
     extractionMode: ExtractionMode,
     primaryProvider: ProviderName,
+    processingSteps: ProcessingAuditStep[],
     modelOverride?: string
 ): Promise<string> {
+    const validationStep = startProcessingAuditStep("validate_director_response_contract");
+
     try {
-        return validateDirectorResponseContract(content);
+        const validated = validateDirectorResponseContract(content);
+        finishProcessingAuditStep(processingSteps, validationStep, "success");
+        return validated;
     } catch (error) {
         const classified = classifyError(error);
+        finishProcessingAuditStep(
+            processingSteps,
+            validationStep,
+            "error",
+            classified.details ?? classified.message
+        );
+
         const repairPayload: ProviderRequestPayload = {
             systemPrompt: buildDirectorRepairPrompt(extractionMode, classified.details ?? classified.message),
             userPrompt: content
         };
 
+        const repairStep = startProcessingAuditStep("repair_director_response_contract");
         const repaired = await tryProviderChain(primaryProvider, repairPayload, modelOverride);
-        return validateDirectorResponseContract(repaired.response.content);
+        finishProcessingAuditStep(
+            processingSteps,
+            repairStep,
+            "success",
+            `Provider=${repaired.response.provider}; Model=${repaired.response.model}`
+        );
+
+        const repairedValidationStep = startProcessingAuditStep("validate_repaired_director_response_contract");
+        const validated = validateDirectorResponseContract(repaired.response.content);
+        finishProcessingAuditStep(processingSteps, repairedValidationStep, "success");
+        return validated;
     }
 }
 
@@ -2715,32 +2880,64 @@ async function repairStructuredPayload(
     mode: DocumentMode,
     extractionMode: ExtractionMode,
     primaryProvider: ProviderName,
+    processingSteps: ProcessingAuditStep[],
     modelOverride?: string
 ): Promise<StructuredOutputDocument> {
+    const extractionStep = startProcessingAuditStep("extract_structured_payload_candidate");
     const candidate = extractJsonCandidate(content);
     if (!candidate) {
+        finishProcessingAuditStep(processingSteps, extractionStep, "error", "JSON candidato ausente.");
         throw new AgentRuntimeError("Nenhum JSON candidato encontrado na resposta do provider.", { status: 422 });
     }
+
+    finishProcessingAuditStep(processingSteps, extractionStep, "success");
+
+    const validationStep = startProcessingAuditStep("validate_structured_payload");
 
     try {
         validateForbiddenPatterns(candidate);
         const parsed = safeJsonParse<unknown>(candidate, null);
-        return parseStructuredDocument(parsed);
-    } catch {
+        const document = parseStructuredDocument(parsed);
+        finishProcessingAuditStep(processingSteps, validationStep, "success");
+        return document;
+    } catch (error) {
+        const classified = classifyError(error);
+        finishProcessingAuditStep(
+            processingSteps,
+            validationStep,
+            "error",
+            classified.details ?? classified.message
+        );
+
         const repairPayload: ProviderRequestPayload = {
             systemPrompt: buildRepairPrompt(routeMode, mode, extractionMode),
             userPrompt: candidate
         };
 
+        const repairStep = startProcessingAuditStep("repair_structured_payload");
         const repaired = await tryProviderChain(primaryProvider, repairPayload, modelOverride);
+        finishProcessingAuditStep(
+            processingSteps,
+            repairStep,
+            "success",
+            `Provider=${repaired.response.provider}; Model=${repaired.response.model}`
+        );
+
+        const repairedCandidateStep = startProcessingAuditStep("extract_repaired_structured_payload_candidate");
         const repairedCandidate = extractJsonCandidate(repaired.response.content);
         if (!repairedCandidate) {
+            finishProcessingAuditStep(processingSteps, repairedCandidateStep, "error", "JSON candidato ausente após repair.");
             throw new AgentRuntimeError("Repair falhou: JSON candidato ausente.", { status: 422 });
         }
 
+        finishProcessingAuditStep(processingSteps, repairedCandidateStep, "success");
+
+        const repairedValidationStep = startProcessingAuditStep("validate_repaired_structured_payload");
         validateForbiddenPatterns(repairedCandidate);
         const repairedParsed = safeJsonParse<unknown>(repairedCandidate, null);
-        return parseStructuredDocument(repairedParsed);
+        const document = parseStructuredDocument(repairedParsed);
+        finishProcessingAuditStep(processingSteps, repairedValidationStep, "success");
+        return document;
     }
 }
 
@@ -2797,11 +2994,14 @@ async function main(): Promise<void> {
 
     const generatedAt = getCurrentTimestampIso();
 
+    const processingSteps: ProcessingAuditStep[] = [];
     let providerResponse: ProviderResponse;
     let retryHistory: RetryHistoryMeta;
     let finalMarkdown: string;
+    let promptAudit: PromptAudit;
 
     if (isDeterministicDirectorTemplate(outputRouteMode, promptConfig)) {
+        const deterministicStep = startProcessingAuditStep("render_deterministic_director_template");
         const model = buildDeterministicDirectorTemplateModel({
             projectName: inferredProjectName,
             sourceArtifact: sourceArtifactName,
@@ -2823,7 +3023,10 @@ async function main(): Promise<void> {
 
         console.error("    Provider target: local | Resolved model: deterministic-director_meta_v1");
         finalMarkdown = renderDeterministicDirectorMarkdown(model);
+        finishProcessingAuditStep(processingSteps, deterministicStep, "success");
+        promptAudit = buildPromptAudit("deterministic-local", null);
     } else {
+        const promptBuildStep = startProcessingAuditStep("build_augmented_prompt_bundle");
         const promptPayload = buildAugmentedPromptBundle({
             projectName: inferredProjectName,
             technicalBundleDump,
@@ -2833,6 +3036,9 @@ async function main(): Promise<void> {
             extractionMode,
             promptConfig
         });
+
+        finishProcessingAuditStep(processingSteps, promptBuildStep, "success");
+        promptAudit = buildPromptAudit("remote-provider", promptPayload);
 
         const providerChainResult = await tryProviderChain(provider, promptPayload, modelOverride);
         providerResponse = providerChainResult.response;
@@ -2845,6 +3051,7 @@ async function main(): Promise<void> {
                           providerResponse.content,
                           extractionMode,
                           provider,
+                          processingSteps,
                           modelOverride
                       ),
                       technicalBundleDump,
@@ -2864,6 +3071,7 @@ async function main(): Promise<void> {
                           mode,
                           extractionMode,
                           provider,
+                          processingSteps,
                           modelOverride
                       ),
                       technicalBundleDump,
@@ -2903,11 +3111,18 @@ async function main(): Promise<void> {
         `${path.basename(finalOutputPath, path.extname(finalOutputPath))}.json`
     );
 
+    const writeOutputStep = startProcessingAuditStep("write_final_output_markdown");
     await writeTextFile(finalOutputPath, finalMarkdown);
+    finishProcessingAuditStep(processingSteps, writeOutputStep, "success", finalOutputPath);
 
     const durationMs = Date.now() - executionStartedAtMs;
     const environment = buildEnvironmentExecutionContext();
     const user = buildUserExecutionContext();
+    const responseAudit = buildResponseAudit({
+        interactionMode: providerResponse.provider === "local" ? "deterministic-local" : "remote-provider",
+        providerRawContent: providerResponse.provider === "local" ? null : providerResponse.content,
+        finalMarkdown
+    });
 
     const resultMeta = {
         ok: true,
@@ -2928,9 +3143,21 @@ async function main(): Promise<void> {
         durationMs,
         environment,
         user,
-        retryHistory
+        retryHistory,
+        promptAudit,
+        responseAudit,
+        processingAudit: {
+            steps: processingSteps
+        }
     };
 
+    const writeMetaStep = startProcessingAuditStep("write_result_meta_json");
+    await writeTextFile(finalResultMetaPath, JSON.stringify(resultMeta, null, 2));
+    finishProcessingAuditStep(processingSteps, writeMetaStep, "success", finalResultMetaPath);
+
+    resultMeta.processingAudit = {
+        steps: processingSteps
+    };
     await writeTextFile(finalResultMetaPath, JSON.stringify(resultMeta, null, 2));
 
     process.stdout.write(

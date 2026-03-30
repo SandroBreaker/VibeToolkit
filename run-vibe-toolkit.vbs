@@ -1,2 +1,16 @@
+Dim targetPath
+Dim args
+Dim WshShell
+
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """C:\Program Files\PowerShell\7\pwsh.exe"" -ExecutionPolicy Bypass -File ""C:\dev\VibeToolkit\project-bundler.ps1""", 0, False
+Set args = WScript.Arguments
+
+' Aceita o caminho passado pelo menu de contexto (registry %V ou %1)
+' Se nao receber argumento, usa o diretorio corrente
+If args.Count > 0 Then
+    targetPath = args(0)
+Else
+    targetPath = WshShell.CurrentDirectory
+End If
+
+WshShell.Run """C:\Program Files\PowerShell\7\pwsh.exe"" -ExecutionPolicy Bypass -NoProfile -File ""C:\dev\VibeToolkit\project-bundler.ps1"" -Path """ & targetPath & """", 0, False

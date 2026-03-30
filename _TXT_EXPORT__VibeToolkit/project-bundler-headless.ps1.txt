@@ -1,6 +1,4 @@
-﻿#requires -Version 7.0
-
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Path = ".",
     [Alias('Mode')]
@@ -60,133 +58,6 @@ function Write-UILog {
     }
     catch {
         Write-Host $Message
-    }
-}
-
-function Get-SentinelUiRequiredFunctionNames {
-    return @(
-        'Write-SentinelHeader',
-        'Write-SentinelStatus'
-    )
-}
-
-function Get-SentinelUiBootstrapFailureSummary {
-    param(
-        [Parameter(Mandatory = $true)]
-        $ErrorRecord
-    )
-
-    $fragments = New-Object System.Collections.Generic.List[string]
-
-    if ($null -ne $ErrorRecord.Exception) {
-        if (-not [string]::IsNullOrWhiteSpace($ErrorRecord.Exception.Message)) {
-            $fragments.Add([string]$ErrorRecord.Exception.Message) | Out-Null
-        }
-
-        if ($null -ne $ErrorRecord.Exception.InnerException -and -not [string]::IsNullOrWhiteSpace($ErrorRecord.Exception.InnerException.Message)) {
-            $fragments.Add([string]$ErrorRecord.Exception.InnerException.Message) | Out-Null
-        }
-
-        $fragments.Add($ErrorRecord.Exception.GetType().FullName) | Out-Null
-    }
-
-    if ($ErrorRecord.FullyQualifiedErrorId) {
-        $fragments.Add([string]$ErrorRecord.FullyQualifiedErrorId) | Out-Null
-    }
-
-    if ($ErrorRecord.CategoryInfo -and $ErrorRecord.CategoryInfo.Reason) {
-        $fragments.Add([string]$ErrorRecord.CategoryInfo.Reason) | Out-Null
-    }
-
-    $summary = (($fragments | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' | ').Trim()
-
-    if ([string]::IsNullOrWhiteSpace($summary)) {
-        $summary = ([string]$ErrorRecord).Trim()
-    }
-
-    $summary = $summary -replace '\s+', ' '
-
-    if ($summary.Length -gt 500) {
-        $summary = $summary.Substring(0, 500) + '...'
-    }
-
-    return $summary
-}
-
-function Test-IsSentinelUiPolicyBlockedError {
-    param(
-        [Parameter(Mandatory = $true)]
-        $ErrorRecord
-    )
-
-    $summary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $ErrorRecord
-
-    return (
-        $summary -match '(?i)not digitally signed' -or
-        $summary -match '(?i)cannot be loaded because running scripts is disabled' -or
-        $summary -match '(?i)authorizationmanager check failed' -or
-        $summary -match '(?i)execution policy' -or
-        $summary -match '(?i)PSSecurityException'
-    )
-}
-
-function Register-SentinelCliFallback {
-    $writeSentinelStatus = {
-        [CmdletBinding()]
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Message,
-
-            [ValidateSet('Success', 'Info', 'Warning', 'Error')]
-            [string]$Type = 'Info'
-        )
-
-        $prefix = switch ($Type) {
-            'Success' { '[+]' }
-            'Warning' { '[!]' }
-            'Error'   { '[x]' }
-            default   { '[*]' }
-        }
-
-        Write-Host ("{0} {1}" -f $prefix, $Message)
-    }
-
-    $writeSentinelHeader = {
-        param(
-            [string]$Title = 'SENTINEL',
-            [string]$Version = 'v1.0.0'
-        )
-
-        Write-Host ('=' * 72)
-        Write-Host (" {0}  ·  {1}" -f $Title, $Version)
-        Write-Host ('=' * 72)
-        Write-Host ''
-    }
-
-    Set-Item -Path Function:\script:Write-SentinelStatus -Value $writeSentinelStatus -Force
-    Set-Item -Path Function:\script:Write-SentinelHeader -Value $writeSentinelHeader -Force
-}
-
-function Assert-SentinelUiBootstrapContract {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$SentinelUiPath,
-        [switch]$FallbackActive
-    )
-
-    $requiredFunctions = @(Get-SentinelUiRequiredFunctionNames)
-    $missingFunctions = New-Object System.Collections.Generic.List[string]
-
-    foreach ($requiredFunction in $requiredFunctions) {
-        $command = Get-Command -Name $requiredFunction -ErrorAction SilentlyContinue
-        if ($null -eq $command -or $command.CommandType -ne 'Function') {
-            $missingFunctions.Add($requiredFunction) | Out-Null
-        }
-    }
-
-    if ($missingFunctions.Count -gt 0) {
-        $bootstrapMode = if ($FallbackActive) { 'fallback local' } else { 'SentinelUI carregado' }
-        throw "Contrato mínimo de UI indisponível após bootstrap ($bootstrapMode) para '$SentinelUiPath'. Funções ausentes: $($missingFunctions -join ', ')."
     }
 }
 
@@ -498,26 +369,6 @@ function Invoke-OrchestratorAgent {
     $failure = [ordered]@{ Type = $null; Status = $null; Message = $null; Details = $null }
     $script:LastAgentFailure = $null
 
-    $emitAgentLog = {
-        param([string]$Message, [string]$Color)
-
-        if ([string]::IsNullOrWhiteSpace($Message)) { return }
-
-        $statusType = switch ($Color) {
-            'Success' { 'Success' }
-            'Warning' { 'Warning' }
-            'Error' { 'Error' }
-            default { 'Info' }
-        }
-
-        try {
-            Write-SentinelStatus -Message $Message -Type $statusType
-        }
-        catch {
-            Write-Host $Message
-        }
-    }.GetNewClosure()
-
     $handleAgentLine = {
         param([string]$Line, [string]$DefaultColor)
         if ([string]::IsNullOrWhiteSpace($Line)) { return }
@@ -546,7 +397,7 @@ function Invoke-OrchestratorAgent {
             return
         }
 
-        & $emitAgentLog $Line $DefaultColor
+        Write-UILog -Message $Line -Color $DefaultColor
     }.GetNewClosure()
 
     $bundleParent = Split-Path $BundlePath -Parent
@@ -649,6 +500,7 @@ function Invoke-OrchestratorAgent {
         WinnerModel    = $winner.Model
     }
 }
+
 
 function New-TxtExportOutputDirectory {
     param(
@@ -976,11 +828,7 @@ function Resolve-Provider {
 
     # Sem IA ativa, provider nao e relevante — retornar groq como fallback silencioso
     if (-not $SendToAI) {
-        if ([string]::IsNullOrWhiteSpace($Provider)) {
-            return 'groq'
-        }
-
-        return $Provider
+        return if ([string]::IsNullOrWhiteSpace($Provider)) { 'groq' } else { $Provider }
     }
 
     if ($Provider -in @('groq', 'gemini', 'openai', 'anthropic')) { return $Provider }
@@ -1013,11 +861,7 @@ function Resolve-AIPromptMode {
 
     # Sem IA ativa, modo de customizacao nao e relevante
     if (-not $SendToAI) {
-        if ([string]::IsNullOrWhiteSpace($AIPromptMode)) {
-            return 'default'
-        }
-
-        return $AIPromptMode
+        return if ([string]::IsNullOrWhiteSpace($AIPromptMode)) { 'default' } else { $AIPromptMode }
     }
 
     if ($AIPromptMode -in @('default', 'template', 'expert')) { return $AIPromptMode }
@@ -1361,37 +1205,10 @@ $SentinelUiPath = Join-Path $script:ToolkitDir 'lib\SentinelUI.ps1'
 if (-not (Test-Path $SentinelUiPath -PathType Leaf)) {
     throw "Biblioteca de UI não encontrada: $SentinelUiPath"
 }
-
-$sentinelUiFallbackActive = $false
-try {
-    . $SentinelUiPath
-}
-catch {
-    $sentinelBootstrapFailure = $_
-
-    if (Test-IsSentinelUiPolicyBlockedError -ErrorRecord $sentinelBootstrapFailure) {
-        Register-SentinelCliFallback
-        $sentinelUiFallbackActive = $true
-
-        $sentinelFailureSummary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $sentinelBootstrapFailure
-        Write-Host "[!] SentinelUI bloqueado por assinatura/execution policy. Ativando fallback textual para o modo headless."
-        Write-Host ("    {0}" -f $sentinelFailureSummary)
-    }
-    else {
-        $sentinelFailureSummary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $sentinelBootstrapFailure
-        throw "Falha estrutural ao carregar biblioteca de UI '$SentinelUiPath'. $sentinelFailureSummary"
-    }
-}
-
-Assert-SentinelUiBootstrapContract -SentinelUiPath $SentinelUiPath -FallbackActive:$sentinelUiFallbackActive
+. $SentinelUiPath
 
 Write-SentinelHeader -Title 'SENTINEL HEADLESS' -Version 'v1.0.0'
-if ($sentinelUiFallbackActive) {
-    Write-UILog -Message 'Bootstrap headless carregado com fallback textual de console.' -Color $ThemeWarn
-}
-else {
-    Write-UILog -Message 'Bootstrap headless carregado.' -Color $ThemeSuccess
-}
+Write-UILog -Message 'Bootstrap headless carregado.' -Color $ThemeSuccess
 
 $modulesDir = Join-Path $script:ToolkitDir 'modules'
 $requiredModulePaths = @(
@@ -1411,125 +1228,6 @@ foreach ($modulePath in $requiredModulePaths) {
     $dynamicModuleName = [System.IO.Path]::GetFileNameWithoutExtension($modulePath)
     $dynamicModule = New-Module -Name $dynamicModuleName -ScriptBlock $scriptBlock
     Import-Module -ModuleInfo $dynamicModule -Force -DisableNameChecking -ErrorAction Stop
-}
-
-if (-not (Get-Command -Name Get-VibeExtractionModeLabel -ErrorAction SilentlyContinue)) {
-    function Get-VibeExtractionModeLabel {
-        param([string]$ExtractionMode)
-
-        $normalizedExtractionMode = if ($null -eq $ExtractionMode) { '' } else { [string]$ExtractionMode }
-        switch ($normalizedExtractionMode.ToLowerInvariant()) {
-            'full'      { return 'full / tudo' }
-            'architect' { return 'architect / blueprint' }
-            'sniper'    { return 'sniper / recorte cirúrgico' }
-            'txt'       { return 'txt export' }
-            default {
-                if ([string]::IsNullOrWhiteSpace($ExtractionMode)) {
-                    return 'não informado'
-                }
-
-                return $ExtractionMode
-            }
-        }
-    }
-}
-
-if (-not (Get-Command -Name Get-DirectorHighFidelityMetadataSection -ErrorAction SilentlyContinue)) {
-    function Get-DirectorHighFidelityMetadataSection {
-        param(
-            [string]$ProjectNameValue,
-            [string]$ExtractionMode,
-            [string]$DocumentMode,
-            [string]$GeneratedAt,
-            [string]$SourceArtifactFileName,
-            [string]$OutputArtifactFileName,
-            [string]$ExecutorTargetValue
-        )
-
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('## METADADOS DE OPERAÇÃO')
-        $lines.Add(('- Projeto: {0}' -f $ProjectNameValue))
-        $lines.Add('- Protocolo: ELITE v4.1 (Director Mode)')
-        $lines.Add(('- Extração: {0}' -f (Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)))
-        $lines.Add(('- Document Mode: {0}' -f $DocumentMode))
-        $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName))
-        $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName))
-        $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue))
-        $lines.Add(('- Gerado em: {0}' -f $GeneratedAt))
-
-        return ($lines -join "`n")
-    }
-}
-
-if (-not (Get-Command -Name Get-DirectorHighFidelitySystemGovernanceSection -ErrorAction SilentlyContinue)) {
-    function Get-DirectorHighFidelitySystemGovernanceSection {
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('## GOVERNANÇA DO SISTEMA')
-        $lines.Add('1. O bundle visível é a única fonte de verdade operacional.')
-        $lines.Add('2. Aplique a Lei da Subtração antes de adicionar novos blocos.')
-        $lines.Add('3. Preserve contratos, assinaturas, nomes públicos e fluxo já existente.')
-        $lines.Add('4. Não faça alquimia arquitetural: declare lacunas em vez de inventar comportamento.')
-        $lines.Add('5. Trate todo código como passivo até validação humana e teste real.')
-        $lines.Add('6. Nunca exponha segredos, tokens, caminhos locais sensíveis ou conteúdo bruto desnecessário.')
-
-        return ($lines -join "`n")
-    }
-}
-
-if (-not (Get-Command -Name Get-DirectorHighFidelityMetaPromptEngineeringLayersSection -ErrorAction SilentlyContinue)) {
-    function Get-DirectorHighFidelityMetaPromptEngineeringLayersSection {
-        param([string[]]$TargetFiles)
-
-        $targetFilesValue = if ($TargetFiles -and $TargetFiles.Count -gt 0) {
-            ($TargetFiles | ForEach-Object { '`{0}`' -f $_ }) -join ', '
-        }
-        else {
-            'não identificados objetivamente'
-        }
-
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('## CAMADAS DE ENGENHARIA DO META-PROMPT')
-        $lines.Add('1. Recon: mapear arquivos impactados, contratos e riscos de regressão.')
-        $lines.Add('2. Subtração: preferir reutilização e remoção de redundância ao acréscimo arbitrário.')
-        $lines.Add('3. Materialização: propor alterações atômicas, compatíveis com a stack existente.')
-        $lines.Add('4. Validação: definir testes objetivos, negativos e de borda antes de considerar concluído.')
-        $lines.Add('5. Segurança: revisar exposição de segredos, entrada não validada e quebra de isolamento.')
-        $lines.Add(('- Arquivos prioritários desta rodada: {0}' -f $targetFilesValue))
-
-        return ($lines -join "`n")
-    }
-}
-
-if (-not (Get-Command -Name Get-DirectorHighFidelityResponseTemplateSection -ErrorAction SilentlyContinue)) {
-    function Get-DirectorHighFidelityResponseTemplateSection {
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('## TEMPLATE DE RESPOSTA OBRIGATÓRIO')
-        $lines.Add('1. ANÁLISE DE EXECUÇÃO')
-        $lines.Add('2. RELATÓRIO DE IMPACTO')
-        $lines.Add('3. IMPLEMENTAÇÃO (CÓDIGO)')
-        $lines.Add('4. PROTOCOLO DE VALIDAÇÃO')
-        $lines.Add('5. VERIFICAÇÃO DE SEGURANÇA')
-
-        return ($lines -join "`n")
-    }
-}
-
-if (-not (Get-Command -Name Get-DirectorHighFidelityContextMomentumSection -ErrorAction SilentlyContinue)) {
-    function Get-DirectorHighFidelityContextMomentumSection {
-        param(
-            [string]$MomentumState,
-            [string]$MomentumSource
-        )
-
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.Add('## CONTEXTO MOMENTUM')
-        $lines.Add(('- Estado: {0}' -f $MomentumState))
-        $lines.Add(('- Fonte: {0}' -f $MomentumSource))
-        $lines.Add('Use o contexto momentum apenas para reduzir regressões e contradições com artefatos anteriores.')
-        $lines.Add('Se o estado estiver vazio, não invente memória histórica; sinalize explicitamente a ausência de contexto.')
-
-        return ($lines -join "`n")
-    }
 }
 
 Set-Location $resolvedTargetPath
@@ -1947,36 +1645,3 @@ finally {
         }
     }
 }
-# SIG # Begin signature block
-# MIIFuQYJKoZIhvcNAQcCoIIFqjCCBaYCAQExDzANBglghkgBZQMEAgEFADB5Bgor
-# BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCCMPHpqY0n4QgCv
-# YANe0TLhAM3D9pMKrOEbFxQtYou42qCCAyIwggMeMIICBqADAgECAhAcFjwdvC4r
-# pEKLSn91yN5dMA0GCSqGSIb3DQEBCwUAMCcxJTAjBgNVBAMMHFZpYmVUb29sa2l0
-# IERldiBDb2RlIFNpZ25pbmcwHhcNMjYwMzMwMTQyMTUzWhcNMjcwMzMwMTQ0MTUz
-# WjAnMSUwIwYDVQQDDBxWaWJlVG9vbGtpdCBEZXYgQ29kZSBTaWduaW5nMIIBIjAN
-# BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuptAnyghPTgYHSqxi/7cqAdDmsJI
-# 5BsmeTnQU9CHJgKu7eNz0Zr/xrK0LUDaOnLsl2OzwSF9xEFJBNCiA10K8+jBeef3
-# aZLfZ3x6FOO2AfuQ6m8QPGGjXaoZI5mFDm9+yMNIN4FdxXXKkO5YX0zm0HDxcRCX
-# idApXbNp2CQUEl4ChQbUD9vCD3Z4zgTEqIsUbfUGgkJEIWnK2ciJr65F4g/ke9Fg
-# 1DItL4X7MLv585k/mWkCz+ak/Tmf9UDbJaEF999Q8vVD0xaTB1KtEwWZ52MLaThk
-# TuykgzVHQDJHkWSp30XNB3eFygLugcbRGVFTGB3t58LuKBxeoetICRqzBQIDAQAB
-# o0YwRDAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwMwHQYDVR0O
-# BBYEFN6/fvmie8yDQXUs9EgF7KOOhndSMA0GCSqGSIb3DQEBCwUAA4IBAQAdLCBI
-# zlSl2aeFseJefhm8b9i9HKFrVf+qcpCLGt6J6OUcHqE09BIBzUyMU+WJ+3NrNZPm
-# hOZ6fNuWlWJypANLXesqBYbwFEkXRqwua2JxmXard0OIPGkfkqMTL0TvMrakUsA6
-# Zj0ZVwzWnZUFk6aYGIwAEG9Kk6GmjjPxDTKNW5RTgtXT8j6U0zERr0qfm0iNzH+W
-# 8/guu3a9pjHJJkZJzZpOXPNmgfxUZyzakeBxxzT5aaAs5CVeXI8Z1TKt/WEHkycB
-# XLf8+4ldM8Wn4b2l8LZ1+Riv6j2wTQgli/ngCIIjhXH3HXQYBcP13+ZtE8fk9Vlx
-# 6TXUuTo1w5HVU5WYMYIB7TCCAekCAQEwOzAnMSUwIwYDVQQDDBxWaWJlVG9vbGtp
-# dCBEZXYgQ29kZSBTaWduaW5nAhAcFjwdvC4rpEKLSn91yN5dMA0GCWCGSAFlAwQC
-# AQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKECgAAwGQYJKoZIhvcNAQkDMQwG
-# CisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwGCisGAQQBgjcCARUwLwYJKoZI
-# hvcNAQkEMSIEIO2M5e/CR3y9UtYkvC09TjwAfpGPK5amAtcognl3GLnKMA0GCSqG
-# SIb3DQEBAQUABIIBACXsmltXTlVSxpm/2SD02j0TJ7aKBEx89o+XdEiF4wZdswsH
-# Yj0LZ6V94ODUhY2hXgrhUPHql/1D1ccjd2dgjbEbUgqBP2IJZ1tEV3SNO92PY3Ig
-# igAF3ec+IMIPiIC7q+kME+95ptQ98TreHNnzR8geCEPTbP0dfJKTPA+h6C4ENWKi
-# lWbGR7TRSSoK5bBHv/Lcm4jbXuGCTZx/PjShLVGFPNHlsPlWKGrVHpClKvzrWgBP
-# 0L2ohxvY3bv0eWlLLmV+KyTW6k4ljd1uyF9xdKXrvwmo0xv3oTnzKlrSANZdAX5R
-# sNWCFH4WkOKRMCJyLgO/VAEHM5H2L8W+zIPO4zQ=
-# SIG # End signature block

@@ -1,9 +1,9 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 function Test-VibeGeneratedArtifactFileName {
     param([string]$FileName)
     if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
-    return $FileName -match '^_(?:(?:Diretor|Executor)_)?(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__|AI_CONTEXT_|AI_RESULT_)'
+    return $FileName -match '^_(?:(?:Diretor|Executor)_)?(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__|AI_CONTEXT_|_ai__)'
 }
 
 function Get-VibeRelevantFiles {

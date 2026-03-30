@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const nodePath = require('path');
 
 const agentPath = nodePath.join(__dirname, 'groq-agent.ts');

@@ -21,7 +21,7 @@ Capacidades centrais:
   - **Director**: produz contexto/meta-prompt para análise e especificação.
   - **Executor**: produz contexto pronto para implementação direta.
 - **Deterministic mode**: permite gerar meta-prompt localmente, sem provider remoto.
-- **Momentum context**: reaproveita o último `AI_RESULT_*.json` válido como estado anterior.
+- **Momentum context**: reaproveita o último `_ai__*.json` válido como estado anterior.
 - **Safe patching**: inclui utilitário para correção segura de trechos conhecidos do `groq-agent.ts`.
 
 ---
@@ -81,7 +81,7 @@ Responsável por descoberta recursiva de arquivos relevantes e exclusão de arte
 - `_INTELIGENTE__*`
 - `_MANUAL__*`
 - `_AI_CONTEXT_*`
-- `_AI_RESULT_*`
+- `_ai_*`
 
 #### `modules/VibeSignatureExtractor.psm1`
 
@@ -105,7 +105,7 @@ Responsabilidades visíveis:
 - classificação de falhas de provider (`AUTH_ERROR`, `RATE_LIMIT`, `NETWORK_ERROR`, `PARSE_ERROR`, `PROVIDER_DOWN`, `CONFIG_ERROR`, `PAYLOAD_TOO_LARGE`);
 - geração de saída estruturada para Director/Executor;
 - suporte a template determinístico `director_meta_v1`;
-- emissão de marcadores estruturados como `[AI_RESULT]` e `[AI_ERROR]` para consumo pelo PowerShell.
+- emissão de marcadores estruturados como `[_ai_]` e `[AI_ERROR]` para consumo pelo PowerShell.
 
 ### 4. Camada de reparo local
 
@@ -342,9 +342,9 @@ O toolkit diferencia arquivos-fonte de artefatos gerados. Alguns padrões ignora
 - `_INTELIGENTE__*`
 - `_MANUAL__*`
 - `_AI_CONTEXT_*`
-- `_AI_RESULT_*`
+- `_ai_*`
 
-Também há suporte a **context momentum**, buscando o JSON mais recente com padrão `AI_RESULT` válido para enriquecer o próximo ciclo.
+Também há suporte a **context momentum**, buscando o JSON mais recente com padrão `_ai_` válido para enriquecer o próximo ciclo.
 
 ---
 

@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import fs from "fs/promises";
 import path from "path";
 import process from "process";
@@ -706,6 +706,7 @@ function normalizeExtractionMode(value: string | undefined | null, fileName: str
 function resolveDocumentModeFromExtractionMode(extractionMode: ExtractionMode): DocumentMode {
     return extractionMode === "sniper" ? "manual" : "full";
 }
+
 
 function parseCliArgs(argv: string[]): Record<string, string> {
     const args: Record<string, string> = {};
@@ -1634,7 +1635,7 @@ function buildDirectorEliteV3SystemPrompt(
         "Sua função é ler o bundle visível, assimilar o contexto e produzir um meta-prompt zero-gap para o Executor.",
         "Você está proibido de implementar código, escrever patches finais, assumir papel de Executor ou inventar arquitetura fora do bundle visível.",
         "Quando houver lacuna de contexto, declare explicitamente a lacuna em vez de improvisar.",
-        "O bundle pode conter uma seção de CONTEXTO MOMENTUM com metadados AI_RESULT anteriores; use-a apenas como estado anterior de apoio, sem sobrescrever o bundle visível.",
+        "O bundle pode conter uma seção de CONTEXTO MOMENTUM com metadados _ai_ anteriores; use-a apenas como estado anterior de apoio, sem sobrescrever o bundle visível.",
         scopeInstruction,
         `O executor alvo de referência é: ${executorTarget}.`,
         `O documentMode externo é: ${mode}.`,
@@ -2559,6 +2560,7 @@ async function main(): Promise<void> {
             .replace(/^_+(BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)/i, "")
             .replace(/\.md$/i, "");
 
+
     const bundleMode =
         args.extractionMode ??
         args.mode ??
@@ -2651,15 +2653,36 @@ async function main(): Promise<void> {
     }
 
     const outputBaseDir = path.dirname(absolutePath);
-    const routePrefix = outputRouteMode === "director" ? "_diretor_AI_CONTEXT_" : "_executor_AI_CONTEXT_";
-    const fallbackOutputPath = path.join(outputBaseDir, `${routePrefix}${inferredProjectName}.md`);
+    const modeLabel = extractionMode === "sniper" ? "manual" : extractionMode === "blueprint" ? "blueprint" : "bundle";
+    const routeLabel = outputRouteMode === "director" ? "diretor" : "executor";
+    const providerStr = providerResponse.provider !== "local" ? `_${providerResponse.provider}` : "";
+    const prefixStr = outputRouteMode === "director" ? "_meta-prompt" : "";
+
+    const fallbackOutputPath = path.join(
+        outputBaseDir,
+        `${prefixStr}_${modeLabel}_${routeLabel}${providerStr}__${inferredProjectName}.md`
+    );
     const finalOutputPath = explicitOutputPath ? path.resolve(explicitOutputPath) : fallbackOutputPath;
 
-    const fallbackResultMetaPath = path.join(
-        outputBaseDir,
-        `${outputRouteMode === "director" ? "_diretor_AI_RESULT_" : "_executor_AI_RESULT_"}${inferredProjectName}.json`
-    );
-    const finalResultMetaPath = explicitResultMetaPath ? path.resolve(explicitResultMetaPath) : fallbackResultMetaPath;
+/**
+ * Mantém o diretório explicitamente pedido pelo chamador, mas força o basename
+ * do metadata a espelhar exatamente o basename do artefato Markdown final.
+ *
+ * Exemplo:
+ *   outputPath     -> C:\dev\monitor\_blueprint_executor_gemini__monitor.md
+ *   resultMetaPath -> C:\dev\monitor\_blueprint_executor_gemini__monitor.json
+ *
+ * Isso neutraliza nomes legados injetados pelo caller via --resultMetaPath,
+ * sem remover a capacidade de escolher outro diretório para o metadata.
+ */
+const resultMetaDir = explicitResultMetaPath
+    ? path.dirname(path.resolve(explicitResultMetaPath))
+    : path.dirname(finalOutputPath);
+
+const finalResultMetaPath = path.join(
+    resultMetaDir,
+    `${path.basename(finalOutputPath, path.extname(finalOutputPath))}.json`
+);
 
     await writeTextFile(finalOutputPath, finalMarkdown);
 
@@ -2684,7 +2707,7 @@ async function main(): Promise<void> {
     // FIX (bug 5): emit structured marker on stdout so PowerShell can parse provider/model
     // without relying solely on the result JSON file on disk.
     process.stdout.write(
-        `[AI_RESULT] provider=${providerResponse.provider};model=${providerResponse.model}\n`
+        `[_ai_] provider=${providerResponse.provider};model=${providerResponse.model}\n`
     );
 
     process.stdout.write(

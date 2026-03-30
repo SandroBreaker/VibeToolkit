@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 $script:VibeUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $false)
 $script:VibeUtf8Bom = New-Object System.Text.UTF8Encoding($true, $false)
@@ -81,7 +81,7 @@ function Write-VibeTextFile {
 function Test-VibeMomentumResultFileName {
     param([string]$FileName)
     if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
-    return $FileName -match '(?i)(?:^|_)AI_RESULT_.*\.json$'
+    return $FileName -match '(?i)(?:^|_)_ai__.*\.json$'
 }
 
 function Resolve-VibeLatestMomentumContext {
@@ -132,7 +132,7 @@ function Resolve-VibeLatestMomentumContext {
     }
 
     if ($result.Warnings.Count -gt 0) {
-        $result.Message = 'Nenhum arquivo AI_RESULT válido pôde ser aproveitado como contexto momentum.'
+        $result.Message = 'Nenhum arquivo _ai_ válido pôde ser aproveitado como contexto momentum.'
     }
 
     return [pscustomobject]$result

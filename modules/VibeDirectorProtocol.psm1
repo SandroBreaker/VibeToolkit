@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 
 function Get-VibeExtractionModeLabel {
     param([string]$ExtractionMode)
@@ -306,7 +306,7 @@ Para cada solicitação, o prompt gerado para o **Executor (Sniper)** deve segui
 
 #### <layer_3_context_momentum>
 * **Estado Persistente:** baseado no Contexto Momentum real do pipeline.
-* **Origem:** derivada do artefato AI_RESULT válido mais recente quando disponível.
+* **Origem:** derivada do artefato _ai_ válido mais recente quando disponível.
 * **Declaração de Lacunas:** Explicite o que o modelo não sabe para evitar inferência estatística.
 </layer_3_context_momentum>
 

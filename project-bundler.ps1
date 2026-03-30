@@ -164,12 +164,33 @@ $TemplateOptions = @(
 
 function Test-IsGeneratedArtifactFileName {
     param([string]$FileName)
-    return (Test-VibeGeneratedArtifactFileName -FileName $FileName)
+    if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
+    if (Test-VibeGeneratedArtifactFileName -FileName $FileName) { return $true }
+    $patterns = @(
+        '^_?(Diretor|Executor)_',
+        '^_(COPIAR_TUDO|INTELIGENTE|MANUAL)__',
+        '^_meta-prompt_(INTELIGENTE|COPIAR_TUDO|MANUAL|blueprint|bundle|sniper|full|manual)',
+        '^_?(diretor|executor)_AI_CONTEXT_',
+        '^_?(diretor|executor)_ai_',
+        '^_AI_CONTEXT_(bundle|blueprint|sniper|full|manual)_(diretor|executor)_',
+        '^_ai_(bundle|blueprint|sniper|full|manual)_(diretor|executor)_',
+        '^_TXT_EXPORT__',
+        '_TXT_EXPORT__.*\.zip$',
+        '^_?(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
+        '^_meta-prompt_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
+        '^_AI_CONTEXT_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
+        '^_ai_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__'
+    )
+    foreach ($pattern in $patterns) {
+        if ($FileName -match $pattern) { return $true }
+    }
+    return $false
 }
 
 function Get-RelevantFiles {
     param([string]$CurrentPath)
-    return (Get-VibeRelevantFiles -CurrentPath $CurrentPath -AllowedExtensions $AllowedExtensions -IgnoredDirs $IgnoredDirs -IgnoredFiles $IgnoredFiles)
+    $files = Get-VibeRelevantFiles -CurrentPath $CurrentPath -AllowedExtensions $AllowedExtensions -IgnoredDirs $IgnoredDirs -IgnoredFiles $IgnoredFiles
+    return @($files | Where-Object { -not (Test-IsGeneratedArtifactFileName -FileName $_.Name) })
 }
 
 function Read-LocalTextArtifact {
@@ -490,55 +511,55 @@ function Resolve-AIFlowModeFromUI {
     return "director"
 }
 
-function Get-OutputRouteModeLabel {
+function Get-VibeArtifactRouteLabel {
     param([string]$RouteMode)
-    if ($RouteMode -eq "executor") { return "Executor" }
-    return "Diretor"
+    if ($RouteMode -match "(?i)executor") { return "executor" }
+    return "diretor"
 }
 
-function Add-OutputRoutePrefixToFileName {
-    param([string]$FileName, [string]$RouteMode)
-    if ([string]::IsNullOrWhiteSpace($FileName)) { throw "Nome de arquivo inválido." }
-    $n = $FileName.Trim()
-    $p = "_$(Get-OutputRouteModeLabel -RouteMode $RouteMode)"
-    if ($n -eq $p -or $n.StartsWith("${p}_")) { return $n }
-    if ($n.StartsWith("_")) { return "${p}${n}" }
-    return "${p}_${n}"
+function Get-VibeArtifactModeLabel {
+    param([string]$ExtractionMode)
+    switch -Regex ($ExtractionMode) {
+        "(?i)sniper|manual|^3$" { return "manual" }
+        "(?i)blueprint|architect|^2$" { return "blueprint" }
+        default { return "bundle" }
+    }
+}
+
+function Get-VibeArtifactFileName {
+    param(
+        [string]$ProjectNameValue,
+        [string]$ExtractionMode,
+        [string]$RouteMode,
+        [string]$Prefix = "",
+        [string]$Provider = "",
+        [string]$Extension = ".md"
+    )
+    $mode = Get-VibeArtifactModeLabel -ExtractionMode $ExtractionMode
+    $route = Get-VibeArtifactRouteLabel -RouteMode $RouteMode
+    $prov = if ([string]::IsNullOrWhiteSpace($Provider)) { "" } else { "_$Provider" }
+    $pfx = if ([string]::IsNullOrWhiteSpace($Prefix)) { "_" } else { "_${Prefix}_" }
+    
+    return "${pfx}${mode}_${route}${prov}__${ProjectNameValue}${Extension}"
 }
 
 function Get-AIContextOutputFileName {
-    param([string]$ProjectNameValue, [string]$RouteMode)
-    return Add-OutputRoutePrefixToFileName -FileName "_AI_CONTEXT_${ProjectNameValue}.md" -RouteMode $RouteMode
+    param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
+    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "AI_CONTEXT"
 }
 
 function Get-AIResultOutputFileName {
-    param([string]$ProjectNameValue, [string]$RouteMode)
-    return Add-OutputRoutePrefixToFileName -FileName "_AI_RESULT_${ProjectNameValue}.json" -RouteMode $RouteMode
+    param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
+    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "_ai_" -Extension ".json"
 }
 
 function Get-DeterministicMetaPromptOutputFileName {
     param(
         [string]$ProjectNameValue,
-        [string]$ChoiceValue
+        [string]$ChoiceValue,
+        [string]$RouteMode
     )
-
-    switch ($ChoiceValue) {
-        '1' { return "_meta-prompt_COPIAR_TUDO__${ProjectNameValue}.md" }
-        '2' { return "_meta-prompt_INTELIGENTE__${ProjectNameValue}.md" }
-        '3' { return "_meta-prompt_MANUAL__${ProjectNameValue}.md" }
-        default { return "_meta-prompt__${ProjectNameValue}.md" }
-    }
-}
-
-function Get-DeterministicMetaPromptModeLabel {
-    param([string]$ChoiceValue)
-
-    switch ($ChoiceValue) {
-        '1' { return "COPIAR_TUDO" }
-        '2' { return "INTELIGENTE" }
-        '3' { return "MANUAL" }
-        default { return "BUNDLE" }
-    }
+    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ChoiceValue -RouteMode $RouteMode -Prefix "meta-prompt"
 }
 
 function Get-DeterministicMetaPromptAnalysisSummary {
@@ -2254,7 +2275,7 @@ function Invoke-OrchestratorAgent {
             return
         }
 
-        if ($Line -match '\[AI_RESULT\]\s+provider=([^;]+);model=(.+)$') {
+        if ($Line -match '\[_ai_\]\s+provider=([^;]+);model=(.+)$') {
             $winner.Provider = $Matches[1].Trim()
             $winner.Model = $Matches[2].Trim()
             return
@@ -2266,7 +2287,8 @@ function Invoke-OrchestratorAgent {
     $bundleParent = Split-Path $BundlePath -Parent
     $routeToken = if ($OutputRouteModeValue -eq 'executor') { 'executor' } else { 'diretor' }
     $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?', ''
-    $resultMetaPath = Join-Path $bundleParent ("_{0}_AI_RESULT_{1}.json" -f $routeToken, $normalizedProjectName)
+    $resultMetaFileName = Get-AIResultOutputFileName -ProjectNameValue $normalizedProjectName -RouteMode $OutputRouteModeValue -ExtractionMode $BundleModeValue
+    $resultMetaPath = Join-Path $bundleParent $resultMetaFileName
 
     $commandParts = @(
         "npx",
@@ -2644,12 +2666,12 @@ $btnRun.Add_Click({
 
             if ($Choice -eq '1' -or $Choice -eq '3') {
                 if ($Choice -eq '1') {
-                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_COPIAR_TUDO__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
+                    $OutputFile = Get-VibeArtifactFileName -ProjectNameValue $ProjectName -ExtractionMode $Choice -RouteMode $ResolvedOutputRouteMode
                     $HeaderTitle = "MODO COPIAR TUDO"
                     Write-UILog -Message "Iniciando Modo Copiar Tudo..." -Color $ThemeCyan
                 }
                 else {
-                    $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_MANUAL__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
+                    $OutputFile = Get-VibeArtifactFileName -ProjectNameValue $ProjectName -ExtractionMode $Choice -RouteMode $ResolvedOutputRouteMode
                     $HeaderTitle = "MODO MANUAL"
                     Write-UILog -Message "Iniciando Modo Sniper / Manual..." -Color $ThemePink
                 }
@@ -2700,7 +2722,7 @@ $btnRun.Add_Click({
                 }
             }
             else {
-                $OutputFile = Add-OutputRoutePrefixToFileName -FileName "_INTELIGENTE__${ProjectName}.md" -RouteMode $ResolvedOutputRouteMode
+                $OutputFile = Get-VibeArtifactFileName -ProjectNameValue $ProjectName -ExtractionMode $Choice -RouteMode $ResolvedOutputRouteMode
                 Write-UILog -Message "Iniciando Modo Architect / Inteligente..." -Color $ThemeCyan
                 $FinalContent += "## MODO INTELIGENTE: $ProjectName`n`n"
                 $FinalContent += "### 1. TECH STACK`n"
@@ -2732,7 +2754,7 @@ $btnRun.Add_Click({
             Write-LocalTextArtifact -Path $TempBundlePath -Content $FinalContent
 
             if ($UseDeterministicDirector) {
-                $DeterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $ProjectName -ChoiceValue $Choice
+                $DeterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $ProjectName -ChoiceValue $Choice -RouteMode $ResolvedOutputRouteMode
                 $DeterministicOutputFullPath = Join-Path (Get-Location) $DeterministicOutputFile
 
                 Write-UILog -Message "Fluxo determinístico local ignorará o pre-flight diff gate." -Color $ThemeCyan
@@ -2937,7 +2959,7 @@ $btnRun.Add_Click({
                 else {
                     $bundleParent = Split-Path $OutputFullPath -Parent
                     $candidateContextPaths = @(
-                        (Join-Path $bundleParent (Get-AIContextOutputFileName -ProjectNameValue $ProjectName -RouteMode $currentAIFlowMode)),
+                        (Join-Path $bundleParent (Get-AIContextOutputFileName -ProjectNameValue $ProjectName -RouteMode $currentAIFlowMode -ExtractionMode $currentExtractionMode)),
                         (Join-Path $bundleParent "_AI_CONTEXT_${ProjectName}.md")
                     )
                     foreach ($cp in $candidateContextPaths) {

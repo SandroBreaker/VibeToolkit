@@ -14,18 +14,20 @@ COMMITS/
 *.log
 npm-debug.log*
 
-# Arquivos gerados pelo VibeToolkit (Opcional)
-_diretor_AI_RESULT_*
-_diretor_AI_CONTEXT_*
-_executor_AI_RESULT_*
-_executor_AI_CONTEXT_*
-_diretor_COPIAR_TUDO_*
-_diretor_INTELIGENTE_*
-_executor_COPIAR_TUDO_*
-_executor_INTELIGENTE_*
-_TXT_EXPORT_*
-_meta-prompt_COPIAR_TUDO_*
-_Executor_MANUAL_*
+# Artefatos gerados pelo VibeToolkit / Sentinel
+_bundle_diretor_*
+_bundle_executor_*
+_blueprint_diretor_*
+_blueprint_executor_*
+_manual_diretor_*
+_manual_executor_*
+_meta-prompt_blueprint_diretor_*
+_meta-prompt_blueprint_executor_*
+
+# Artefatos gerados por provider
+_blueprint_*__*.md
+_blueprint_*__*.json
+__ai__*.json
 
 # Sistema Operacional
 .DS_Store

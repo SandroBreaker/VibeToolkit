@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -489,7 +489,14 @@ function Invoke-OrchestratorAgent {
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
         [string]$OutputRouteModeValue,
-        [string]$CustomPromptConfigPath = $null
+        [string]$CustomPromptConfigPath = $null,
+        [string]$DocumentModeValue = $null,
+        [string]$PromptModeValue = $null,
+        [AllowNull()][string]$TemplateIdValue = $null,
+        [AllowNull()][string]$ExplicitOutputPath = $null,
+        [AllowNull()][string]$ExplicitResultMetaPath = $null,
+        [AllowNull()][string]$SkipReasonValue = $null,
+        [AllowNull()][string]$LocalModelValue = $null
     )
 
     if (-not (Test-Path $AgentScriptPath -PathType Leaf)) { throw "Script groq-agent.ts não localizado." }
@@ -576,7 +583,12 @@ function Invoke-OrchestratorAgent {
     $routeToken = if ($OutputRouteModeValue -eq 'executor') { 'executor' } else { 'diretor' }
     $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?', ''
     $resultMetaFileName = Get-AIResultOutputFileName -ProjectNameValue $normalizedProjectName -RouteMode $OutputRouteModeValue -ExtractionMode $BundleModeValue
-    $resultMetaPath = Join-Path $bundleParent $resultMetaFileName
+    $resultMetaPath = if (-not [string]::IsNullOrWhiteSpace($ExplicitResultMetaPath)) {
+        $ExplicitResultMetaPath
+    }
+    else {
+        Join-Path $bundleParent $resultMetaFileName
+    }
 
     $commandParts = @(
         'npx',
@@ -602,6 +614,36 @@ function Invoke-OrchestratorAgent {
     if (-not [string]::IsNullOrWhiteSpace($CustomPromptConfigPath)) {
         $commandParts += '--promptConfigFilePath'
         $commandParts += ('"{0}"' -f $CustomPromptConfigPath)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($DocumentModeValue)) {
+        $commandParts += '--documentMode'
+        $commandParts += ('"{0}"' -f $DocumentModeValue)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PromptModeValue)) {
+        $commandParts += '--promptMode'
+        $commandParts += ('"{0}"' -f $PromptModeValue)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($TemplateIdValue)) {
+        $commandParts += '--templateId'
+        $commandParts += ('"{0}"' -f $TemplateIdValue)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitOutputPath)) {
+        $commandParts += '--outputPath'
+        $commandParts += ('"{0}"' -f $ExplicitOutputPath)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($SkipReasonValue)) {
+        $commandParts += '--skipReason'
+        $commandParts += ('"{0}"' -f $SkipReasonValue)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($LocalModelValue)) {
+        $commandParts += '--localModel'
+        $commandParts += ('"{0}"' -f $LocalModelValue)
     }
 
     $entrypointDisplay = ('npx --quiet tsx {0}' -f [System.IO.Path]::GetFileName($AgentScriptPath))
@@ -1040,7 +1082,7 @@ function Resolve-IAOptions {
     $aiInput = (Read-Host "  Gerar o prompt final com IA ao concluir? (s/N)").Trim().ToLower()
     $resolvedSendToAI = ($aiInput -eq 's' -or $aiInput -eq 'sim')
 
-    $detInput = (Read-Host "  Gerar meta-prompt deterministico local (sem IA e sem groq-agent.ts)? (s/N)").Trim().ToLower()
+    $detInput = (Read-Host "  Gerar meta-prompt deterministico local (sem IA / sem provider remoto)? (s/N)").Trim().ToLower()
     $resolvedDeterministic = ($detInput -eq 's' -or $detInput -eq 'sim')
 
     Write-Host ""
@@ -1158,7 +1200,168 @@ function Get-AIContextOutputFileName {
 
 function Get-AIResultOutputFileName {
     param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
-    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "_ai_" -Extension ".json"
+    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Extension ".json"
+}
+
+function New-LocalExecutionMeta {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$PromptMode = 'local',
+        [AllowNull()][string]$TemplateId = $null,
+        [string]$Provider = 'local',
+        [string]$Model = 'local',
+        [AllowNull()][string]$BundlePath = $null,
+        [AllowNull()][string]$OutputPath = $null,
+        [AllowNull()][string]$ResultMetaPath = $null,
+        [hashtable]$ExtraData
+    )
+
+    $meta = [ordered]@{
+        ok                       = $true
+        provider                 = $Provider
+        model                    = $Model
+        routeMode                = $RouteMode
+        extractionMode           = $ExtractionMode
+        documentMode             = $DocumentMode
+        promptMode               = $PromptMode
+        templateId               = $TemplateId
+        outputPath               = $OutputPath
+        resultMetaPath           = $ResultMetaPath
+        bundlePath               = $BundlePath
+        generatedAt              = [DateTime]::UtcNow.ToString('o')
+        generatedWithoutProvider = $true
+    }
+
+    if ($ExtraData) {
+        foreach ($key in $ExtraData.Keys) {
+            $meta[$key] = $ExtraData[$key]
+        }
+    }
+
+    return [pscustomobject]$meta
+}
+
+function Write-LocalExecutionMeta {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$PromptMode = 'local',
+        [AllowNull()][string]$TemplateId = $null,
+        [string]$Provider = 'local',
+        [string]$Model = 'local',
+        [AllowNull()][string]$BundlePath = $null,
+        [AllowNull()][string]$OutputPath = $null,
+        [AllowNull()][string]$ResultMetaPath = $null,
+        [hashtable]$ExtraData
+    )
+
+    $resolvedResultMetaPath = if ([string]::IsNullOrWhiteSpace($ResultMetaPath)) {
+        Join-Path (Get-Location).Path (Get-AIResultOutputFileName -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
+    }
+    else {
+        $ResultMetaPath
+    }
+
+    $metadataSourcePath = if (-not [string]::IsNullOrWhiteSpace($BundlePath)) {
+        $BundlePath
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+        $OutputPath
+    }
+    else {
+        $null
+    }
+
+    $agentScriptPath = if ($script:ToolkitDir) {
+        Join-Path $script:ToolkitDir 'groq-agent.ts'
+    }
+    else {
+        Join-Path (Get-Location).Path 'groq-agent.ts'
+    }
+
+    if ($Provider -eq 'local' -and -not [string]::IsNullOrWhiteSpace($metadataSourcePath) -and (Test-Path $metadataSourcePath -PathType Leaf) -and (Test-Path $agentScriptPath -PathType Leaf)) {
+        try {
+            $skipReasonValue = $null
+            if ($ExtraData -and $ExtraData.ContainsKey('skippedReason') -and -not [string]::IsNullOrWhiteSpace([string]$ExtraData['skippedReason'])) {
+                $skipReasonValue = [string]$ExtraData['skippedReason']
+            }
+
+            $agentResult = Invoke-OrchestratorAgent `
+                -AgentScriptPath $agentScriptPath `
+                -BundlePath $metadataSourcePath `
+                -ProjectNameValue $ProjectNameValue `
+                -ExecutorTargetValue 'Local Governance' `
+                -BundleModeValue $ExtractionMode `
+                -PrimaryProviderValue 'local' `
+                -OutputRouteModeValue $RouteMode `
+                -DocumentModeValue $DocumentMode `
+                -PromptModeValue $PromptMode `
+                -TemplateIdValue $TemplateId `
+                -ExplicitOutputPath $(if ([string]::IsNullOrWhiteSpace($OutputPath)) { $metadataSourcePath } else { $OutputPath }) `
+                -ExplicitResultMetaPath $resolvedResultMetaPath `
+                -SkipReasonValue $skipReasonValue `
+                -LocalModelValue $Model
+
+            $resultMetaPathFromDisk = if ($agentResult -and $agentResult.ResultMetaPath -and (Test-Path $agentResult.ResultMetaPath -PathType Leaf)) {
+                $agentResult.ResultMetaPath
+            }
+            elseif (Test-Path $resolvedResultMetaPath -PathType Leaf) {
+                $resolvedResultMetaPath
+            }
+            else {
+                $null
+            }
+
+            if ($resultMetaPathFromDisk) {
+                $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
+                if ($null -eq $meta) { $meta = @{} }
+
+                if ($ExtraData) {
+                    foreach ($key in $ExtraData.Keys) {
+                        $meta[$key] = $ExtraData[$key]
+                    }
+                }
+
+                $meta.resultMetaPath = $resultMetaPathFromDisk
+                $metaJson = $meta | ConvertTo-Json -Depth 20
+                Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson -UseBom
+
+                return [pscustomobject]@{
+                    Meta           = [pscustomobject]$meta
+                    ResultMetaPath = $resultMetaPathFromDisk
+                }
+            }
+        }
+        catch {
+        }
+    }
+
+    $meta = New-LocalExecutionMeta `
+        -ProjectNameValue $ProjectNameValue `
+        -RouteMode $RouteMode `
+        -ExtractionMode $ExtractionMode `
+        -DocumentMode $DocumentMode `
+        -PromptMode $PromptMode `
+        -TemplateId $TemplateId `
+        -Provider $Provider `
+        -Model $Model `
+        -BundlePath $BundlePath `
+        -OutputPath $OutputPath `
+        -ResultMetaPath $resolvedResultMetaPath `
+        -ExtraData $ExtraData
+
+    $metaJson = $meta | ConvertTo-Json -Depth 12
+    Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
+
+    return [pscustomobject]@{
+        Meta           = $meta
+        ResultMetaPath = $resolvedResultMetaPath
+    }
 }
 
 function Get-DeterministicMetaPromptOutputFileName {
@@ -1694,6 +1897,25 @@ try {
             Write-UILog -Message ("Arquivos ignorados por incompatibilidade/erro: {0}" -f $txtExportResult.SkippedFiles.Count) -Color $ThemeWarn
         }
 
+        $txtExportMetaResult = Write-LocalExecutionMeta `
+            -ProjectNameValue $projectName `
+            -RouteMode $ResolvedRouteMode `
+            -ExtractionMode $currentExtractionMode `
+            -DocumentMode 'txt_export' `
+            -PromptMode 'local' `
+            -Provider 'local' `
+            -Model 'txt-export' `
+            -OutputPath $txtExportResult.ZipFilePath `
+            -ExtraData @{
+                outputDirectory   = $txtExportResult.OutputDirectory
+                zipFilePath       = $txtExportResult.ZipFilePath
+                exportedFiles     = @($txtExportResult.ExportedFiles)
+                skippedFiles      = @($txtExportResult.SkippedFiles)
+                exportedFileCount = $txtExportResult.ExportedFiles.Count
+                skippedFileCount  = $txtExportResult.SkippedFiles.Count
+            }
+
+        Write-UILog -Message ("Metadados locais salvos em: {0}" -f $txtExportMetaResult.ResultMetaPath) -Color $ThemeSuccess
         return
     }
 
@@ -1858,7 +2080,24 @@ try {
             Write-UILog -Message 'Meta-prompt final gerado, mas clipboard indisponível.' -Color $ThemeWarn
         }
 
-        Write-UILog -Message 'Execução concluída sem chamada de IA e sem groq-agent.ts.' -Color $ThemeSuccess
+        $deterministicMetaResult = Write-LocalExecutionMeta `
+            -ProjectNameValue $projectName `
+            -RouteMode $ResolvedRouteMode `
+            -ExtractionMode $currentExtractionMode `
+            -DocumentMode $currentDocumentMode `
+            -PromptMode 'deterministic_local' `
+            -TemplateId $(if ($ResolvedRouteMode -eq 'executor') { 'executor_meta_v1' } else { 'director_meta_v1' }) `
+            -Provider 'local' `
+            -Model $(if ($ResolvedRouteMode -eq 'executor') { 'deterministic-executor_meta_v1' } else { 'deterministic-director_meta_v1' }) `
+            -BundlePath $outputFullPath `
+            -OutputPath $deterministicOutputFullPath `
+            -ExtraData @{
+                sourceArtifactFile = $outputFile
+                outputArtifactFile = $deterministicOutputFile
+            }
+
+        Write-UILog -Message ("Metadados locais salvos em: {0}" -f $deterministicMetaResult.ResultMetaPath) -Color $ThemeSuccess
+        Write-UILog -Message 'Execução concluída sem provider remoto; metadados de governança consolidados via groq-agent.ts local.' -Color $ThemeSuccess
         return
     }
 
@@ -1997,7 +2236,23 @@ try {
         Write-UILog -Message $(if ($ResolvedRouteMode -eq 'executor') { 'Agora é só colar no seu executor.' } else { 'Agora é só colar no seu orquestrador.' }) -Color $ThemeCyan
     }
     else {
-        Write-UILog -Message 'Execução concluída sem chamada da IA.' -Color $ThemeSuccess
+        $localMetaResult = Write-LocalExecutionMeta `
+            -ProjectNameValue $projectName `
+            -RouteMode $ResolvedRouteMode `
+            -ExtractionMode $currentExtractionMode `
+            -DocumentMode $currentDocumentMode `
+            -PromptMode $(if ($ResolvedSendToAI) { 'local_no_provider' } else { 'local' }) `
+            -Provider 'local' `
+            -Model 'bundler-local' `
+            -BundlePath $outputFullPath `
+            -OutputPath $outputFullPath `
+            -ExtraData @{
+                promptGenerationSkipped = $true
+                skippedReason = $(if ($ResolvedSendToAI) { 'identical_bundle_user_cancelled_ai' } else { 'provider_not_requested' })
+            }
+
+        Write-UILog -Message ("Metadados locais salvos em: {0}" -f $localMetaResult.ResultMetaPath) -Color $ThemeSuccess
+        Write-UILog -Message 'Execução concluída sem chamada da IA; governança consolidada via groq-agent.ts local.' -Color $ThemeSuccess
     }
 }
 catch {

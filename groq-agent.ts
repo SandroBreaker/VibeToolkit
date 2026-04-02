@@ -8,7 +8,7 @@ import process from "process";
 
 type OutputRouteMode = "director" | "executor";
 type ExtractionMode = "full" | "blueprint" | "sniper";
-type DocumentMode = "full" | "manual";
+type DocumentMode = "full" | "manual" | "txt_export";
 type ProviderName = "groq" | "gemini" | "openai" | "anthropic" | "local";
 type PromptMode = "default" | "template" | "expertOverride";
 
@@ -796,6 +796,24 @@ function resolveDocumentModeFromExtractionMode(extractionMode: ExtractionMode): 
     return extractionMode === "sniper" ? "manual" : "full";
 }
 
+function normalizeDocumentMode(value: string | undefined | null): DocumentMode | null {
+    const normalized = (value ?? "").trim().toLowerCase();
+
+    switch (normalized) {
+        case "full":
+            return "full";
+        case "manual":
+        case "sniper":
+            return "manual";
+        case "txt_export":
+        case "txt-export":
+        case "txtexport":
+            return "txt_export";
+        default:
+            return null;
+    }
+}
+
 function parseCliArgs(argv: string[]): Record<string, string> {
     const args: Record<string, string> = {};
     for (let i = 0; i < argv.length; i += 1) {
@@ -833,6 +851,14 @@ async function readTextFile(filePath: string): Promise<string> {
 
 async function writeTextFile(filePath: string, content: string): Promise<void> {
     await fs.writeFile(filePath, content, "utf-8");
+}
+
+async function readOptionalTextFileForAudit(filePath: string): Promise<string | null> {
+    try {
+        return await fs.readFile(filePath, "utf-8");
+    } catch {
+        return null;
+    }
 }
 
 async function computeFileSha256(filePath: string): Promise<string> {
@@ -930,7 +956,7 @@ function buildUserExecutionContext(): UserExecutionContext {
     };
 }
 
-function buildLocalRetryHistory(model: string): RetryHistoryMeta {
+function buildLocalRetryHistory(model: string, message = "Execução local sem provider remoto."): RetryHistoryMeta {
     const now = getCurrentTimestampIso();
 
     return {
@@ -943,7 +969,7 @@ function buildLocalRetryHistory(model: string): RetryHistoryMeta {
                 provider: "local",
                 resolvedModel: model,
                 status: 200,
-                message: "Template determinístico local executado sem cadeia de fallback.",
+                message,
                 retryable: false,
                 startedAt: now,
                 finishedAt: now,
@@ -1373,15 +1399,18 @@ function buildResponseAudit(params: {
     interactionMode: "remote-provider" | "deterministic-local";
     providerRawContent: string | null;
     finalMarkdown: string;
+    finalMarkdownSha256Override?: string | null;
+    finalMarkdownPreviewOverride?: string | null;
+    finalMarkdownCharLengthOverride?: number | null;
 }): ResponseAudit {
     return {
         interactionMode: params.interactionMode,
         providerRawContent: params.providerRawContent,
         providerRawContentSha256: params.providerRawContent ? computeSha256FromString(params.providerRawContent) : null,
         providerRawContentPreview: createAuditPreview(params.providerRawContent),
-        finalMarkdownSha256: computeSha256FromString(params.finalMarkdown),
-        finalMarkdownPreview: createAuditPreview(params.finalMarkdown) ?? "",
-        finalMarkdownCharLength: params.finalMarkdown.length
+        finalMarkdownSha256: params.finalMarkdownSha256Override ?? computeSha256FromString(params.finalMarkdown),
+        finalMarkdownPreview: params.finalMarkdownPreviewOverride ?? createAuditPreview(params.finalMarkdown) ?? "",
+        finalMarkdownCharLength: params.finalMarkdownCharLengthOverride ?? params.finalMarkdown.length
     };
 }
 
@@ -2959,10 +2988,14 @@ async function main(): Promise<void> {
     const explicitOutputPath = args.outputPath;
     const explicitResultMetaPath = args.resultMetaPath;
     const explicitRouteMode = args.routeMode ? normalizeOutputRouteMode(args.routeMode) : null;
+    const explicitDocumentMode = normalizeDocumentMode(args.documentMode);
+    const explicitPromptMode = typeof args.promptMode === "string" && args.promptMode.trim().length > 0 ? args.promptMode.trim() : null;
+    const explicitTemplateId = typeof args.templateId === "string" && args.templateId.trim().length > 0 ? args.templateId.trim() : null;
+    const explicitSkipReason = typeof args.skipReason === "string" && args.skipReason.trim().length > 0 ? args.skipReason.trim() : null;
+    const explicitLocalModel = typeof args.localModel === "string" && args.localModel.trim().length > 0 ? args.localModel.trim() : null;
 
     const absolutePath = path.resolve(bundlePath);
     const sourceArtifactName = path.basename(absolutePath);
-    const technicalBundleDump = await readTextFile(absolutePath);
     const bundleHash = await computeFileSha256(absolutePath);
 
     const inferredProjectName =
@@ -2982,14 +3015,17 @@ async function main(): Promise<void> {
             : "full");
 
     const extractionMode = normalizeExtractionMode(bundleMode, path.basename(absolutePath));
-    const mode: DocumentMode = resolveDocumentModeFromExtractionMode(extractionMode);
+    const mode: DocumentMode = explicitDocumentMode ?? resolveDocumentModeFromExtractionMode(extractionMode);
     const outputRouteMode = explicitRouteMode ?? (sourceArtifactName.toLowerCase().includes("_executor_") ? "executor" : "director");
 
     const promptConfig = await readOptionalPromptConfig(promptConfigFilePath, outputRouteMode, extractionMode, executorTarget);
     assertDeterministicTemplateLoaded(promptConfig);
+    const isGenericLocalGovernance = provider === "local" && !isDeterministicDirectorTemplate(outputRouteMode, promptConfig);
+    const pipelineLogPromptMode = isGenericLocalGovernance ? explicitPromptMode ?? "local" : promptConfig.promptMode;
+    const pipelineLogTemplateId = isGenericLocalGovernance ? explicitTemplateId : promptConfig.templateId;
 
     console.error(
-        `Pipeline estruturado ativo | routeMode=${outputRouteMode} | extractionMode=${extractionMode} | promptMode=${promptConfig.promptMode} | templateId=${promptConfig.templateId ?? "null"}`
+        `Pipeline estruturado ativo | routeMode=${outputRouteMode} | extractionMode=${extractionMode} | promptMode=${pipelineLogPromptMode} | templateId=${pipelineLogTemplateId ?? "null"}`
     );
 
     const generatedAt = getCurrentTimestampIso();
@@ -2997,10 +3033,17 @@ async function main(): Promise<void> {
     const processingSteps: ProcessingAuditStep[] = [];
     let providerResponse: ProviderResponse;
     let retryHistory: RetryHistoryMeta;
-    let finalMarkdown: string;
+    let finalMarkdown = "";
     let promptAudit: PromptAudit;
+    let shouldWriteOutputArtifact = true;
+    let technicalBundleDump = "";
+    let resultPromptMode: string | null = promptConfig.promptMode;
+    let resultTemplateId: string | null = promptConfig.templateId;
+    let hasAdditionalInstructions = Boolean(promptConfig.additionalInstructions);
+    let hasExpertOverride = Boolean(promptConfig.expertSystemPrompt);
 
     if (isDeterministicDirectorTemplate(outputRouteMode, promptConfig)) {
+        technicalBundleDump = await readTextFile(absolutePath);
         const deterministicStep = startProcessingAuditStep("render_deterministic_director_template");
         const model = buildDeterministicDirectorTemplateModel({
             projectName: inferredProjectName,
@@ -3019,13 +3062,36 @@ async function main(): Promise<void> {
             content: ""
         };
 
-        retryHistory = buildLocalRetryHistory(providerResponse.model);
+        retryHistory = buildLocalRetryHistory(providerResponse.model, "Template determinístico local executado sem cadeia de fallback.");
 
         console.error("    Provider target: local | Resolved model: deterministic-director_meta_v1");
         finalMarkdown = renderDeterministicDirectorMarkdown(model);
         finishProcessingAuditStep(processingSteps, deterministicStep, "success");
         promptAudit = buildPromptAudit("deterministic-local", null);
+        resultPromptMode = explicitPromptMode ?? "deterministic_local";
+        resultTemplateId = explicitTemplateId ?? promptConfig.templateId;
+    } else if (isGenericLocalGovernance) {
+        const localGovernanceStep = startProcessingAuditStep("local_governance_metadata");
+        providerResponse = {
+            provider: "local",
+            model: explicitLocalModel ?? "bundler-vibe-core",
+            content: ""
+        };
+        retryHistory = buildLocalRetryHistory(providerResponse.model);
+        promptAudit = buildPromptAudit("deterministic-local", null);
+        shouldWriteOutputArtifact = false;
+        resultPromptMode = explicitPromptMode ?? "local";
+        resultTemplateId = explicitTemplateId;
+        hasAdditionalInstructions = false;
+        hasExpertOverride = false;
+        finishProcessingAuditStep(
+            processingSteps,
+            localGovernanceStep,
+            "success",
+            explicitSkipReason ?? "provider_not_requested"
+        );
     } else {
+        technicalBundleDump = await readTextFile(absolutePath);
         const promptBuildStep = startProcessingAuditStep("build_augmented_prompt_bundle");
         const promptPayload = buildAugmentedPromptBundle({
             projectName: inferredProjectName,
@@ -3112,17 +3178,36 @@ async function main(): Promise<void> {
     );
 
     const writeOutputStep = startProcessingAuditStep("write_final_output_markdown");
-    await writeTextFile(finalOutputPath, finalMarkdown);
-    finishProcessingAuditStep(processingSteps, writeOutputStep, "success", finalOutputPath);
+    if (shouldWriteOutputArtifact) {
+        await writeTextFile(finalOutputPath, finalMarkdown);
+        finishProcessingAuditStep(processingSteps, writeOutputStep, "success", finalOutputPath);
+    } else {
+        finishProcessingAuditStep(processingSteps, writeOutputStep, "success", `reused_existing_output:${finalOutputPath}`);
+    }
 
     const durationMs = Date.now() - executionStartedAtMs;
     const environment = buildEnvironmentExecutionContext();
     const user = buildUserExecutionContext();
-    const responseAudit = buildResponseAudit({
-        interactionMode: providerResponse.provider === "local" ? "deterministic-local" : "remote-provider",
-        providerRawContent: providerResponse.provider === "local" ? null : providerResponse.content,
-        finalMarkdown
-    });
+
+    let responseAudit: ResponseAudit;
+    if (isGenericLocalGovernance) {
+        const localOutputText = await readOptionalTextFileForAudit(finalOutputPath);
+        const localOutputSha256 = await computeFileSha256(finalOutputPath);
+        responseAudit = buildResponseAudit({
+            interactionMode: "deterministic-local",
+            providerRawContent: null,
+            finalMarkdown: localOutputText ?? "",
+            finalMarkdownSha256Override: localOutputSha256,
+            finalMarkdownPreviewOverride: createAuditPreview(localOutputText),
+            finalMarkdownCharLengthOverride: localOutputText ? localOutputText.length : 0
+        });
+    } else {
+        responseAudit = buildResponseAudit({
+            interactionMode: providerResponse.provider === "local" ? "deterministic-local" : "remote-provider",
+            providerRawContent: providerResponse.provider === "local" ? null : providerResponse.content,
+            finalMarkdown
+        });
+    }
 
     const resultMeta = {
         ok: true,
@@ -3132,15 +3217,19 @@ async function main(): Promise<void> {
         routeMode: outputRouteMode,
         extractionMode,
         documentMode: mode,
-        promptMode: promptConfig.promptMode,
-        templateId: promptConfig.templateId,
-        hasAdditionalInstructions: Boolean(promptConfig.additionalInstructions),
-        hasExpertOverride: Boolean(promptConfig.expertSystemPrompt),
+        promptMode: resultPromptMode,
+        templateId: resultTemplateId,
+        hasAdditionalInstructions,
+        hasExpertOverride,
         outputPath: finalOutputPath,
+        resultMetaPath: finalResultMetaPath,
         bundlePath: absolutePath,
         bundleHash,
         generatedAt,
         durationMs,
+        generatedWithoutProvider: providerResponse.provider === "local",
+        promptGenerationSkipped: isGenericLocalGovernance,
+        ...(isGenericLocalGovernance && explicitSkipReason ? { skippedReason: explicitSkipReason } : {}),
         environment,
         user,
         retryHistory,

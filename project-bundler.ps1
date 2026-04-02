@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 # VIBE AI TOOLKIT - BUNDLER, BLUEPRINT & SELECTIVE
 # =================================================================
@@ -549,7 +549,7 @@ function Get-AIContextOutputFileName {
 
 function Get-AIResultOutputFileName {
     param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
-    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "_ai_" -Extension ".json"
+    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Extension ".json"
 }
 
 function New-LocalExecutionMeta {
@@ -614,6 +614,80 @@ function Write-LocalExecutionMeta {
     }
     else {
         $ResultMetaPath
+    }
+
+    $metadataSourcePath = if (-not [string]::IsNullOrWhiteSpace($BundlePath)) {
+        $BundlePath
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+        $OutputPath
+    }
+    else {
+        $null
+    }
+
+    $agentScriptPath = if ($script:ToolkitDir) {
+        Join-Path $script:ToolkitDir 'groq-agent.ts'
+    }
+    else {
+        Join-Path (Get-Location).Path 'groq-agent.ts'
+    }
+
+    if ($Provider -eq 'local' -and -not [string]::IsNullOrWhiteSpace($metadataSourcePath) -and (Test-Path $metadataSourcePath -PathType Leaf) -and (Test-Path $agentScriptPath -PathType Leaf)) {
+        try {
+            $skipReasonValue = $null
+            if ($ExtraData -and $ExtraData.ContainsKey('skippedReason') -and -not [string]::IsNullOrWhiteSpace([string]$ExtraData['skippedReason'])) {
+                $skipReasonValue = [string]$ExtraData['skippedReason']
+            }
+
+            $agentResult = Invoke-OrchestratorAgent `
+                -AgentScriptPath $agentScriptPath `
+                -BundlePath $metadataSourcePath `
+                -ProjectNameValue $ProjectNameValue `
+                -ExecutorTargetValue 'Local Governance' `
+                -BundleModeValue $ExtractionMode `
+                -PrimaryProviderValue 'local' `
+                -OutputRouteModeValue $RouteMode `
+                -DocumentModeValue $DocumentMode `
+                -PromptModeValue $PromptMode `
+                -TemplateIdValue $TemplateId `
+                -ExplicitOutputPath $(if ([string]::IsNullOrWhiteSpace($OutputPath)) { $metadataSourcePath } else { $OutputPath }) `
+                -ExplicitResultMetaPath $resolvedResultMetaPath `
+                -SkipReasonValue $skipReasonValue `
+                -LocalModelValue $Model
+
+            $resultMetaPathFromDisk = if ($agentResult -and $agentResult.ResultMetaPath -and (Test-Path $agentResult.ResultMetaPath -PathType Leaf)) {
+                $agentResult.ResultMetaPath
+            }
+            elseif (Test-Path $resolvedResultMetaPath -PathType Leaf) {
+                $resolvedResultMetaPath
+            }
+            else {
+                $null
+            }
+
+            if ($resultMetaPathFromDisk) {
+                $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
+                if ($null -eq $meta) { $meta = @{} }
+
+                if ($ExtraData) {
+                    foreach ($key in $ExtraData.Keys) {
+                        $meta[$key] = $ExtraData[$key]
+                    }
+                }
+
+                $meta.resultMetaPath = $resultMetaPathFromDisk
+                $metaJson = $meta | ConvertTo-Json -Depth 20
+                Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson -UseBom
+
+                return [pscustomobject]@{
+                    Meta           = [pscustomobject]$meta
+                    ResultMetaPath = $resultMetaPathFromDisk
+                }
+            }
+        }
+        catch {
+        }
     }
 
     $meta = New-LocalExecutionMeta `
@@ -1707,7 +1781,7 @@ $chkSendToAI.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Wind
 $form.Controls.Add($chkSendToAI)
 
 $chkDeterministicDirector = New-Object System.Windows.Forms.CheckBox
-$chkDeterministicDirector.Text = "Gerar meta-prompt determinístico local (sem IA e sem groq-agent.ts)"
+$chkDeterministicDirector.Text = "Gerar meta-prompt determinístico local (sem IA / sem provider remoto)"
 $chkDeterministicDirector.ForeColor = $ThemeText; $chkDeterministicDirector.BackColor = $ThemeBg
 $chkDeterministicDirector.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $chkDeterministicDirector.AutoSize = $false
@@ -2330,7 +2404,14 @@ function Invoke-OrchestratorAgent {
         [string]$BundleModeValue,
         [string]$PrimaryProviderValue,
         [string]$OutputRouteModeValue,
-        [string]$CustomPromptConfigPath = $null
+        [string]$CustomPromptConfigPath = $null,
+        [string]$DocumentModeValue = $null,
+        [string]$PromptModeValue = $null,
+        [AllowNull()][string]$TemplateIdValue = $null,
+        [AllowNull()][string]$ExplicitOutputPath = $null,
+        [AllowNull()][string]$ExplicitResultMetaPath = $null,
+        [AllowNull()][string]$SkipReasonValue = $null,
+        [AllowNull()][string]$LocalModelValue = $null
     )
 
     if (-not (Test-Path $AgentScriptPath)) { throw "Script groq-agent.ts não localizado." }
@@ -2397,7 +2478,12 @@ function Invoke-OrchestratorAgent {
     $routeToken = if ($OutputRouteModeValue -eq 'executor') { 'executor' } else { 'diretor' }
     $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?', ''
     $resultMetaFileName = Get-AIResultOutputFileName -ProjectNameValue $normalizedProjectName -RouteMode $OutputRouteModeValue -ExtractionMode $BundleModeValue
-    $resultMetaPath = Join-Path $bundleParent $resultMetaFileName
+    $resultMetaPath = if (-not [string]::IsNullOrWhiteSpace($ExplicitResultMetaPath)) {
+        $ExplicitResultMetaPath
+    }
+    else {
+        Join-Path $bundleParent $resultMetaFileName
+    }
 
     $commandParts = @(
         "npx",
@@ -2423,6 +2509,36 @@ function Invoke-OrchestratorAgent {
     if (-not [string]::IsNullOrWhiteSpace($CustomPromptConfigPath)) {
         $commandParts += "--promptConfigFilePath"
         $commandParts += "`"$CustomPromptConfigPath`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($DocumentModeValue)) {
+        $commandParts += "--documentMode"
+        $commandParts += "`"$DocumentModeValue`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PromptModeValue)) {
+        $commandParts += "--promptMode"
+        $commandParts += "`"$PromptModeValue`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($TemplateIdValue)) {
+        $commandParts += "--templateId"
+        $commandParts += "`"$TemplateIdValue`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitOutputPath)) {
+        $commandParts += "--outputPath"
+        $commandParts += "`"$ExplicitOutputPath`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($SkipReasonValue)) {
+        $commandParts += "--skipReason"
+        $commandParts += "`"$SkipReasonValue`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($LocalModelValue)) {
+        $commandParts += "--localModel"
+        $commandParts += "`"$LocalModelValue`""
     }
 
     $entrypointDisplay = "npx --quiet tsx $([System.IO.Path]::GetFileName($AgentScriptPath))"
@@ -2759,7 +2875,7 @@ $btnRun.Add_Click({
             Write-UILog -Message "Modo: $(if ($Choice -eq '1') { 'Full Vibe' } elseif ($Choice -eq '2') { 'Architect' } elseif ($Choice -eq '3') { 'Sniper' } else { 'TXT Export' })"
             Write-UILog -Message "Executor alvo: $ExecutorTarget"
             if ($SendToAI -and -not $UseDeterministicDirector) { Write-UILog -Message "IA primária: $AIProvider" -Color $ThemeCyan }
-            if ($UseDeterministicDirector) { Write-UILog -Message "Fluxo local determinístico: sem provider remoto e sem groq-agent.ts." -Color $ThemeCyan }
+            if ($UseDeterministicDirector) { Write-UILog -Message "Fluxo local determinístico: sem provider remoto; governança via groq-agent.ts local." -Color $ThemeCyan }
             Write-UILog -Message "Arquivos na operação: $($FilesToProcess.Count)"
             if ($Choice -eq '3') {
                 Write-UILog -Message "Sniper: $($FilesToProcess.Count) arquivo(s) selecionado(s) em modo manual." -Color $ThemeCyan
@@ -2965,7 +3081,7 @@ $btnRun.Add_Click({
                     -TemplateId $(if ($ResolvedOutputRouteMode -eq "executor") { "executor_meta_v1" } else { "director_meta_v1" }) `
                     -Provider "local" `
                     -Model $(if ($ResolvedOutputRouteMode -eq "executor") { "deterministic-executor_meta_v1" } else { "deterministic-director_meta_v1" }) `
-                    -BundlePath $OutputFullPath `
+                    -BundlePath $null `
                     -OutputPath $DeterministicOutputFullPath `
                     -ExtraData @{
                         sourceArtifactFile = $OutputFile
@@ -3017,7 +3133,7 @@ $btnRun.Add_Click({
                     Write-UILog -Message "Meta-prompt final gerado, mas clipboard indisponível." -Color $ThemePink
                 }
 
-                Write-UILog -Message "Execução concluída sem chamada de IA e sem groq-agent.ts." -Color $ThemeSuccess
+                Write-UILog -Message "Execução concluída sem provider remoto; metadados de governança consolidados via groq-agent.ts local." -Color $ThemeSuccess
                 return
             }
 
@@ -3062,7 +3178,7 @@ $btnRun.Add_Click({
                 Write-UILog -Message "Bundle oficial preservado sem regravação por não haver diferença de conteúdo." -Color $ThemeSuccess
             }
 
-                        $LocalMetaResult = $null
+            $LocalMetaResult = $null
             if (-not ($SendToAI -and $ShouldCallAI)) {
                 $LocalMetaResult = Write-LocalExecutionMeta `
                     -ProjectNameValue $ProjectName `
@@ -3083,7 +3199,6 @@ $btnRun.Add_Click({
             }
 
             $TokenEstimate = [math]::Round($FinalContent.Length / 4)
-
 
             try { $FinalContent | Set-Clipboard; $Copied = $true } catch { $Copied = $false }
 

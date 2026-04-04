@@ -23,8 +23,9 @@ $script:SentinelIgnoredFiles = @(
     'poetry.lock', 'Pipfile.lock', 'Cargo.lock', 'go.sum', 'composer.lock'
 )
 $script:SentinelLogBuffer = [System.Text.StringBuilder]::new()
-$script:SentinelLogFontFamily = 'Consolas'
+$script:SentinelLogFontFamily = 'Consolas'   # resolved at runtime by Get-SentinelHudBestLogFont
 $script:SentinelLogFontSize = 13.0
+$script:SentinelLogLineHeightFactor = 1.38
 
 function global:Assert-SentinelWpfRuntime {
     if (-not $IsWindows) {
@@ -309,6 +310,84 @@ function global:Convert-SentinelHudAnsiSegments {
     return $segments
 }
 
+function global:Get-SentinelHudLogLevel {
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Message = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Message)) { return 'default' }
+
+    $clean = $Message -replace "\x1b\[[0-9;]*m", ""
+
+    if ($clean -match '(?i)\b(erro|falha|error|failed|fail\b|exception|crítico|fatal|crash|abortado|aborted|killed)\b') { return 'error' }
+    if ($clean -match '(?i)\b(aviso|warning|warn|atenção|deprecated|obsoleto)\b')                                      { return 'warning' }
+    if ($clean -match '(?i)\b(sucesso|concluído|concluida|completo|finalizado|carregado|bootstrap|detectado|pronto|done\b|success|ok\b|gravado|salvo|gerado|exportado)\b') { return 'success' }
+    if ($clean -match '(?i)(inicializando|aguardando|disparando|processo iniciado|pid=|sentinel headless|headless carregado|configurac)') { return 'system' }
+    if ($clean -match '^[\s\-=─━\*·\u2500-\u257F]+$')                                                                  { return 'divider' }
+
+    return 'default'
+}
+
+function global:Get-SentinelHudLogLineBrushes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Level
+    )
+
+    switch ($Level) {
+        'error' {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 190 -Green 70  -Blue 70)
+                Message   = (New-SentinelHudRgbBrush -Red 255 -Green 110 -Blue 110)
+                Accent    = (New-SentinelHudRgbBrush -Red 210 -Green 55  -Blue 55)
+                RowBg     = (New-SentinelHudRgbBrush -Red 38  -Green 10  -Blue 10)
+            }
+        }
+        'warning' {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 175 -Green 135 -Blue 55)
+                Message   = (New-SentinelHudRgbBrush -Red 255 -Green 198 -Blue 90)
+                Accent    = (New-SentinelHudRgbBrush -Red 210 -Green 155 -Blue 45)
+                RowBg     = (New-SentinelHudRgbBrush -Red 30  -Green 22  -Blue 6)
+            }
+        }
+        'success' {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 70  -Green 150 -Blue 92)
+                Message   = (New-SentinelHudRgbBrush -Red 102 -Green 222 -Blue 148)
+                Accent    = (New-SentinelHudRgbBrush -Red 55  -Green 175 -Blue 100)
+                RowBg     = $null
+            }
+        }
+        'system' {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 98  -Green 138 -Blue 178)
+                Message   = (New-SentinelHudRgbBrush -Red 148 -Green 192 -Blue 245)
+                Accent    = (New-SentinelHudRgbBrush -Red 55  -Green 118 -Blue 200)
+                RowBg     = $null
+            }
+        }
+        'divider' {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 42  -Green 62  -Blue 82)
+                Message   = (New-SentinelHudRgbBrush -Red 38  -Green 58  -Blue 78)
+                Accent    = $null
+                RowBg     = $null
+            }
+        }
+        default {
+            return @{
+                Timestamp = (New-SentinelHudRgbBrush -Red 132 -Green 163 -Blue 194)
+                Message   = (New-SentinelHudRgbBrush -Red 226 -Green 232 -Blue 240)
+                Accent    = $null
+                RowBg     = $null
+            }
+        }
+    }
+}
+
 function global:Add-SentinelHudLogLine {
     param(
         [Parameter(Mandatory = $true)]
@@ -323,48 +402,74 @@ function global:Add-SentinelHudLogLine {
     )
 
     $timestamp = (Get-Date).ToString('HH:mm:ss')
-    
-    # Update persistent log buffer (strip ANSI codes for clean text)
+
     $cleanMessage = $Message -replace "\x1b\[[0-9;]*m", ""
     $script:SentinelLogBuffer.AppendLine("[$timestamp] $cleanMessage") | Out-Null
 
-    $currentFontSize = $script:SentinelLogFontSize
+    $currentFontSize   = $script:SentinelLogFontSize
     $currentFontFamily = $script:SentinelLogFontFamily
+    $currentLineHeight = Get-SentinelHudResolvedLogLineHeight -FontSize $currentFontSize
+
+    $logLevel   = Get-SentinelHudLogLevel -Message $Message
+    $logBrushes = Get-SentinelHudLogLineBrushes -Level $logLevel
+    $hasAnsi    = $Message -match "\x1b\["
 
     $updateAction = {
-        $timestampBrush = New-SentinelHudRgbBrush -Red 120 -Green 134 -Blue 156
-        $defaultBrush = New-SentinelHudRgbBrush -Red 226 -Green 232 -Blue 240
+        $timestampBrush = [System.Windows.Media.Brush]$logBrushes.Timestamp
+        $defaultBrush   = [System.Windows.Media.Brush]$logBrushes.Message
 
         $lineBlock = [System.Windows.Controls.TextBlock]::new()
-        $lineBlock.FontFamily = [System.Windows.Media.FontFamily]::new($currentFontFamily)
-        $lineBlock.FontSize = $currentFontSize
-        $lineBlock.TextWrapping = [System.Windows.TextWrapping]::NoWrap
+        $lineBlock.FontFamily           = [System.Windows.Media.FontFamily]::new($currentFontFamily)
+        $lineBlock.FontSize             = $currentFontSize
+        $lineBlock.TextWrapping         = [System.Windows.TextWrapping]::NoWrap
+        $lineBlock.LineStackingStrategy = [System.Windows.LineStackingStrategy]::BlockLineHeight
+        $lineBlock.LineHeight           = $currentLineHeight
+        $lineBlock.Margin               = [System.Windows.Thickness]::new(0)
+        $lineBlock.SnapsToDevicePixels  = $true
+        $lineBlock.UseLayoutRounding    = $true
+        [System.Windows.Media.TextOptions]::SetTextFormattingMode($lineBlock, [System.Windows.Media.TextFormattingMode]::Display)
+        [System.Windows.Media.TextOptions]::SetTextRenderingMode($lineBlock,  [System.Windows.Media.TextRenderingMode]::ClearType)
+        [System.Windows.Media.TextOptions]::SetTextHintingMode($lineBlock,    [System.Windows.Media.TextHintingMode]::Fixed)
 
-        $timestampRun = [System.Windows.Documents.Run]::new("[$timestamp] ")
+        $timestampRun            = [System.Windows.Documents.Run]::new("[$timestamp] ")
         $timestampRun.Foreground = $timestampBrush
+        $timestampRun.FontWeight = if ($logLevel -eq 'error') { [System.Windows.FontWeights]::Bold } else { [System.Windows.FontWeights]::SemiBold }
         $lineBlock.Inlines.Add($timestampRun) | Out-Null
 
-        $segments = Convert-SentinelHudAnsiSegments -Text $Message -DefaultBrush $defaultBrush
-
-        if ($segments.Count -eq 0) {
-            $messageRun = [System.Windows.Documents.Run]::new([string]$Message)
-            $messageRun.Foreground = $defaultBrush
-            $lineBlock.Inlines.Add($messageRun) | Out-Null
-        }
-        else {
-            foreach ($segment in $segments) {
-                if ([string]::IsNullOrEmpty([string]$segment.Text)) {
-                    continue
+        if ($hasAnsi) {
+            $segments = Convert-SentinelHudAnsiSegments -Text $Message -DefaultBrush $defaultBrush
+            if ($segments.Count -eq 0) {
+                $r = [System.Windows.Documents.Run]::new([string]$Message)
+                $r.Foreground = $defaultBrush
+                $lineBlock.Inlines.Add($r) | Out-Null
+            }
+            else {
+                foreach ($seg in $segments) {
+                    if ([string]::IsNullOrEmpty([string]$seg.Text)) { continue }
+                    $r = [System.Windows.Documents.Run]::new([string]$seg.Text)
+                    $r.Foreground = [System.Windows.Media.Brush]$seg.Foreground
+                    $lineBlock.Inlines.Add($r) | Out-Null
                 }
-
-                $messageRun = [System.Windows.Documents.Run]::new([string]$segment.Text)
-                $messageRun.Foreground = [System.Windows.Media.Brush]$segment.Foreground
-                $lineBlock.Inlines.Add($messageRun) | Out-Null
             }
         }
+        else {
+            $msgRun = [System.Windows.Documents.Run]::new([string]$Message)
+            $msgRun.Foreground = $defaultBrush
+            if ($logLevel -eq 'error') { $msgRun.FontWeight = [System.Windows.FontWeights]::SemiBold }
+            $lineBlock.Inlines.Add($msgRun) | Out-Null
+        }
 
-        $null = $LogList.Items.Add($lineBlock)
-        $LogList.ScrollIntoView($lineBlock)
+        $container                     = [System.Windows.Controls.Border]::new()
+        $container.BorderThickness     = [System.Windows.Thickness]::new(3, 0, 0, 0)
+        $container.Padding             = [System.Windows.Thickness]::new(8, 1, 0, 1)
+        $container.Margin              = [System.Windows.Thickness]::new(0, 0, 0, 2)
+        $container.SnapsToDevicePixels = $true
+        $container.BorderBrush         = if ($null -ne $logBrushes.Accent) { [System.Windows.Media.Brush]$logBrushes.Accent } else { [System.Windows.Media.Brushes]::Transparent }
+        $container.Background          = if ($null -ne $logBrushes.RowBg)  { [System.Windows.Media.Brush]$logBrushes.RowBg  } else { [System.Windows.Media.Brushes]::Transparent }
+        $container.Child               = $lineBlock
+
+        $null = $LogList.Items.Add($container)
+        $LogList.ScrollIntoView($container)
     }.GetNewClosure()
 
     if ($Window.Dispatcher.CheckAccess()) {
@@ -432,9 +537,13 @@ function global:Set-SentinelHudExecutionSummary {
 
 function global:Get-SentinelHudAvailableLogFonts {
     $preferredFonts = @(
+        'JetBrains Mono',
+        'Fira Code',
         'Cascadia Mono',
         'Cascadia Code',
         'Consolas',
+        'IBM Plex Mono',
+        'Source Code Pro',
         'Lucida Console',
         'Courier New',
         'Segoe UI Mono'
@@ -464,6 +573,43 @@ function global:Get-SentinelHudAvailableLogFonts {
     return @($ordered)
 }
 
+function global:Get-SentinelHudBestLogFont {
+    # Priority order — first one found on the system wins
+    $priority = @(
+        'JetBrains Mono',
+        'Cascadia Code',
+        'Cascadia Mono',
+        'Fira Code',
+        'IBM Plex Mono',
+        'Source Code Pro',
+        'Consolas',
+        'Lucida Console',
+        'Courier New'
+    )
+
+    $installed = @(
+        [System.Windows.Media.Fonts]::SystemFontFamilies |
+        ForEach-Object { $_.Source }
+    )
+
+    foreach ($name in $priority) {
+        if ($installed -contains $name) {
+            return $name
+        }
+    }
+
+    return 'Consolas'
+}
+
+function global:Get-SentinelHudResolvedLogLineHeight {
+    param(
+        [double]$FontSize = 13
+    )
+
+    $resolvedSize = if ($FontSize -lt 9) { 9.0 } elseif ($FontSize -gt 24) { 24.0 } else { [Math]::Round($FontSize, 1) }
+    return [Math]::Round($resolvedSize * $script:SentinelLogLineHeightFactor, 1)
+}
+
 function global:Set-SentinelHudLogTypography {
     param(
         [Parameter(Mandatory = $true)]
@@ -475,35 +621,40 @@ function global:Set-SentinelHudLogTypography {
         [double]$FontSize = 13
     )
 
-    $resolvedFamily = if ([string]::IsNullOrWhiteSpace($FontFamily)) { 'Consolas' } else { $FontFamily.Trim() }
-    $resolvedSize = if ($FontSize -lt 9) { 9.0 } elseif ($FontSize -gt 24) { 24.0 } else { [Math]::Round($FontSize, 1) }
+    $resolvedFamily     = if ([string]::IsNullOrWhiteSpace($FontFamily)) { 'Consolas' } else { $FontFamily.Trim() }
+    $resolvedSize       = if ($FontSize -lt 9) { 9.0 } elseif ($FontSize -gt 24) { 24.0 } else { [Math]::Round($FontSize, 1) }
+    $resolvedLineHeight = Get-SentinelHudResolvedLogLineHeight -FontSize $resolvedSize
 
     $script:SentinelLogFontFamily = $resolvedFamily
-    $script:SentinelLogFontSize = $resolvedSize
+    $script:SentinelLogFontSize   = $resolvedSize
 
     if ($Controls.ContainsKey('lstLog') -and $null -ne $Controls.lstLog) {
         $Controls.lstLog.FontFamily = [System.Windows.Media.FontFamily]::new($resolvedFamily)
-        $Controls.lstLog.FontSize = $resolvedSize
+        $Controls.lstLog.FontSize   = $resolvedSize
+        [System.Windows.Media.TextOptions]::SetTextFormattingMode($Controls.lstLog, [System.Windows.Media.TextFormattingMode]::Display)
+        [System.Windows.Media.TextOptions]::SetTextRenderingMode($Controls.lstLog,  [System.Windows.Media.TextRenderingMode]::ClearType)
+        [System.Windows.Media.TextOptions]::SetTextHintingMode($Controls.lstLog,    [System.Windows.Media.TextHintingMode]::Fixed)
 
         foreach ($item in @($Controls.lstLog.Items)) {
-            if ($item -is [System.Windows.Controls.TextBlock]) {
-                $item.FontFamily = [System.Windows.Media.FontFamily]::new($resolvedFamily)
-                $item.FontSize = $resolvedSize
+            $tb = $null
+            if ($item -is [System.Windows.Controls.Border] -and $item.Child -is [System.Windows.Controls.TextBlock]) {
+                $tb = [System.Windows.Controls.TextBlock]$item.Child
             }
-        }
-    }
+            elseif ($item -is [System.Windows.Controls.TextBlock]) {
+                $tb = [System.Windows.Controls.TextBlock]$item
+            }
 
-    if ($Controls.ContainsKey('cmbLogFontFamily') -and $null -ne $Controls.cmbLogFontFamily -and $Controls.cmbLogFontFamily.SelectedItem) {
-        $selectedFamilyTag = [string]$Controls.cmbLogFontFamily.SelectedItem.Tag
-        if (-not [string]::Equals($selectedFamilyTag, $resolvedFamily, [System.StringComparison]::OrdinalIgnoreCase)) {
-            Set-SentinelSelectedComboByTag -ComboBox $Controls.cmbLogFontFamily -TagValue $resolvedFamily
-        }
-    }
-
-    if ($Controls.ContainsKey('cmbLogFontSize') -and $null -ne $Controls.cmbLogFontSize) {
-        $sizeTag = ([int][Math]::Round($resolvedSize)).ToString([System.Globalization.CultureInfo]::InvariantCulture)
-        if (-not $Controls.cmbLogFontSize.SelectedItem -or [string]$Controls.cmbLogFontSize.SelectedItem.Tag -ne $sizeTag) {
-            Set-SentinelSelectedComboByTag -ComboBox $Controls.cmbLogFontSize -TagValue $sizeTag
+            if ($null -ne $tb) {
+                $tb.FontFamily           = [System.Windows.Media.FontFamily]::new($resolvedFamily)
+                $tb.FontSize             = $resolvedSize
+                $tb.LineStackingStrategy = [System.Windows.LineStackingStrategy]::BlockLineHeight
+                $tb.LineHeight           = $resolvedLineHeight
+                $tb.SnapsToDevicePixels  = $true
+                $tb.UseLayoutRounding    = $true
+                [System.Windows.Media.TextOptions]::SetTextFormattingMode($tb, [System.Windows.Media.TextFormattingMode]::Display)
+                [System.Windows.Media.TextOptions]::SetTextRenderingMode($tb,  [System.Windows.Media.TextRenderingMode]::ClearType)
+                [System.Windows.Media.TextOptions]::SetTextHintingMode($tb,    [System.Windows.Media.TextHintingMode]::Fixed)
+            }
         }
     }
 }
@@ -1047,8 +1198,6 @@ function global:Get-SentinelNamedControls {
         'btnSelectNone',
         'trvFiles',
         'lstLog',
-        'cmbLogFontFamily',
-        'cmbLogFontSize',
         'btnCopyLogs',
         'txtSelectionSummary',
         'txtExecutionSummary',
@@ -1589,16 +1738,6 @@ function global:Start-SentinelBundlerHud {
         $null = $controls.cmbAIPromptMode.Items.Add($item)
     }
 
-    $controls.cmbLogFontFamily.Items.Clear()
-    foreach ($fontName in @(Get-SentinelHudAvailableLogFonts)) {
-        $null = $controls.cmbLogFontFamily.Items.Add((New-SentinelHudSelectionItem -Label $fontName -Tag $fontName))
-    }
-
-    $controls.cmbLogFontSize.Items.Clear()
-    foreach ($fontSize in @('10', '11', '12', '13', '14', '15', '16', '18', '20')) {
-        $null = $controls.cmbLogFontSize.Items.Add((New-SentinelHudSelectionItem -Label "$fontSize pt" -Tag $fontSize))
-    }
-
     $bootstrapSelectedItems = @()
     if (Get-Variable -Scope Script -Name SentinelHudBootstrapSelectedItems -ErrorAction SilentlyContinue) {
         $bootstrapSelectedItems = @($script:SentinelHudBootstrapSelectedItems)
@@ -1614,8 +1753,6 @@ function global:Start-SentinelBundlerHud {
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbRouteMode -TagValue 'director'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbProvider -TagValue 'groq'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbAIPromptMode -TagValue 'default'
-    Set-SentinelSelectedComboByTag -ComboBox $controls.cmbLogFontFamily -TagValue $script:SentinelLogFontFamily
-    Set-SentinelSelectedComboByTag -ComboBox $controls.cmbLogFontSize -TagValue ([int][Math]::Round($script:SentinelLogFontSize)).ToString([System.Globalization.CultureInfo]::InvariantCulture)
     $controls.txtExecutorTarget.Text = 'ChatGPT'
 
     $selectedItems = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -1646,6 +1783,8 @@ function global:Start-SentinelBundlerHud {
     Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
     Set-SentinelHudExecutionSummary -Window $window -SummaryBox $controls.txtExecutionSummary -Content 'Aguardando execução.'
 
+    # Auto-select the best available monospace font and apply it
+    $script:SentinelLogFontFamily = Get-SentinelHudBestLogFont
     Set-SentinelHudLogTypography -Controls $controls -FontFamily $script:SentinelLogFontFamily -FontSize $script:SentinelLogFontSize
 
     Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'HUD carregado.'
@@ -1653,38 +1792,6 @@ function global:Start-SentinelBundlerHud {
 
     $controls.cmbBundleMode.Add_SelectionChanged({
             Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
-        }.GetNewClosure())
-
-    $controls.cmbLogFontFamily.Add_SelectionChanged({
-            if (-not $controls.cmbLogFontFamily.SelectedItem) {
-                return
-            }
-
-            $selectedFontFamily = [string]$controls.cmbLogFontFamily.SelectedItem.Tag
-            $selectedFontSize = if ($controls.cmbLogFontSize.SelectedItem) {
-                [double]::Parse([string]$controls.cmbLogFontSize.SelectedItem.Tag, [System.Globalization.CultureInfo]::InvariantCulture)
-            }
-            else {
-                $script:SentinelLogFontSize
-            }
-
-            Set-SentinelHudLogTypography -Controls $controls -FontFamily $selectedFontFamily -FontSize $selectedFontSize
-        }.GetNewClosure())
-
-    $controls.cmbLogFontSize.Add_SelectionChanged({
-            if (-not $controls.cmbLogFontSize.SelectedItem) {
-                return
-            }
-
-            $selectedFontFamily = if ($controls.cmbLogFontFamily.SelectedItem) {
-                [string]$controls.cmbLogFontFamily.SelectedItem.Tag
-            }
-            else {
-                $script:SentinelLogFontFamily
-            }
-
-            $selectedFontSize = [double]::Parse([string]$controls.cmbLogFontSize.SelectedItem.Tag, [System.Globalization.CultureInfo]::InvariantCulture)
-            Set-SentinelHudLogTypography -Controls $controls -FontFamily $selectedFontFamily -FontSize $selectedFontSize
         }.GetNewClosure())
 
     $controls.trvFiles.Add_PreviewKeyDown({

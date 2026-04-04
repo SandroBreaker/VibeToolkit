@@ -1,4 +1,4 @@
-﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="SENTINEL HUD"
         Height="900"
@@ -281,6 +281,48 @@
             <Setter Property="Background" Value="{StaticResource NeutralButtonBrush}"/>
         </Style>
 
+
+        <Style x:Key="LogListStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="#09131B"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorderStrongBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+        </Style>
+
+        <Style x:Key="LogListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="TreeView">
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
@@ -496,29 +538,25 @@
                         Margin="0,0,0,14">
                     <DockPanel LastChildFill="True">
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Row="0" Grid.Column="0">
+                            <StackPanel Grid.Column="0">
                                 <TextBlock Text="Log operacional" Style="{StaticResource SectionTitleStyle}" FontSize="18"/>
                                 <TextBlock Text="Painel dominante da tela. Aqui vivem a execução, as falhas e a saída real — finalmente no lugar certo." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <Button Grid.Row="0" Grid.Column="1"
+                            <Button Grid.Column="1"
                                     x:Name="btnCopyLogs"
                                     Content="Copiar logs"
                                     Margin="12,0,8,0"
                                     Style="{StaticResource GhostButtonStyle}"
                                     VerticalAlignment="Top"/>
 
-                            <Border Grid.Row="0" Grid.Column="2"
+                            <Border Grid.Column="2"
                                     Padding="10,5"
                                     CornerRadius="999"
                                     Background="#081520"
@@ -530,48 +568,13 @@
                                            FontSize="11"
                                            FontWeight="SemiBold"/>
                             </Border>
-
-                            <Grid Grid.Row="1"
-                                  Grid.Column="0"
-                                  Grid.ColumnSpan="3"
-                                  Margin="0,12,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="84"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0"
-                                           Text="Fonte"
-                                           Style="{StaticResource FieldLabelStyle}"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,10,0"/>
-
-                                <ComboBox Grid.Column="1"
-                                          x:Name="cmbLogFontFamily"
-                                          Height="34"
-                                          Margin="0,0,12,0"/>
-
-                                <TextBlock Grid.Column="2"
-                                           Text="Tamanho"
-                                           Style="{StaticResource FieldLabelStyle}"
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,10,0"/>
-
-                                <ComboBox Grid.Column="3"
-                                          x:Name="cmbLogFontSize"
-                                          Height="34"/>
-                            </Grid>
                         </Grid>
 
                         <ListBox x:Name="lstLog"
+                                 Style="{StaticResource LogListStyle}"
+                                 ItemContainerStyle="{StaticResource LogListItemStyle}"
                                  FontFamily="Consolas"
-                                 FontSize="13"
-                                 ScrollViewer.CanContentScroll="True"
-                                 VirtualizingPanel.IsVirtualizing="True"
-                                 VirtualizingPanel.VirtualizationMode="Recycling"/>
+                                 FontSize="13"/>
                     </DockPanel>
                 </Border>
 

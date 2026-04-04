@@ -438,7 +438,7 @@ function global:Get-SentinelOrderedChildNodes {
 
     return @(
         $Nodes |
-            Sort-Object @{ Expression = { [bool]$_.IsDirectory }; Descending = $true }, @{ Expression = { [string]$_.Name }; Descending = $false }
+        Sort-Object @{ Expression = { [bool]$_.IsDirectory }; Descending = $true }, @{ Expression = { [string]$_.Name }; Descending = $false }
     )
 }
 
@@ -470,9 +470,9 @@ function global:Update-SentinelTreeAncestorCheckedState {
     while ($null -ne $currentNode) {
         $childStates = @(
             @($currentNode.Children) |
-                ForEach-Object {
-                    if ($_.CheckBox) { $_.CheckBox.IsChecked } else { $false }
-                }
+            ForEach-Object {
+                if ($_.CheckBox) { $_.CheckBox.IsChecked } else { $false }
+            }
         )
 
         $allChecked = $true
@@ -635,32 +635,32 @@ function global:Add-SentinelTreeViewNodes {
         $treeViewItem.Header = $checkBox
 
         $checkBox.Add_PreviewMouseLeftButtonDown({
-            $TreeState.SelectedNode = $node
-            if ($node.TreeViewItem) {
-                $node.TreeViewItem.IsSelected = $true
-                $node.TreeViewItem.Focus() | Out-Null
-            }
-        }.GetNewClosure())
+                $TreeState.SelectedNode = $node
+                if ($node.TreeViewItem) {
+                    $node.TreeViewItem.IsSelected = $true
+                    $node.TreeViewItem.Focus() | Out-Null
+                }
+            }.GetNewClosure())
 
         $checkBox.Add_Checked({
-            if ($TreeState.IsUpdating) {
-                return
-            }
+                if ($TreeState.IsUpdating) {
+                    return
+                }
 
-            Invoke-SentinelTreeNodeToggle -Node $node -DesiredState $true -TreeState $TreeState -SelectedItems $SelectedItems -Controls $Controls -TotalAvailable $TotalAvailable
-        }.GetNewClosure())
+                Invoke-SentinelTreeNodeToggle -Node $node -DesiredState $true -TreeState $TreeState -SelectedItems $SelectedItems -Controls $Controls -TotalAvailable $TotalAvailable
+            }.GetNewClosure())
 
         $checkBox.Add_Unchecked({
-            if ($TreeState.IsUpdating) {
-                return
-            }
+                if ($TreeState.IsUpdating) {
+                    return
+                }
 
-            Invoke-SentinelTreeNodeToggle -Node $node -DesiredState $false -TreeState $TreeState -SelectedItems $SelectedItems -Controls $Controls -TotalAvailable $TotalAvailable
-        }.GetNewClosure())
+                Invoke-SentinelTreeNodeToggle -Node $node -DesiredState $false -TreeState $TreeState -SelectedItems $SelectedItems -Controls $Controls -TotalAvailable $TotalAvailable
+            }.GetNewClosure())
 
         $treeViewItem.Add_Selected({
-            $TreeState.SelectedNode = $node
-        }.GetNewClosure())
+                $TreeState.SelectedNode = $node
+            }.GetNewClosure())
 
         if ($node.IsDirectory -and @($node.Children).Count -gt 0) {
             Add-SentinelTreeViewNodes -Items $treeViewItem.Items -Nodes @($node.Children) -TreeState $TreeState -SelectedItems $SelectedItems -Controls $Controls -TotalAvailable $TotalAvailable
@@ -754,9 +754,9 @@ function global:Apply-SentinelBootstrapSelections {
 
     $normalizedBootstrap = @(
         @($BootstrapSelectedItems) |
-            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
-            ForEach-Object { ([string]$_ -replace '[\\/]+', [string][System.IO.Path]::DirectorySeparatorChar).Trim([System.IO.Path]::DirectorySeparatorChar) } |
-            Sort-Object -Unique
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        ForEach-Object { ([string]$_ -replace '[\\/]+', [string][System.IO.Path]::DirectorySeparatorChar).Trim([System.IO.Path]::DirectorySeparatorChar) } |
+        Sort-Object -Unique
     )
 
     if (@($normalizedBootstrap).Count -le 0) {
@@ -988,48 +988,48 @@ function global:New-SentinelHudProcess {
     $summaryBox = $Controls.txtExecutionSummary
 
     $outputHandler = [System.Diagnostics.DataReceivedEventHandler]({
-        param($sender, $args)
-        if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
-            Add-SentinelHudLogLine -Window $Window -LogList $logList -Message $args.Data
-        }
-    }.GetNewClosure())
+            param($sender, $args)
+            if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
+                Add-SentinelHudLogLine -Window $Window -LogList $logList -Message $args.Data
+            }
+        }.GetNewClosure())
 
     $errorHandler = [System.Diagnostics.DataReceivedEventHandler]({
-        param($sender, $args)
-        if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
-            Add-SentinelHudLogLine -Window $Window -LogList $logList -Message ("[stderr] {0}" -f $args.Data)
-        }
-    }.GetNewClosure())
+            param($sender, $args)
+            if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
+                Add-SentinelHudLogLine -Window $Window -LogList $logList -Message ("[stderr] {0}" -f $args.Data)
+            }
+        }.GetNewClosure())
 
     $exitedHandler = [System.EventHandler]({
-        param($sender, $args)
+            param($sender, $args)
 
-        $exitCode = $sender.ExitCode
-        $summary = @(
-            "ExitCode: $exitCode"
-            "Modo: $bundleMode"
-            "Rota: $routeMode"
-            "Provider: $provider"
-            "Prompt IA: $aiPromptMode"
-            "SendToAI: $sendToAI"
-            "DeterministicDirector: $deterministicDirector"
-            "Selecionados no Sniper: $($SelectedItems.Count)"
-            "Path: $TargetPath"
-        ) -join [Environment]::NewLine
+            $exitCode = $sender.ExitCode
+            $summary = @(
+                "ExitCode: $exitCode"
+                "Modo: $bundleMode"
+                "Rota: $routeMode"
+                "Provider: $provider"
+                "Prompt IA: $aiPromptMode"
+                "SendToAI: $sendToAI"
+                "DeterministicDirector: $deterministicDirector"
+                "Selecionados no Sniper: $($SelectedItems.Count)"
+                "Path: $TargetPath"
+            ) -join [Environment]::NewLine
 
-        Set-SentinelHudExecutionSummary -Window $Window -SummaryBox $summaryBox -Content $summary
+            Set-SentinelHudExecutionSummary -Window $Window -SummaryBox $summaryBox -Content $summary
 
-        if ($exitCode -eq 0) {
-            Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message 'Execução concluída sem explodir. Evoluímos.' -Badge 'Concluído'
-        }
-        else {
-            Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message ("Execução encerrada com falha. ExitCode={0}" -f $exitCode) -Badge 'Falhou'
-        }
+            if ($exitCode -eq 0) {
+                Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message 'Execução concluída sem explodir. Evoluímos.' -Badge 'Concluído'
+            }
+            else {
+                Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message ("Execução encerrada com falha. ExitCode={0}" -f $exitCode) -Badge 'Falhou'
+            }
 
-        $Window.Dispatcher.BeginInvoke([System.Action]{
-            Set-SentinelHudInputsEnabled -Controls $Controls -Enabled $true
-        }) | Out-Null
-    }.GetNewClosure())
+            $Window.Dispatcher.BeginInvoke([System.Action] {
+                    Set-SentinelHudInputsEnabled -Controls $Controls -Enabled $true
+                }) | Out-Null
+        }.GetNewClosure())
 
     $process.add_OutputDataReceived($outputHandler)
     $process.add_ErrorDataReceived($errorHandler)
@@ -1099,34 +1099,34 @@ function global:Start-SentinelBundlerHud {
     $controls.cmbAIPromptMode.Items.Clear()
 
     foreach ($item in @(
-        (New-SentinelHudSelectionItem -Label 'Full Vibe / Bundle' -Tag 'full'),
-        (New-SentinelHudSelectionItem -Label 'Blueprint / Inteligente' -Tag 'blueprint'),
-        (New-SentinelHudSelectionItem -Label 'Sniper / Manual' -Tag 'sniper')
-    )) {
+            (New-SentinelHudSelectionItem -Label 'Full Vibe / Bundle' -Tag 'full'),
+            (New-SentinelHudSelectionItem -Label 'Blueprint / Inteligente' -Tag 'blueprint'),
+            (New-SentinelHudSelectionItem -Label 'Sniper / Manual' -Tag 'sniper')
+        )) {
         $null = $controls.cmbBundleMode.Items.Add($item)
     }
 
     foreach ($item in @(
-        (New-SentinelHudSelectionItem -Label 'Via Diretor' -Tag 'director'),
-        (New-SentinelHudSelectionItem -Label 'Direto para Executor' -Tag 'executor')
-    )) {
+            (New-SentinelHudSelectionItem -Label 'Via Diretor' -Tag 'director'),
+            (New-SentinelHudSelectionItem -Label 'Direto para Executor' -Tag 'executor')
+        )) {
         $null = $controls.cmbRouteMode.Items.Add($item)
     }
 
     foreach ($item in @(
-        (New-SentinelHudSelectionItem -Label 'Groq' -Tag 'groq'),
-        (New-SentinelHudSelectionItem -Label 'Gemini' -Tag 'gemini'),
-        (New-SentinelHudSelectionItem -Label 'OpenAI' -Tag 'openai'),
-        (New-SentinelHudSelectionItem -Label 'Anthropic' -Tag 'anthropic')
-    )) {
+            (New-SentinelHudSelectionItem -Label 'Groq' -Tag 'groq'),
+            (New-SentinelHudSelectionItem -Label 'Gemini' -Tag 'gemini'),
+            (New-SentinelHudSelectionItem -Label 'OpenAI' -Tag 'openai'),
+            (New-SentinelHudSelectionItem -Label 'Anthropic' -Tag 'anthropic')
+        )) {
         $null = $controls.cmbProvider.Items.Add($item)
     }
 
     foreach ($item in @(
-        (New-SentinelHudSelectionItem -Label 'Default' -Tag 'default'),
-        (New-SentinelHudSelectionItem -Label 'Template' -Tag 'template'),
-        (New-SentinelHudSelectionItem -Label 'Expert Override' -Tag 'expert')
-    )) {
+            (New-SentinelHudSelectionItem -Label 'Default' -Tag 'default'),
+            (New-SentinelHudSelectionItem -Label 'Template' -Tag 'template'),
+            (New-SentinelHudSelectionItem -Label 'Expert Override' -Tag 'expert')
+        )) {
         $null = $controls.cmbAIPromptMode.Items.Add($item)
     }
 
@@ -1145,7 +1145,7 @@ function global:Start-SentinelBundlerHud {
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbRouteMode -TagValue 'director'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbProvider -TagValue 'groq'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbAIPromptMode -TagValue 'default'
-    $controls.txtExecutorTarget.Text = 'AI Studio Apps'
+    $controls.txtExecutorTarget.Text = 'ChatGPT'
 
     $selectedItems = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $treeState = @{
@@ -1175,82 +1175,82 @@ function global:Start-SentinelBundlerHud {
     Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message ("Arquivos elegíveis detectados: {0}" -f $availableFiles.Count)
 
     $controls.cmbBundleMode.Add_SelectionChanged({
-        Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
-    }.GetNewClosure())
+            Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
+        }.GetNewClosure())
 
     $controls.trvFiles.Add_PreviewKeyDown({
-        param($sender, $eventArgs)
+            param($sender, $eventArgs)
 
-        $currentNode = $treeState.SelectedNode
-        if ($null -eq $currentNode) {
-            return
-        }
-
-        switch ($eventArgs.Key) {
-            ([System.Windows.Input.Key]::Space) {
-                if ($null -eq $currentNode.CheckBox) {
-                    return
-                }
-
-                $desiredState = -not ($currentNode.CheckBox.IsChecked -eq $true)
-                Invoke-SentinelTreeNodeToggle -Node $currentNode -DesiredState $desiredState -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
-                $eventArgs.Handled = $true
-                break
+            $currentNode = $treeState.SelectedNode
+            if ($null -eq $currentNode) {
+                return
             }
-            ([System.Windows.Input.Key]::Right) {
-                if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
-                    $currentNode.TreeViewItem.IsExpanded = $true
+
+            switch ($eventArgs.Key) {
+                ([System.Windows.Input.Key]::Space) {
+                    if ($null -eq $currentNode.CheckBox) {
+                        return
+                    }
+
+                    $desiredState = -not ($currentNode.CheckBox.IsChecked -eq $true)
+                    Invoke-SentinelTreeNodeToggle -Node $currentNode -DesiredState $desiredState -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
                     $eventArgs.Handled = $true
+                    break
                 }
-                break
-            }
-            ([System.Windows.Input.Key]::Left) {
-                if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
-                    $currentNode.TreeViewItem.IsExpanded = $false
-                    $eventArgs.Handled = $true
+                ([System.Windows.Input.Key]::Right) {
+                    if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
+                        $currentNode.TreeViewItem.IsExpanded = $true
+                        $eventArgs.Handled = $true
+                    }
+                    break
                 }
-                break
+                ([System.Windows.Input.Key]::Left) {
+                    if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
+                        $currentNode.TreeViewItem.IsExpanded = $false
+                        $eventArgs.Handled = $true
+                    }
+                    break
+                }
             }
-        }
-    }.GetNewClosure())
+        }.GetNewClosure())
 
     $controls.btnSelectAll.Add_Click({
-        Set-SentinelTreeAllCheckedState -RootNodes $treeState.RootNodes -IsChecked $true -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
-    }.GetNewClosure())
+            Set-SentinelTreeAllCheckedState -RootNodes $treeState.RootNodes -IsChecked $true -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
+        }.GetNewClosure())
 
     $controls.btnSelectNone.Add_Click({
-        Set-SentinelTreeAllCheckedState -RootNodes $treeState.RootNodes -IsChecked $false -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
-    }.GetNewClosure())
+            Set-SentinelTreeAllCheckedState -RootNodes $treeState.RootNodes -IsChecked $false -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
+        }.GetNewClosure())
 
     $controls.btnRun.Add_Click({
-        try {
-            Set-SentinelHudInputsEnabled -Controls $controls -Enabled $false
-            Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Disparando engine headless...' -Badge 'Executando'
-            Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'Inicializando execução...'
-
-            $process = New-SentinelHudProcess -HeadlessScriptPath $HeadlessScriptPath -TargetPath $resolvedTargetPath -Controls $controls -Window $window -SelectedItems $selectedItems -State $state
-            Start-SentinelHudProcessMonitoring -Process $process -Controls $controls -Window $window -State $state | Out-Null
-        }
-        catch {
-            Set-SentinelHudInputsEnabled -Controls $controls -Enabled $true
-            Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message $_.Exception.Message -Badge 'Erro'
-            Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message ("Falha ao iniciar execução: {0}" -f $_.Exception.Message)
-        }
-    }.GetNewClosure())
-
-    $controls.btnClose.Add_Click({
-        $window.Close()
-    })
-
-    $window.Add_Closing({
-        if ($state.Process -and -not $state.Process.HasExited) {
             try {
-                $state.Process.Kill()
+                Set-SentinelHudInputsEnabled -Controls $controls -Enabled $false
+                Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Disparando engine headless...' -Badge 'Executando'
+                Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'Inicializando execução...'
+
+                $process = New-SentinelHudProcess -HeadlessScriptPath $HeadlessScriptPath -TargetPath $resolvedTargetPath -Controls $controls -Window $window -SelectedItems $selectedItems -State $state
+                Start-SentinelHudProcessMonitoring -Process $process -Controls $controls -Window $window -State $state | Out-Null
             }
             catch {
+                Set-SentinelHudInputsEnabled -Controls $controls -Enabled $true
+                Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message $_.Exception.Message -Badge 'Erro'
+                Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message ("Falha ao iniciar execução: {0}" -f $_.Exception.Message)
             }
-        }
-    })
+        }.GetNewClosure())
+
+    $controls.btnClose.Add_Click({
+            $window.Close()
+        })
+
+    $window.Add_Closing({
+            if ($state.Process -and -not $state.Process.HasExited) {
+                try {
+                    $state.Process.Kill()
+                }
+                catch {
+                }
+            }
+        })
 
     $null = $window.ShowDialog()
 }

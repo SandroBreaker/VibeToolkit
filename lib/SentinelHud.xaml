@@ -496,25 +496,29 @@
                         Margin="0,0,0,14">
                     <DockPanel LastChildFill="True">
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0">
+                            <StackPanel Grid.Row="0" Grid.Column="0">
                                 <TextBlock Text="Log operacional" Style="{StaticResource SectionTitleStyle}" FontSize="18"/>
                                 <TextBlock Text="Painel dominante da tela. Aqui vivem a execução, as falhas e a saída real — finalmente no lugar certo." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <Button Grid.Column="1"
+                            <Button Grid.Row="0" Grid.Column="1"
                                     x:Name="btnCopyLogs"
                                     Content="Copiar logs"
                                     Margin="12,0,8,0"
                                     Style="{StaticResource GhostButtonStyle}"
                                     VerticalAlignment="Top"/>
 
-                            <Border Grid.Column="2"
+                            <Border Grid.Row="0" Grid.Column="2"
                                     Padding="10,5"
                                     CornerRadius="999"
                                     Background="#081520"
@@ -526,6 +530,40 @@
                                            FontSize="11"
                                            FontWeight="SemiBold"/>
                             </Border>
+
+                            <Grid Grid.Row="1"
+                                  Grid.Column="0"
+                                  Grid.ColumnSpan="3"
+                                  Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="84"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="Fonte"
+                                           Style="{StaticResource FieldLabelStyle}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0"/>
+
+                                <ComboBox Grid.Column="1"
+                                          x:Name="cmbLogFontFamily"
+                                          Height="34"
+                                          Margin="0,0,12,0"/>
+
+                                <TextBlock Grid.Column="2"
+                                           Text="Tamanho"
+                                           Style="{StaticResource FieldLabelStyle}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0"/>
+
+                                <ComboBox Grid.Column="3"
+                                          x:Name="cmbLogFontSize"
+                                          Height="34"/>
+                            </Grid>
                         </Grid>
 
                         <ListBox x:Name="lstLog"

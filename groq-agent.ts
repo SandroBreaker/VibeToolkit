@@ -1,10 +1,37 @@
-﻿import "dotenv/config";
-import crypto from "crypto";
+﻿import crypto from "crypto";
+import { createRequire } from "module";
 import { execFileSync } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import process from "process";
+
+const runtimeRequire = createRequire(import.meta.url);
+
+function isMissingDotenvConfigModule(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+        return false;
+    }
+
+    const maybeError = error as { code?: unknown; message?: unknown };
+    const message = typeof maybeError.message === "string" ? maybeError.message : "";
+    return maybeError.code === "MODULE_NOT_FOUND" && message.includes("dotenv/config");
+}
+
+function loadDotenvConfigIfAvailable(): void {
+    try {
+        runtimeRequire("dotenv/config");
+    } catch (error) {
+        if (isMissingDotenvConfigModule(error)) {
+            console.error("[bootstrap] dotenv/config não disponível; seguindo com process.env já fornecido pelo host.");
+            return;
+        }
+
+        throw error;
+    }
+}
+
+loadDotenvConfigIfAvailable();
 
 type OutputRouteMode = "director" | "executor";
 type ExtractionMode = "full" | "blueprint" | "sniper";

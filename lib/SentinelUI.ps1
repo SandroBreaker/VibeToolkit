@@ -13,10 +13,10 @@ $SentinelTheme = [ordered]@{
     Warning   = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;245;158;11m" } else { '' }
     Error     = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;239;68;68m" } else { '' }
     Glyphs    = @{
-        Success = '✔'
-        Info    = '➜'
-        Warning = '⚠'
-        Error   = '✖'
+        Success = '✅'
+        Info    = '➤'
+        Warning = '⚠️'
+        Error   = '❌'
     }
 }
 

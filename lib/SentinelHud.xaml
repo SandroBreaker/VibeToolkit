@@ -323,7 +323,7 @@
                                FontWeight="SemiBold"/>
                     <TextBlock x:Name="txtSubHeader"
                                Margin="0,2,0,0"
-                               Text="Painel operacional denso. Preparação à esquerda, execução à direita. Sem gordura decorativa." 
+                               Text="Preparar, disparar e inspecionar. O foco fica na operação, não no teatro visual." 
                                Foreground="{StaticResource MutedTextBrush}"/>
                     <TextBlock x:Name="txtTargetPath"
                                Margin="0,7,0,0"
@@ -346,7 +346,8 @@
                                    FontWeight="SemiBold"/>
                     </Border>
 
-                    <Border Padding="12,5"
+                    <Border x:Name="brdRunState"
+                            Padding="12,5"
                             CornerRadius="999"
                             Background="#0B1825"
                             BorderBrush="{StaticResource AccentBorderBrush}"
@@ -362,8 +363,8 @@
 
         <Grid Grid.Row="1" Margin="0,14,0,14">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0.74*"/>
-                <ColumnDefinition Width="1.46*"/>
+                <ColumnDefinition Width="0.78*"/>
+                <ColumnDefinition Width="1.52*"/>
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0" Margin="0,0,14,0">
@@ -378,7 +379,7 @@
                     <DockPanel LastChildFill="True">
                         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                             <TextBlock Text="Preparação da operação" Style="{StaticResource SectionTitleStyle}"/>
-                            <TextBlock Text="Configuração compacta. Decide, parametriza e segue o baile; nada de formulário fazendo cosplay de protagonista." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="Configuração enxuta: decide, parametriza e parte para a execução. Sem formulário querendo roubar a cena." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <Grid>
@@ -427,7 +428,7 @@
                                         Background="{StaticResource PanelBrushSubtle}"
                                         BorderBrush="{StaticResource InputBorderBrush}"
                                         BorderThickness="1">
-                                    <TextBlock Text="No Sniper: seta para expandir/recolher, espaço para marcar e clique na pasta para propagar pros filhos."
+                                    <TextBlock Text="No Sniper: Espaço marca, ←/→ expande ou recolhe e clique na pasta propaga para os filhos."
                                                Foreground="{StaticResource SoftTextBrush}"
                                                TextWrapping="Wrap"/>
                                 </Border>
@@ -447,7 +448,7 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Seleção Sniper" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock Text="Lista útil de verdade, sem ficar espremida igual castigo."
+                                <TextBlock Text="Seleção manual com leitura limpa. Sem panelinha espremida e sem caça ao checkbox."
                                            Style="{StaticResource SectionHintStyle}"/>
                             </StackPanel>
 
@@ -483,8 +484,8 @@
 
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="0.34*"/>
+                    <RowDefinition Height="1.62*"/>
+                    <RowDefinition Height="0.48*"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0"
@@ -498,14 +499,22 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Log operacional" Style="{StaticResource SectionTitleStyle}" FontSize="18"/>
-                                <TextBlock Text="Área dominante da tela. Aqui a leitura de execução, falha e saída manda no HUD, como deveria desde o começo." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
+                                <TextBlock Text="Painel dominante da tela. Aqui vivem a execução, as falhas e a saída real — finalmente no lugar certo." Style="{StaticResource SectionHintStyle}" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <Border Grid.Column="1"
+                            <Button Grid.Column="1"
+                                    x:Name="btnCopyLogs"
+                                    Content="Copiar logs"
+                                    Margin="12,0,8,0"
+                                    Style="{StaticResource GhostButtonStyle}"
+                                    VerticalAlignment="Top"/>
+
+                            <Border Grid.Column="2"
                                     Padding="10,5"
                                     CornerRadius="999"
                                     Background="#081520"
@@ -531,8 +540,8 @@
                 <Border Grid.Row="1" Style="{StaticResource PanelCardStyle}">
                     <DockPanel LastChildFill="True">
                         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                            <TextBlock Text="Resumo da execução" Style="{StaticResource SectionTitleStyle}"/>
-                            <TextBlock Text="Fechamento operacional curto: parâmetros, saída e o que interessa depois do disparo." Style="{StaticResource SectionHintStyle}"/>
+                            <TextBlock Text="Resumo da última execução" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="Fechamento rápido com status, parâmetros e contexto do disparo. O que interessa, sem textão ornamental." Style="{StaticResource SectionHintStyle}"/>
                         </StackPanel>
 
                         <TextBox x:Name="txtExecutionSummary"
@@ -562,7 +571,8 @@
                 <TextBlock x:Name="txtFooterStatus"
                            Text="Aguardando execução."
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedTextBrush}"/>
+                           Foreground="{StaticResource MutedTextBrush}"
+                           TextWrapping="Wrap"/>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="14,0,0,0">
                     <Button x:Name="btnRun"

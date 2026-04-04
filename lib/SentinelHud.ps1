@@ -22,6 +22,7 @@ $script:SentinelIgnoredFiles = @(
     'capacitor.plugins.json', 'cordova.js', 'cordova_plugins.js',
     'poetry.lock', 'Pipfile.lock', 'Cargo.lock', 'go.sum', 'composer.lock'
 )
+$script:SentinelLogBuffer = [System.Text.StringBuilder]::new()
 
 function global:Assert-SentinelWpfRuntime {
     if (-not $IsWindows) {
@@ -186,6 +187,126 @@ function global:Get-SentinelRelevantFiles {
     return @($result | Sort-Object -Unique)
 }
 
+function global:New-SentinelHudRgbBrush {
+    param(
+        [Parameter(Mandatory = $true)]
+        [byte]$Red,
+
+        [Parameter(Mandatory = $true)]
+        [byte]$Green,
+
+        [Parameter(Mandatory = $true)]
+        [byte]$Blue
+    )
+
+    $brush = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Color]::FromRgb($Red, $Green, $Blue))
+    if ($brush.CanFreeze) {
+        $brush.Freeze()
+    }
+
+    return $brush
+}
+
+function global:Get-SentinelHudAnsiBrushFromCodes {
+    param(
+        [AllowNull()]
+        [int[]]$Codes,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Media.Brush]$DefaultBrush
+    )
+
+    if ($null -eq $Codes -or $Codes.Count -eq 0) {
+        return $DefaultBrush
+    }
+
+    for ($index = 0; $index -lt $Codes.Count; $index++) {
+        $code = $Codes[$index]
+
+        switch ($code) {
+            0 { return $DefaultBrush }
+            39 { return $DefaultBrush }
+            30 { return [System.Windows.Media.Brushes]::Black }
+            31 { return [System.Windows.Media.Brushes]::IndianRed }
+            32 { return [System.Windows.Media.Brushes]::MediumSeaGreen }
+            33 { return [System.Windows.Media.Brushes]::Goldenrod }
+            34 { return [System.Windows.Media.Brushes]::CornflowerBlue }
+            35 { return [System.Windows.Media.Brushes]::Orchid }
+            36 { return [System.Windows.Media.Brushes]::DeepSkyBlue }
+            37 { return [System.Windows.Media.Brushes]::Gainsboro }
+            90 { return [System.Windows.Media.Brushes]::SlateGray }
+            91 { return [System.Windows.Media.Brushes]::LightCoral }
+            92 { return [System.Windows.Media.Brushes]::LightGreen }
+            93 { return [System.Windows.Media.Brushes]::Khaki }
+            94 { return [System.Windows.Media.Brushes]::LightSkyBlue }
+            95 { return [System.Windows.Media.Brushes]::Violet }
+            96 { return [System.Windows.Media.Brushes]::Cyan }
+            97 { return [System.Windows.Media.Brushes]::White }
+            38 {
+                if (($index + 4) -lt $Codes.Count -and $Codes[$index + 1] -eq 2) {
+                    return New-SentinelHudRgbBrush -Red ([byte]$Codes[$index + 2]) -Green ([byte]$Codes[$index + 3]) -Blue ([byte]$Codes[$index + 4])
+                }
+            }
+        }
+    }
+
+    return $DefaultBrush
+}
+
+function global:Convert-SentinelHudAnsiSegments {
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Text = '',
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Media.Brush]$DefaultBrush
+    )
+
+    $segments = [System.Collections.Generic.List[object]]::new()
+    if ([string]::IsNullOrEmpty($Text)) {
+        return $segments
+    }
+
+    $escape = [string][char]27
+    $pattern = '{0}\[(?<codes>[0-9;]*)m' -f [regex]::Escape($escape)
+    $matches = [regex]::Matches($Text, $pattern)
+    $cursor = 0
+    $currentBrush = $DefaultBrush
+
+    foreach ($match in $matches) {
+        if ($match.Index -gt $cursor) {
+            $segments.Add([pscustomobject]@{
+                    Text       = $Text.Substring($cursor, $match.Index - $cursor)
+                    Foreground = $currentBrush
+                }) | Out-Null
+        }
+
+        $rawCodes = [string]$match.Groups['codes'].Value
+        $codes = if ([string]::IsNullOrWhiteSpace($rawCodes)) {
+            @(0)
+        }
+        else {
+            @(
+                $rawCodes.Split(';', [System.StringSplitOptions]::RemoveEmptyEntries) |
+                ForEach-Object { [int]$_ }
+            )
+        }
+
+        $currentBrush = Get-SentinelHudAnsiBrushFromCodes -Codes $codes -DefaultBrush $DefaultBrush
+        $cursor = $match.Index + $match.Length
+    }
+
+    if ($cursor -lt $Text.Length) {
+        $segments.Add([pscustomobject]@{
+                Text       = $Text.Substring($cursor)
+                Foreground = $currentBrush
+            }) | Out-Null
+    }
+
+    return $segments
+}
+
 function global:Add-SentinelHudLogLine {
     param(
         [Parameter(Mandatory = $true)]
@@ -200,11 +321,45 @@ function global:Add-SentinelHudLogLine {
     )
 
     $timestamp = (Get-Date).ToString('HH:mm:ss')
-    $entry = "[$timestamp] $Message"
+    
+    # Update persistent log buffer (strip ANSI codes for clean text)
+    $cleanMessage = $Message -replace "\x1b\[[0-9;]*m", ""
+    $script:SentinelLogBuffer.AppendLine("[$timestamp] $cleanMessage") | Out-Null
 
     $updateAction = {
-        $LogList.Items.Add($entry) | Out-Null
-        $LogList.ScrollIntoView($entry)
+        $timestampBrush = New-SentinelHudRgbBrush -Red 120 -Green 134 -Blue 156
+        $defaultBrush = New-SentinelHudRgbBrush -Red 226 -Green 232 -Blue 240
+
+        $lineBlock = [System.Windows.Controls.TextBlock]::new()
+        $lineBlock.FontFamily = [System.Windows.Media.FontFamily]::new('Consolas')
+        $lineBlock.FontSize = 13
+        $lineBlock.TextWrapping = [System.Windows.TextWrapping]::NoWrap
+
+        $timestampRun = [System.Windows.Documents.Run]::new("[$timestamp] ")
+        $timestampRun.Foreground = $timestampBrush
+        $lineBlock.Inlines.Add($timestampRun) | Out-Null
+
+        $segments = Convert-SentinelHudAnsiSegments -Text $Message -DefaultBrush $defaultBrush
+
+        if ($segments.Count -eq 0) {
+            $messageRun = [System.Windows.Documents.Run]::new([string]$Message)
+            $messageRun.Foreground = $defaultBrush
+            $lineBlock.Inlines.Add($messageRun) | Out-Null
+        }
+        else {
+            foreach ($segment in $segments) {
+                if ([string]::IsNullOrEmpty([string]$segment.Text)) {
+                    continue
+                }
+
+                $messageRun = [System.Windows.Documents.Run]::new([string]$segment.Text)
+                $messageRun.Foreground = [System.Windows.Media.Brush]$segment.Foreground
+                $lineBlock.Inlines.Add($messageRun) | Out-Null
+            }
+        }
+
+        $null = $LogList.Items.Add($lineBlock)
+        $LogList.ScrollIntoView($lineBlock)
     }.GetNewClosure()
 
     if ($Window.Dispatcher.CheckAccess()) {
@@ -809,6 +964,7 @@ function global:Get-SentinelNamedControls {
         'btnSelectNone',
         'trvFiles',
         'lstLog',
+        'btnCopyLogs',
         'txtSelectionSummary',
         'txtExecutionSummary',
         'txtFooterStatus',
@@ -1458,6 +1614,18 @@ function global:Start-SentinelBundlerHud {
                 Set-SentinelHudInputsEnabled -Controls $controls -Enabled $true
                 Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message $_.Exception.Message -Badge 'Erro'
                 Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message ("Falha ao iniciar execução: {0}" -f $_.Exception.Message)
+            }
+        }.GetNewClosure())
+
+    $controls.btnCopyLogs.Add_Click({
+            if ($script:SentinelLogBuffer.Length -gt 0) {
+                try {
+                    [System.Windows.Clipboard]::SetText($script:SentinelLogBuffer.ToString())
+                    Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Logs copiados para a área de transferência.' -Badge $controls.txtRunState.Text
+                }
+                catch {
+                    Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message "Falha ao copiar logs: $($_.Exception.Message)"
+                }
             }
         }.GetNewClosure())
 

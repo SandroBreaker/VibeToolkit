@@ -929,6 +929,18 @@ function Invoke-OrchestratorAgent {
     }
 
     if ($process.ExitCode -ne 0) {
+        $failureSummary = $null
+        if (-not [string]::IsNullOrWhiteSpace([string]$failure.Message)) {
+            $failureSummary = [string]$failure.Message
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$failure.Type)) {
+            $failureSummary = [string]$failure.Type
+        }
+
+        if ($failureSummary) {
+            throw "groq-agent.ts finalizou com código $($process.ExitCode): $failureSummary"
+        }
+
         throw "groq-agent.ts finalizou com código $($process.ExitCode)."
     }
 
@@ -1567,7 +1579,13 @@ function Write-LocalExecutionMeta {
         Join-Path (Get-Location).Path 'groq-agent.ts'
     }
 
+    $governanceAgentAttempted = $false
+    $governanceAgentUsed = $false
+    $governanceAgentFailureMessage = $null
+
     if ($Provider -eq 'local' -and -not [string]::IsNullOrWhiteSpace($metadataSourcePath) -and (Test-Path $metadataSourcePath -PathType Leaf) -and (Test-Path $agentScriptPath -PathType Leaf)) {
+        $governanceAgentAttempted = $true
+
         try {
             $skipReasonValue = $null
             if ($ExtraData -and $ExtraData.ContainsKey('skippedReason') -and -not [string]::IsNullOrWhiteSpace([string]$ExtraData['skippedReason'])) {
@@ -1615,12 +1633,20 @@ function Write-LocalExecutionMeta {
                 Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson -UseBom
 
                 return [pscustomobject]@{
-                    Meta           = [pscustomobject]$meta
-                    ResultMetaPath = $resultMetaPathFromDisk
+                    Meta                      = [pscustomobject]$meta
+                    ResultMetaPath            = $resultMetaPathFromDisk
+                    GovernanceAgentAttempted  = $governanceAgentAttempted
+                    GovernanceAgentUsed       = $true
+                    GovernanceAgentFailed     = $false
+                    GovernanceAgentFailureMessage = $null
                 }
             }
         }
         catch {
+            $governanceAgentFailureMessage = $_.Exception.Message
+            if ($script:LastAgentFailure -and -not [string]::IsNullOrWhiteSpace([string]$script:LastAgentFailure.Message)) {
+                $governanceAgentFailureMessage = [string]$script:LastAgentFailure.Message
+            }
         }
     }
 
@@ -1642,8 +1668,12 @@ function Write-LocalExecutionMeta {
     Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
 
     return [pscustomobject]@{
-        Meta           = $meta
-        ResultMetaPath = $resolvedResultMetaPath
+        Meta                      = $meta
+        ResultMetaPath            = $resolvedResultMetaPath
+        GovernanceAgentAttempted  = $governanceAgentAttempted
+        GovernanceAgentUsed       = $governanceAgentUsed
+        GovernanceAgentFailed     = [bool]($governanceAgentAttempted -and -not $governanceAgentUsed)
+        GovernanceAgentFailureMessage = $governanceAgentFailureMessage
     }
 }
 
@@ -1890,26 +1920,36 @@ function Resolve-BundlePreflightGate {
 }
 
 $script:AllowedExtensions = @(
-    ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
-    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift",
-    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml", ".cs"
+    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
+    '.css', '.html', '.json', '.yaml', '.yml', '.xml', '.toml', '.ini',
+    '.md', '.txt',
+    '.py', '.java', '.cs', '.c', '.cpp', '.h', '.hpp', '.go', '.rb', '.php', '.rs', '.swift',
+    '.kt', '.kts', '.scala', '.dart', '.r',
+    '.sh', '.bat', '.ps1', '.psm1',
+    '.sql', '.prisma',
+    '.csv', '.xaml', '.properties', '.gradle'
 )
+
 $script:SignatureExtensions = @(
-    ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
-    ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift",
-    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml", ".cs"
+    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
+    '.py', '.java', '.cs', '.c', '.cpp', '.h', '.hpp', '.go', '.rb', '.php', '.rs', '.swift',
+    '.kt', '.kts', '.scala', '.dart',
+    '.sh', '.bat', '.ps1', '.psm1',
+    '.sql', '.prisma',
+    '.xaml'
 )
+
 $script:IgnoredDirs = @(
-    "node_modules", ".git", "dist", "build", ".next", ".cache", "out",
-    "android", "ios", "coverage", ".venv", "venv", "env", "__pycache__",
-    ".pytest_cache", ".tox", "bin", "obj", "target", "vendor"
+    'node_modules', '.git', 'dist', 'build', '.next', '.cache', 'out',
+    'coverage', '.venv', 'venv', 'env', '__pycache__', '.pytest_cache', '.tox',
+    'bin', 'obj', 'target', 'vendor'
 )
+
 $script:IgnoredFiles = @(
-    "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
-    ".DS_Store", "metadata.json", ".gitignore",
-    "google-services.json", "capacitor.config.json",
-    "capacitor.plugins.json", "cordova.js", "cordova_plugins.js",
-    "poetry.lock", "Pipfile.lock", "Cargo.lock", "go.sum", "composer.lock"
+    'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock',
+    '.DS_Store', 'metadata.json', '.gitignore',
+    'capacitor.plugins.json', 'cordova.js', 'cordova_plugins.js',
+    'poetry.lock', 'Pipfile.lock', 'Cargo.lock', 'go.sum', 'composer.lock'
 )
 
 $resolvedTargetPath = $null
@@ -2201,6 +2241,9 @@ try {
         }
 
         Write-UILog -Message ("Metadados locais salvos em: {0}" -f $txtExportMetaResult.ResultMetaPath) -Color $ThemeSuccess
+        if ($txtExportMetaResult.GovernanceAgentFailed) {
+            Write-UILog -Message ("Agente de governança local indisponível para metadados TXT export. Fallback local aplicado: {0}" -f $txtExportMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
+        }
         return
     }
 
@@ -2382,7 +2425,15 @@ try {
         }
 
         Write-UILog -Message ("Metadados locais salvos em: {0}" -f $deterministicMetaResult.ResultMetaPath) -Color $ThemeSuccess
-        Write-UILog -Message 'Execução concluída sem provider remoto; metadados de governança consolidados via groq-agent.ts local.' -Color $ThemeSuccess
+        if ($deterministicMetaResult.GovernanceAgentUsed) {
+            Write-UILog -Message 'Execução concluída sem provider remoto; metadados de governança consolidados via groq-agent.ts local.' -Color $ThemeSuccess
+        }
+        elseif ($deterministicMetaResult.GovernanceAgentFailed) {
+            Write-UILog -Message ("Execução concluída sem provider remoto; fallback local assumiu os metadados porque o agente de governança falhou: {0}" -f $deterministicMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
+        }
+        else {
+            Write-UILog -Message 'Execução concluída sem provider remoto; metadados locais consolidados diretamente no bundler.' -Color $ThemeSuccess
+        }
         return
     }
 
@@ -2537,7 +2588,15 @@ try {
         }
 
         Write-UILog -Message ("Metadados locais salvos em: {0}" -f $localMetaResult.ResultMetaPath) -Color $ThemeSuccess
-        Write-UILog -Message 'Execução concluída sem chamada da IA; governança consolidada via groq-agent.ts local.' -Color $ThemeSuccess
+        if ($localMetaResult.GovernanceAgentUsed) {
+            Write-UILog -Message 'Execução concluída sem chamada da IA; governança consolidada via groq-agent.ts local.' -Color $ThemeSuccess
+        }
+        elseif ($localMetaResult.GovernanceAgentFailed) {
+            Write-UILog -Message ("Execução concluída sem chamada da IA; fallback local assumiu os metadados porque o agente de governança falhou: {0}" -f $localMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
+        }
+        else {
+            Write-UILog -Message 'Execução concluída sem chamada da IA; metadados locais consolidados diretamente no bundler.' -Color $ThemeSuccess
+        }
     }
 }
 catch {

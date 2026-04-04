@@ -15,8 +15,9 @@ O VibeToolkit foi desenhado para transformar uma pasta de código em artefatos o
 
 Capacidades centrais:
 
-- **Bundler Engine**: consolida arquivos relevantes do projeto em um artefato legível (via `project-bundler-cli.ps1`).
-- **WPF HUD**: interface gráfica rica para controle do processo de bundler (via `project-bundler-hud.ps1`).
+- **Bundler Engine**: consolida arquivos relevantes do projeto em um artefato legível.
+- **WPF HUD**: interface gráfica moderna (XAML) para controle total do processo com feedback visual.
+- **Headless Interface**: versão otimizada para terminal com seletores interativos (via `project-bundler-headless.ps1`).
 - **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e superfícies de integração.
 - **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
 - **Route modes**:
@@ -41,39 +42,47 @@ Arquivos principais:
 
 A HUD utiliza **WPF (Windows Presentation Foundation)** para uma identidade visual premium:
 
-- Design moderno com transparência e bordas arredondadas.
-- Feedback de execução em tempo real com barra de progresso e log detalhado.
+- Design moderno "Glassmorphism" com transparência e alta legibilidade (texto em alto contraste).
+- Feedback em tempo real com barra de progresso, logs detalhados e opção **Copy Logs** para exportação rápida do histórico de operação.
 - Seleção intuitiva de pastas e modos operacionais.
 
 ### 2. Camada de Engine CLI
 
 Arquivo principal:
 
-- `project-bundler-cli.ps1`
+- `project-bundler-cli.ps1` e `project-bundler-headless.ps1`
 
 Responsabilidades:
 
-- bootstrap do toolkit em modo headless;
+- **CLI Engine**: núcleo de processamento para automação.
+- **Headless CLI**: interface de terminal com menus interativos para seleção Sniper e monitoramento de progresso.
 - orquestração do fluxo de geração dos artefatos sem necessidade de UI.
 
 ### 3. Camada de utilitários PowerShell
 
 #### `modules/VibeBundleWriter.psm1`
+
 Fornece funções de IO e serialização seguras:
+
 - leitura de arquivos com detecção de encoding (UTF-8/UTF-16/UTF-32);
 - escrita UTF-8 com ou sem BOM;
 - geração de fences Markdown seguros.
 
 #### `modules/VibeDirectorProtocol.psm1`
+
 Centraliza a construção de slices e headers de protocolo para os dois papéis do sistema:
+
 - cabeçalhos ELITE v3.1 e ELITE v4.1;
 - seções de metadata, governança e contexto momentum.
 
 #### `modules/VibeFileDiscovery.psm1`
+
 Responsável por descoberta recursiva de arquivos relevantes e exclusão de artefatos gerados automaticamente (como `_BUNDLER__*`, `_ai_*`, etc).
 
 #### `modules/VibeSignatureExtractor.psm1`
+
 Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, com suporte para:
+
 - PowerShell, TypeScript/JavaScript, C#, Python, Go, Rust.
 
 ### 4. Camada de agente TypeScript
@@ -81,6 +90,7 @@ Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, co
 Arquivo principal: `groq-agent.ts`
 
 Responsabilidades:
+
 - definição dos tipos centrais do pipeline;
 - integração com providers (Groq, Gemini, OpenAI, Anthropic);
 - suporte a template determinístico `director_meta_v1`.
@@ -88,6 +98,7 @@ Responsabilidades:
 ### 5. Camada de reparo local
 
 Arquivo auxiliar: `patch_agent.js`
+
 - aplicar reparos conhecidos e seguros no `groq-agent.ts`.
 
 ---
@@ -108,8 +119,9 @@ Arquivo auxiliar: `patch_agent.js`
 │  └─ VibeSignatureExtractor.psm1
 ├─ groq-agent.ts
 ├─ patch_agent.js
-├─ project-bundler-hud.ps1   # Entry point HUD
-├─ project-bundler-cli.ps1   # Entry point CLI
+├─ project-bundler-hud.ps1        # Entry point HUD
+├─ project-bundler-headless.ps1   # Entry point Terminal Interativo
+├─ project-bundler-cli.ps1        # Entry point CLI Engine
 ├─ package.json
 └─ tsconfig.json
 ```
@@ -119,10 +131,12 @@ Arquivo auxiliar: `patch_agent.js`
 ## Modos operacionais
 
 ### Route mode
+
 - `director`: prepara contexto analítico e meta-prompt para o Executor.
 - `executor`: prepara contexto direto para implementação.
 
 ### Extraction mode
+
 - `full`: visão ampla do projeto contido no bundle.
 - `blueprint`: foco em contratos, assinaturas e organização.
 - `sniper`: recorte manual/parcial.
@@ -132,11 +146,13 @@ Arquivo auxiliar: `patch_agent.js`
 ## Requisitos
 
 ### Ambiente Windows
-- **PowerShell 7.0+** (recomendado);
+
+- **PowerShell 7.2+** (recomendado para melhor performance);
 - **.NET Desktop Runtime** (para suporte a WPF);
 - Windows 10/11 para melhor compatibilidade com o HUD.
 
 ### Node.js / TypeScript
+
 - **Node.js** 18+;
 - Dependências: `dotenv`, `groq-sdk`.
 
@@ -151,11 +167,13 @@ Arquivo auxiliar: `patch_agent.js`
    `C:\dev\VibeToolkit`
 
 2. **Instalar dependências Node**:
+
    ```bash
    npm install
    ```
 
 3. **Permissões PowerShell**:
+
    ```powershell
    Set-ExecutionPolicy -Scope Process Bypass
    ```
@@ -172,8 +190,8 @@ O VibeToolkit oferece integração direta com o Windows Explorer para facilitar 
 1. **Instalação**:
    - Execute o arquivo `install-vibe-menu.reg`.
    - Isso adicionará duas opções ao clicar com o botão direito em pastas ou no fundo do diretório:
-     - **VibeToolkit: Abrir HUD (WPF)**: Inicia a interface gráfica (HUD).
-     - **VibeToolkit: Abrir Terminal (CLI)**: Inicia o processo em modo headless diretamente no terminal.
+     - **VibeToolkit: Abrir HUD (WPF)**: Inicia a interface gráfica moderna.
+     - **VibeToolkit: Abrir Terminal (Headless)**: Inicia o processo interativo diretamente no terminal.
 
 2. **Desinstalação**:
    - Execute o arquivo `uninstall-vibe-menu.reg` para remover as entradas do registro.
@@ -186,13 +204,15 @@ O VibeToolkit oferece integração direta com o Windows Explorer para facilitar 
 ## Como executar
 
 ### Iniciar o HUD WPF (Recomendado)
+
 ```powershell
 .\project-bundler-hud.ps1
 ```
 
-### Executar via CLI (Headless)
+### Executar via Terminal (Headless / Interativo)
+
 ```powershell
-.\project-bundler-cli.ps1 -Path "C:\dev\SeuProjeto"
+.\project-bundler-headless.ps1 -Path "C:\dev\SeuProjeto"
 ```
 
 ---
@@ -200,6 +220,7 @@ O VibeToolkit oferece integração direta com o Windows Explorer para facilitar 
 ## Artefatos e convenções
 
 O toolkit diferencia arquivos-fonte de artefatos gerados. Padrões ignorados automaticamente:
+
 - `_BUNDLER__*`, `_BLUEPRINT__*`, `_AI_CONTEXT_*`, `_ai_*`.
 
 O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*.json`) para enriquecer o próximo ciclo de engenharia.
@@ -219,7 +240,8 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 ## Referência rápida
 
 ### Arquivos centrais
-- `project-bundler-hud.ps1` / `project-bundler-cli.ps1`
+
+- `project-bundler-hud.ps1` / `project-bundler-headless.ps1` / `project-bundler-cli.ps1`
 - `lib/SentinelHud.ps1`
 - `modules/VibeBundleWriter.psm1`
 - `modules/VibeDirectorProtocol.psm1`
@@ -227,4 +249,5 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 - `patch_agent.js`
 
 ### Stack
+
 - PowerShell, WPF, C#, Node.js, TypeScript.

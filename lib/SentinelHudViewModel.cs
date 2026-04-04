@@ -1,4 +1,4 @@
-﻿// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 //  VibeToolkit.HUD.Sentinel — SentinelHudViewModel.cs
 //  Cyber-Noir Overlay HUD | MVVM · CommunityToolkit.Mvvm
 //
@@ -215,6 +215,10 @@ namespace VibeToolkit.HUD.Sentinel
         [ObservableProperty]
         private int _processCount = 0;
 
+        /// <summary>Internal buffer for operational logs (plain text).</summary>
+        [ObservableProperty]
+        private string _logBuffer = string.Empty;
+
         public string NodeId => _nodeId;
 
         // ════════════════════════════════════════════════════════════
@@ -387,6 +391,19 @@ namespace VibeToolkit.HUD.Sentinel
                         return;
                     }
                 }
+            });
+        }
+
+        /// <summary>Copies the current operational logs to the system clipboard.</summary>
+        [RelayCommand]
+        private void CopyLogs()
+        {
+            if (string.IsNullOrWhiteSpace(LogBuffer)) return;
+
+            Application.Current?.Dispatcher.Invoke(() =>
+            {
+                try { Clipboard.SetText(LogBuffer); }
+                catch (Exception ex) { Debug.WriteLine($"Clipboard failure: {ex.Message}"); }
             });
         }
 

@@ -23,12 +23,31 @@ param(
     [string]$TemplateAdditionalInstructions,
     [string]$ExpertSystemPrompt,
     [switch]$ForceAIAgainstIdenticalBundle,
-    [switch]$NoClipboard
+    [switch]$NoClipboard,
+    [switch]$NonInteractive
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$script:SentinelUtf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = $script:SentinelUtf8NoBom
+[Console]::OutputEncoding = $script:SentinelUtf8NoBom
+$OutputEncoding = $script:SentinelUtf8NoBom
+
+$env:NO_COLOR = '1'
+$env:FORCE_COLOR = '0'
+$env:TERM = 'dumb'
+$env:PYTHONUTF8 = '1'
+$env:DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION = '0'
+
+try {
+    if ($PSStyle) {
+        $PSStyle.OutputRendering = 'PlainText'
+    }
+}
+catch {
+}
 
 $script:ToolkitDir = $PSScriptRoot
 $script:LastAgentFailure = $null
@@ -59,7 +78,7 @@ function Write-UILog {
         Write-SentinelStatus -Message $Message -Type $statusType
     }
     catch {
-        Write-Host $Message
+        [Console]::Out.WriteLine($Message)
     }
 }
 
@@ -489,12 +508,17 @@ function Resolve-SniperRequestedPaths {
     param(
         [string]$ProjectRootPath,
         [System.IO.FileInfo[]]$AllFiles,
-        [string[]]$RequestedPaths
+        [string[]]$RequestedPaths,
+        [switch]$NonInteractive
     )
 
     $normalizedRequestedPaths = @($RequestedPaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     if ($normalizedRequestedPaths.Count -gt 0) {
         return $normalizedRequestedPaths
+    }
+
+    if ($NonInteractive) {
+        throw 'No modo sniper não interativo, informe -SelectedPaths com pelo menos um arquivo ou diretorio.'
     }
 
     $relativeOptions = @(
@@ -1233,9 +1257,16 @@ function Resolve-DocumentModeFromExtractionMode {
 }
 
 function Resolve-BundleMode {
-    param([string]$BundleMode)
+    param(
+        [string]$BundleMode,
+        [switch]$NonInteractive
+    )
 
     if ($BundleMode -in @('full', 'blueprint', 'sniper', 'txtExport')) { return $BundleMode }
+
+    if ($NonInteractive) {
+        throw "Modo de extração obrigatório em execução não interativa. Use -BundleMode full, blueprint, sniper ou txtExport."
+    }
 
     Write-Host ""
     Write-Host "  1. Modo de Extracao:" -ForegroundColor Cyan
@@ -1262,9 +1293,16 @@ function Resolve-BundleMode {
 }
 
 function Resolve-RouteMode {
-    param([string]$RouteMode)
+    param(
+        [string]$RouteMode,
+        [switch]$NonInteractive
+    )
 
     if ($RouteMode -eq 'director' -or $RouteMode -eq 'executor') { return $RouteMode }
+
+    if ($NonInteractive) {
+        throw "Rota obrigatória em execução não interativa. Use -RouteMode director ou executor."
+    }
 
     Write-Host "  Fluxo de Saida:" -ForegroundColor Cyan
     Write-Host "    [1] Via Diretor          (mantem camada analitica)"
@@ -1286,10 +1324,14 @@ function Resolve-RouteMode {
 }
 
 function Resolve-IAOptions {
-    param([bool]$SendToAI, [bool]$DeterministicDirector)
+    param(
+        [bool]$SendToAI,
+        [bool]$DeterministicDirector,
+        [switch]$NonInteractive
+    )
 
     # Se qualquer flag de IA foi ativada explicitamente via CLI, respeitar sem perguntar
-    if ($SendToAI -or $DeterministicDirector) {
+    if ($SendToAI -or $DeterministicDirector -or $NonInteractive) {
         return [pscustomobject]@{ SendToAI = $SendToAI; DeterministicDirector = $DeterministicDirector }
     }
 
@@ -1307,7 +1349,11 @@ function Resolve-IAOptions {
 }
 
 function Resolve-Provider {
-    param([string]$Provider, [bool]$SendToAI)
+    param(
+        [string]$Provider,
+        [bool]$SendToAI,
+        [switch]$NonInteractive
+    )
 
     # Sem IA ativa, provider nao e relevante — retornar groq como fallback silencioso
     if (-not $SendToAI) {
@@ -1319,6 +1365,14 @@ function Resolve-Provider {
     }
 
     if ($Provider -in @('groq', 'gemini', 'openai', 'anthropic')) { return $Provider }
+
+    if ($NonInteractive) {
+        if ([string]::IsNullOrWhiteSpace($Provider)) {
+            return 'groq'
+        }
+
+        throw "Provider inválido em execução não interativa: $Provider"
+    }
 
     Write-Host "  2. IA Orquestradora:" -ForegroundColor Cyan
     Write-Host "    [1] Groq"
@@ -1344,7 +1398,11 @@ function Resolve-Provider {
 }
 
 function Resolve-AIPromptMode {
-    param([string]$AIPromptMode, [bool]$SendToAI)
+    param(
+        [string]$AIPromptMode,
+        [bool]$SendToAI,
+        [switch]$NonInteractive
+    )
 
     # Sem IA ativa, modo de customizacao nao e relevante
     if (-not $SendToAI) {
@@ -1356,6 +1414,14 @@ function Resolve-AIPromptMode {
     }
 
     if ($AIPromptMode -in @('default', 'template', 'expert')) { return $AIPromptMode }
+
+    if ($NonInteractive) {
+        if ([string]::IsNullOrWhiteSpace($AIPromptMode)) {
+            return 'default'
+        }
+
+        throw "Modo de customização inválido em execução não interativa: $AIPromptMode"
+    }
 
     Write-Host "  Modo de Customizacao:" -ForegroundColor Cyan
     Write-Host "    [1] Default"
@@ -1826,12 +1892,12 @@ function Resolve-BundlePreflightGate {
 $script:AllowedExtensions = @(
     ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
     ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift",
-    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml"
+    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml", ".cs"
 )
 $script:SignatureExtensions = @(
     ".tsx", ".ts", ".js", ".jsx", ".css", ".html", ".json", ".prisma", ".sql", ".yaml", ".md",
     ".py", ".java", ".cs", ".c", ".cpp", ".h", ".hpp", ".go", ".rb", ".php", ".rs", ".swift",
-    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml"
+    ".kt", ".scala", ".dart", ".r", ".sh", ".bat", ".ps1", ".csv", ".psm1", ".xaml", ".cs"
 )
 $script:IgnoredDirs = @(
     "node_modules", ".git", "dist", "build", ".next", ".cache", "out",
@@ -2041,13 +2107,13 @@ Write-Host "   SENTINEL HEADLESS — Configuracao" -ForegroundColor Cyan
 Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
 
-$ResolvedBundleMode = Resolve-BundleMode     -BundleMode $BundleMode
-$ResolvedRouteMode = Resolve-RouteMode      -RouteMode  $RouteMode
-$iaOptions = Resolve-IAOptions      -SendToAI $SendToAI.IsPresent -DeterministicDirector $DeterministicDirector.IsPresent
+$ResolvedBundleMode = Resolve-BundleMode     -BundleMode $BundleMode -NonInteractive:$NonInteractive
+$ResolvedRouteMode = Resolve-RouteMode      -RouteMode  $RouteMode -NonInteractive:$NonInteractive
+$iaOptions = Resolve-IAOptions      -SendToAI $SendToAI.IsPresent -DeterministicDirector $DeterministicDirector.IsPresent -NonInteractive:$NonInteractive
 $ResolvedSendToAI = $iaOptions.SendToAI
 $ResolvedDeterministicDirector = $iaOptions.DeterministicDirector
-$ResolvedProvider = Resolve-Provider       -Provider $Provider     -SendToAI $ResolvedSendToAI
-$ResolvedAIPromptMode = Resolve-AIPromptMode   -AIPromptMode $AIPromptMode -SendToAI $ResolvedSendToAI
+$ResolvedProvider = Resolve-Provider       -Provider $Provider     -SendToAI $ResolvedSendToAI -NonInteractive:$NonInteractive
+$ResolvedAIPromptMode = Resolve-AIPromptMode   -AIPromptMode $AIPromptMode -SendToAI $ResolvedSendToAI -NonInteractive:$NonInteractive
 # ────────────────────────────────────────────────────────────────────────────
 
 $choice = Resolve-ChoiceFromBundleMode      -ModeValue $ResolvedBundleMode
@@ -2070,7 +2136,7 @@ $filesToProcess = @()
 $unselectedFiles = @()
 
 if ($choice -eq '3') {
-    $resolvedSelectedPaths = @(Resolve-SniperRequestedPaths -ProjectRootPath (Get-Location).Path -AllFiles $foundFiles -RequestedPaths $SelectedPaths)
+    $resolvedSelectedPaths = @(Resolve-SniperRequestedPaths -ProjectRootPath (Get-Location).Path -AllFiles $foundFiles -RequestedPaths $SelectedPaths -NonInteractive:$NonInteractive)
     $filesToProcess = @(Resolve-SelectedFilesForSniper -ProjectRootPath (Get-Location).Path -AllFiles $foundFiles -RequestedPaths $resolvedSelectedPaths)
     $selectedMap = @{}
     foreach ($file in $filesToProcess) {

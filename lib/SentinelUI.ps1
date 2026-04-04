@@ -72,8 +72,8 @@ function Write-SentinelStatus {
     $color = switch ($Type) {
         'Success' { $SentinelTheme.Success }
         'Warning' { $SentinelTheme.Warning }
-        'Error'   { $SentinelTheme.Error }
-        default   { $SentinelTheme.Primary }
+        'Error' { $SentinelTheme.Error }
+        default { $SentinelTheme.Primary }
     }
 
     Write-SentinelText -Text (" {0} {1}" -f $glyph, $Message) -Color $color

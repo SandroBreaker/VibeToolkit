@@ -2982,7 +2982,7 @@ async function main(): Promise<void> {
 
     const provider = normalizeProviderName(args.provider);
     const modelOverride = args.model;
-    const executorTarget = (args.executorTarget ?? "AI Studio Apps").trim();
+    const executorTarget = (args.executorTarget ?? "ChatGPT").trim();
     const promptConfigFilePath = args.promptConfigFilePath;
     const explicitProjectName = args.projectName;
     const explicitOutputPath = args.outputPath;

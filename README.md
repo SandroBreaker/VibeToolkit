@@ -2,9 +2,10 @@
 
 Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturados do projeto** e **gerar artefatos prontos para Diretor/Executor** no fluxo de engenharia agêntica.
 
-O projeto combina um **HUD em PowerShell/WinForms**, módulos PowerShell para descoberta e serialização de contexto, e um agente TypeScript para saída estruturada e integração com provider de IA quando aplicável.
+O projeto combina um **HUD moderno em WPF (WPF/XAML)**, módulos PowerShell para descoberta e serialização de contexto, e um agente TypeScript para saída estruturada e integração com provider de IA quando aplicável.
 
-> Estado documental desta versão: este README foi reconstruído a partir do bundle/manual visível do projeto e do material complementar anexado no artefato enviado.
+> [!NOTE]
+> Este projeto foi evoluído de uma interface WinForms básica para um HUD robusto em WPF, garantindo melhor performance e experiência visual "glassmorphism" no Windows.
 
 ---
 
@@ -14,7 +15,8 @@ O VibeToolkit foi desenhado para transformar uma pasta de código em artefatos o
 
 Capacidades centrais:
 
-- **Bundler**: consolida arquivos relevantes do projeto em um artefato legível.
+- **Bundler Engine**: consolida arquivos relevantes do projeto em um artefato legível (via `project-bundler-cli.ps1`).
+- **WPF HUD**: interface gráfica rica para controle do processo de bundler (via `project-bundler-hud.ps1`).
 - **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e superfícies de integração.
 - **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
 - **Route modes**:
@@ -30,103 +32,75 @@ Capacidades centrais:
 
 ### 1. Camada de entrada / HUD
 
+Arquivos principais:
+
+- `project-bundler-hud.ps1`: Ponto de entrada para a interface gráfica.
+- `lib/SentinelHud.ps1`: Orquestrador da HUD WPF.
+- `lib/SentinelHud.xaml`: Definição visual (XAML) do dashboard.
+- `lib/SentinelHudViewModel.cs`: Lógica de binding e estado da UI em C#.
+
+A HUD utiliza **WPF (Windows Presentation Foundation)** para uma identidade visual premium:
+
+- Design moderno com transparência e bordas arredondadas.
+- Feedback de execução em tempo real com barra de progresso e log detalhado.
+- Seleção intuitiva de pastas e modos operacionais.
+
+### 2. Camada de Engine CLI
+
 Arquivo principal:
 
-- `project-bundler.ps1`
+- `project-bundler-cli.ps1`
 
-Responsabilidades visíveis:
+Responsabilidades:
 
-- bootstrap do toolkit;
-- carregamento da UI Sentinel (`lib/SentinelUI.ps1`);
-- inicialização de WinForms;
-- definição do ponto de entrada operacional do bundler;
-- orquestração do fluxo de geração dos artefatos.
+- bootstrap do toolkit em modo headless;
+- orquestração do fluxo de geração dos artefatos sem necessidade de UI.
 
-A HUD usa a biblioteca `SentinelUI.ps1` para identidade visual e feedback de execução, com:
-
-- header ASCII “SENTINEL”;
-- mensagens de status coloridas;
-- menu e spinner simples no console.
-
-### 2. Camada de utilitários PowerShell
+### 3. Camada de utilitários PowerShell
 
 #### `modules/VibeBundleWriter.psm1`
-
 Fornece funções de IO e serialização seguras:
-
-- leitura de arquivos com detecção de encoding UTF-8/UTF-16/UTF-32;
+- leitura de arquivos com detecção de encoding (UTF-8/UTF-16/UTF-32);
 - escrita UTF-8 com ou sem BOM;
-- geração de fences Markdown seguros;
-- resolução e materialização de contexto momentum;
-- mapeamento de extensões para linguagem de bloco de código.
+- geração de fences Markdown seguros.
 
 #### `modules/VibeDirectorProtocol.psm1`
-
 Centraliza a construção de slices e headers de protocolo para os dois papéis do sistema:
-
-- labels de extração (`FULL`, `BLUEPRINT`, `SNIPER`);
-- slices de modo Diretor;
-- slices de modo Executor;
 - cabeçalhos ELITE v3.1 e ELITE v4.1;
-- seções de metadata, governança, engenharia de meta-prompt e contexto momentum.
+- seções de metadata, governança e contexto momentum.
 
 #### `modules/VibeFileDiscovery.psm1`
-
-Responsável por descoberta recursiva de arquivos relevantes e exclusão de artefatos gerados automaticamente, como:
-
-- `_BUNDLER__*`
-- `_BLUEPRINT__*`
-- `_SELECTIVE__*`
-- `_COPIAR_TUDO__*`
-- `_INTELIGENTE__*`
-- `_MANUAL__*`
-- `_AI_CONTEXT_*`
-- `_ai_*`
+Responsável por descoberta recursiva de arquivos relevantes e exclusão de artefatos gerados automaticamente (como `_BUNDLER__*`, `_ai_*`, etc).
 
 #### `modules/VibeSignatureExtractor.psm1`
+Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, com suporte para:
+- PowerShell, TypeScript/JavaScript, C#, Python, Go, Rust.
 
-Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, com suporte visível para:
+### 4. Camada de agente TypeScript
 
-- PowerShell (`function`, `filter`, `param`);
-- TypeScript/JavaScript (`interface`, `type`, `enum`, `const`, `function`, `class`);
-- além de padrões para outras linguagens como C#, Python, Go e Rust.
+Arquivo principal: `groq-agent.ts`
 
-### 3. Camada de agente TypeScript
-
-Arquivo principal:
-
-- `groq-agent.ts`
-
-Responsabilidades visíveis:
-
+Responsabilidades:
 - definição dos tipos centrais do pipeline;
-- configuração de `routeMode`, `extractionMode`, `documentMode`, provider e modos de prompt;
-- registro de templates operacionais por cenário;
-- classificação de falhas de provider (`AUTH_ERROR`, `RATE_LIMIT`, `NETWORK_ERROR`, `PARSE_ERROR`, `PROVIDER_DOWN`, `CONFIG_ERROR`, `PAYLOAD_TOO_LARGE`);
-- geração de saída estruturada para Director/Executor;
-- suporte a template determinístico `director_meta_v1`;
-- emissão de marcadores estruturados como `[_ai_]` e `[AI_ERROR]` para consumo pelo PowerShell.
+- integração com providers (Groq, Gemini, OpenAI, Anthropic);
+- suporte a template determinístico `director_meta_v1`.
 
-### 4. Camada de reparo local
+### 5. Camada de reparo local
 
-Arquivo auxiliar:
-
-- `patch_agent.js`
-
-Função:
-
-- aplicar reparos conhecidos e seguros no `groq-agent.ts`;
-- validar se fragmentos sintaticamente perigosos ainda existem;
-- gerar backup `.bak` antes de sobrescrever o agente quando houver mudança.
+Arquivo auxiliar: `patch_agent.js`
+- aplicar reparos conhecidos e seguros no `groq-agent.ts`.
 
 ---
 
-## Estrutura visível do projeto
+## Estrutura do projeto
 
 ```text
 .
 ├─ lib/
-│  └─ SentinelUI.ps1
+│  ├─ SentinelHud.ps1        # Script da HUD WPF
+│  ├─ SentinelHud.xaml       # View (XAML)
+│  ├─ SentinelHudViewModel.cs # ViewModel (C#)
+│  └─ SentinelUI.ps1         # Helpers de UI Console
 ├─ modules/
 │  ├─ VibeBundleWriter.psm1
 │  ├─ VibeDirectorProtocol.psm1
@@ -134,269 +108,123 @@ Função:
 │  └─ VibeSignatureExtractor.psm1
 ├─ groq-agent.ts
 ├─ patch_agent.js
-├─ project-bundler.ps1
+├─ project-bundler-hud.ps1   # Entry point HUD
+├─ project-bundler-cli.ps1   # Entry point CLI
 ├─ package.json
-├─ tsconfig.json
-├─ PROTOCOLO-OPERACIONAL-ajustado.md
-└─ PROTOCOLO-OPERACIONAL.json
+└─ tsconfig.json
 ```
-
-Estrutura confirmada pelo bundle manual enviado.
 
 ---
 
 ## Modos operacionais
 
 ### Route mode
-
 - `director`: prepara contexto analítico e meta-prompt para o Executor.
 - `executor`: prepara contexto direto para implementação.
 
 ### Extraction mode
-
 - `full`: visão ampla do projeto contido no bundle.
 - `blueprint`: foco em contratos, assinaturas e organização.
-- `sniper`: recorte manual/parcial, sem extrapolação.
-
-### Document mode
-
-- `full`
-- `manual`
-
-### Prompt modes visíveis no agente
-
-- `default`
-- `template`
-- `expertOverride`
-
-### Providers tipados no agente
-
-- `groq`
-- `gemini`
-- `openai`
-- `anthropic`
-- `local`
-
----
-
-## Templates operacionais visíveis
-
-No `groq-agent.ts`, o registro de presets inclui, entre outros:
-
-### Para Director
-
-- `director.full.diagnostic`
-- `director.full.feature-planning`
-- `director.full.architecture-review`
-- `director.full.hardening`
-- `director_meta_v1` (template determinístico local)
-
-### Para Executor
-
-- `executor.full.surgical-patch`
-- `executor.full.feature-implementation`
-- `executor.full.safe-refactor`
-- `executor.full.regression-fix`
-
----
-
-## Fluxo operacional resumido
-
-```text
-Projeto alvo
-   ↓
-project-bundler.ps1
-   ↓
-carrega SentinelUI + módulos PowerShell
-   ↓
-descobre arquivos relevantes
-   ↓
-extrai conteúdo / assinaturas / contexto momentum
-   ↓
-monta artefato conforme routeMode + extractionMode
-   ↓
-(opcional) delega ao groq-agent.ts
-   ↓
-gera saída final Markdown/JSON pronta para uso
-```
-
-Esse desenho é sustentado pela combinação do bootstrap do `project-bundler.ps1`, pelos módulos de descoberta/escrita/protocolo e pelos tipos e templates do `groq-agent.ts`.
+- `sniper`: recorte manual/parcial.
 
 ---
 
 ## Requisitos
 
 ### Ambiente Windows
-
-O projeto usa:
-
-- **PowerShell**;
-- **System.Windows.Forms**;
-- **System.Drawing**.
-
-Isso indica execução primária em ambiente Windows com .NET disponível para WinForms.
+- **PowerShell 7.0+** (recomendado);
+- **.NET Desktop Runtime** (para suporte a WPF);
+- Windows 10/11 para melhor compatibilidade com o HUD.
 
 ### Node.js / TypeScript
+- **Node.js** 18+;
+- Dependências: `dotenv`, `groq-sdk`.
 
-Dependências declaradas:
-
-```json
-{
-  "dependencies": {
-    "dotenv": "^17.3.1",
-    "groq-sdk": "^0.37.0"
-  },
-  "devDependencies": {
-    "@types/node": "^25.3.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  }
-}
-```
-
-O `tsconfig.json` compila com:
-
-- `target: ES2022`
-- `module: CommonJS`
-- `strict: true`
-- `outDir: ./dist`
+---
 
 ---
 
 ## Instalação
 
-### 1. Instalar dependências Node
+1. **Clonar/Mover para o Diretório Padrão** (Recomendado):
+   Para que os scripts do menu de contexto funcionem sem ajustes manuais, instale o toolkit em:
+   `C:\dev\VibeToolkit`
 
-```bash
-npm install
-```
+2. **Instalar dependências Node**:
+   ```bash
+   npm install
+   ```
 
-### 2. Garantir política de execução adequada no PowerShell
+3. **Permissões PowerShell**:
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   ```
 
-Exemplo comum para sessão atual:
+4. **Configurar .env**:
+   Crie um `.env` com sua `GROQ_API_KEY` ou outras chaves necessárias.
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-```
+---
 
-> Necessário quando o ambiente bloquear scripts `.ps1` não assinados.
+## Menu de Contexto (Windows)
 
-### 3. Configurar variáveis de ambiente
+O VibeToolkit oferece integração direta com o Windows Explorer para facilitar o empacotamento de pastas e unidades.
 
-Crie um arquivo `.env` na raiz quando for usar provider remoto.
+1. **Instalação**:
+   - Execute o arquivo `install-vibe-menu.reg`.
+   - Isso adicionará duas opções ao clicar com o botão direito em pastas ou no fundo do diretório:
+     - **VibeToolkit: Abrir HUD (WPF)**: Inicia a interface gráfica (HUD).
+     - **VibeToolkit: Abrir Terminal (CLI)**: Inicia o processo em modo headless diretamente no terminal.
 
-Exemplo mínimo para Groq:
+2. **Desinstalação**:
+   - Execute o arquivo `uninstall-vibe-menu.reg` para remover as entradas do registro.
 
-```env
-GROQ_API_KEY=seu_token_aqui
-```
-
-> O bundle visível mostra uso de `dotenv/config` no agente TypeScript.
+> [!IMPORTANT]
+> Se você optar por instalar o toolkit em um diretório diferente de `C:\dev\VibeToolkit`, deverá atualizar os caminhos nos arquivos `install-vibe-menu.reg`, `run-vibe-toolkit.vbs` e `run-vibe-headless.vbs` antes de importar o registro.
 
 ---
 
 ## Como executar
 
-### Executar o bundler na pasta atual
-
+### Iniciar o HUD WPF (Recomendado)
 ```powershell
-.\project-bundler.ps1
+.\project-bundler-hud.ps1
 ```
 
-### Executar apontando para uma pasta-alvo
-
+### Executar via CLI (Headless)
 ```powershell
-.\project-bundler.ps1 -Path "C:\dev\SeuProjeto"
+.\project-bundler-cli.ps1 -Path "C:\dev\SeuProjeto"
 ```
-
-O script recebe um parâmetro `Path` com default `"."`.
-
----
-
-## Utilitário de reparo do agente
-
-Quando houver quebra conhecida no `groq-agent.ts`, execute:
-
-```bash
-node patch_agent.js
-```
-
-Comportamento esperado:
-
-- verifica se `groq-agent.ts` existe;
-- aplica correções de ranges conhecidos;
-- valida fragmentos perigosos;
-- cria backup `groq-agent.ts.bak` antes de sobrescrever.
 
 ---
 
 ## Artefatos e convenções
 
-O toolkit diferencia arquivos-fonte de artefatos gerados. Alguns padrões ignorados pela descoberta:
+O toolkit diferencia arquivos-fonte de artefatos gerados. Padrões ignorados automaticamente:
+- `_BUNDLER__*`, `_BLUEPRINT__*`, `_AI_CONTEXT_*`, `_ai_*`.
 
-- `_Diretor_BUNDLER__*`
-- `_Executor_BUNDLER__*`
-- `_BLUEPRINT__*`
-- `_SELECTIVE__*`
-- `_COPIAR_TUDO__*`
-- `_INTELIGENTE__*`
-- `_MANUAL__*`
-- `_AI_CONTEXT_*`
-- `_ai_*`
-
-Também há suporte a **context momentum**, buscando o JSON mais recente com padrão `_ai_` válido para enriquecer o próximo ciclo.
+O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*.json`) para enriquecer o próximo ciclo de engenharia.
 
 ---
 
-## Padrões de projeto observados
+## Padrões de projeto
 
 - **Strict mode** em módulos PowerShell.
+- **MVVM simplificado** para o HUD WPF (XAML + ViewModel).
 - **Tipagem forte** no agente TypeScript.
-- **Compatibilidade com leitura parcial/manual**, evitando inferência fora do recorte.
-- **Saída operacional estruturada**, com protocolos explícitos para Diretor e Executor.
-- **Blindagem de encoding** para reduzir corrupção de texto e mojibake.
-- **Tratamento de erro classificado** no agente remoto/local.
-
----
-
-## Limitações visíveis neste recorte
-
-Este README foi atualizado com base no material visível do bundle/manual enviado. Portanto:
-
-- o comportamento completo da HUD WinForms não está totalmente documentado neste recorte;
-- scripts adicionais de build, publish ou automação não aparecem além do que foi anexado;
-- o conteúdo integral do `README.md` antigo não estava claramente disponível no recorte principal, então esta versão foi reestruturada a partir da arquitetura real visível.
-
----
-
-## Próximos pontos naturais para documentação futura
-
-- mapa completo da HUD e seus controles;
-- exemplos de artefatos gerados por cada modo;
-- CLI/flags documentadas por cenário;
-- fluxo determinístico local versus fluxo com provider remoto;
-- troubleshooting de policy do PowerShell e parsing do agente.
+- **Blindagem de encoding** para evitar corrupção de texto.
+- **Tratamento de erro classificado** no pipeline do agente.
 
 ---
 
 ## Referência rápida
 
 ### Arquivos centrais
-
-- `project-bundler.ps1`
-- `lib/SentinelUI.ps1`
+- `project-bundler-hud.ps1` / `project-bundler-cli.ps1`
+- `lib/SentinelHud.ps1`
 - `modules/VibeBundleWriter.psm1`
 - `modules/VibeDirectorProtocol.psm1`
-- `modules/VibeFileDiscovery.psm1`
-- `modules/VibeSignatureExtractor.psm1`
 - `groq-agent.ts`
 - `patch_agent.js`
 
-### Stack visível
-
-- PowerShell
-- WinForms
-- Node.js
-- TypeScript
-- dotenv
-- groq-sdk
+### Stack
+- PowerShell, WPF, C#, Node.js, TypeScript.

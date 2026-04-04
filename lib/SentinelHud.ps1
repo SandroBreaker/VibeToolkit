@@ -875,6 +875,218 @@ function global:Set-SentinelSelectedComboByTag {
     }
 }
 
+function global:Start-SentinelHudStreamReadTask {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.StreamReader]$Reader
+    )
+
+    return $Reader.ReadLineAsync()
+}
+
+function global:Flush-SentinelHudCompletedStreamTask {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$State,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TaskKey,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ReaderKey,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Window]$Window,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Controls.ListBox]$LogList,
+
+        [string]$Prefix = ''
+    )
+
+    while ($true) {
+        $task = $State[$TaskKey]
+        if ($null -eq $task -or -not $task.IsCompleted) {
+            break
+        }
+
+        try {
+            $line = $task.GetAwaiter().GetResult()
+        }
+        catch {
+            Add-SentinelHudLogLine -Window $Window -LogList $LogList -Message ("Falha ao ler stream do processo: {0}" -f $_.Exception.Message)
+            $State[$TaskKey] = $null
+            break
+        }
+
+        if ($null -eq $line) {
+            $State[$TaskKey] = $null
+            break
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            $message = if ([string]::IsNullOrWhiteSpace($Prefix)) { $line } else { "{0}{1}" -f $Prefix, $line }
+            Add-SentinelHudLogLine -Window $Window -LogList $LogList -Message $message
+        }
+
+        $reader = $State[$ReaderKey]
+        if ($null -eq $reader) {
+            $State[$TaskKey] = $null
+            break
+        }
+
+        $State[$TaskKey] = Start-SentinelHudStreamReadTask -Reader $reader
+    }
+}
+
+function global:Drain-SentinelHudRemainingStreamContent {
+    param(
+        [AllowNull()]
+        [System.IO.StreamReader]$Reader,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Window]$Window,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Controls.ListBox]$LogList,
+
+        [string]$Prefix = ''
+    )
+
+    if ($null -eq $Reader) {
+        return
+    }
+
+    try {
+        $remaining = $Reader.ReadToEnd()
+    }
+    catch {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($remaining)) {
+        return
+    }
+
+    $lines = $remaining -split "`r?`n"
+    foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        $message = if ([string]::IsNullOrWhiteSpace($Prefix)) { $line } else { "{0}{1}" -f $Prefix, $line }
+        Add-SentinelHudLogLine -Window $Window -LogList $LogList -Message $message
+    }
+}
+
+function global:Complete-SentinelHudProcessRun {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Controls,
+
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Window]$Window,
+
+        [Parameter(Mandatory = $true)]
+        [hashtable]$State,
+
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.HashSet[string]]$SelectedItems,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BundleMode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RouteMode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Provider,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AIPromptMode,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$SendToAI,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$DeterministicDirector,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPath
+    )
+
+    $process = $State.Process
+    if ($null -eq $process) {
+        return
+    }
+
+    $timer = $State.MonitorTimer
+    if ($timer) {
+        try {
+            $timer.Stop()
+        }
+        catch {
+        }
+    }
+
+    try {
+        $process.WaitForExit()
+    }
+    catch {
+    }
+
+    Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
+    Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+    Drain-SentinelHudRemainingStreamContent -Reader $State.StdOutReader -Window $Window -LogList $Controls.lstLog
+    Drain-SentinelHudRemainingStreamContent -Reader $State.StdErrReader -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+
+    try {
+        $exitCode = $process.ExitCode
+        $summary = @(
+            "ExitCode: $exitCode"
+            "Modo: $BundleMode"
+            "Rota: $RouteMode"
+            "Provider: $Provider"
+            "Prompt IA: $AIPromptMode"
+            "SendToAI: $SendToAI"
+            "DeterministicDirector: $DeterministicDirector"
+            "Selecionados no Sniper: $($SelectedItems.Count)"
+            "Path: $TargetPath"
+        ) -join [Environment]::NewLine
+
+        Set-SentinelHudExecutionSummary -Window $Window -SummaryBox $Controls.txtExecutionSummary -Content $summary
+
+        if ($exitCode -eq 0) {
+            Set-SentinelHudFooterStatus -Window $Window -FooterStatus $Controls.txtFooterStatus -RunState $Controls.txtRunState -Message 'Execução concluída sem explodir. HUD mantida aberta.' -Badge 'Concluído'
+        }
+        else {
+            Set-SentinelHudFooterStatus -Window $Window -FooterStatus $Controls.txtFooterStatus -RunState $Controls.txtRunState -Message ("Execução encerrada com falha. ExitCode={0}" -f $exitCode) -Badge 'Falhou'
+        }
+    }
+    catch {
+        Add-SentinelHudLogLine -Window $Window -LogList $Controls.lstLog -Message ("Falha no pós-processamento da execução: {0}" -f $_.Exception.Message)
+        Set-SentinelHudFooterStatus -Window $Window -FooterStatus $Controls.txtFooterStatus -RunState $Controls.txtRunState -Message 'Execução finalizada, mas o pós-processamento da HUD falhou. Janela preservada.' -Badge 'Atenção'
+    }
+    finally {
+        try {
+            $process.Dispose()
+        }
+        catch {
+        }
+
+        $State.Process = $null
+        $State.StdOutReader = $null
+        $State.StdErrReader = $null
+        $State.StdOutTask = $null
+        $State.StdErrTask = $null
+        $State.MonitorTimer = $null
+        $State.ExitHandled = $false
+
+        Set-SentinelHudInputsEnabled -Controls $Controls -Enabled $true
+    }
+}
+
 function global:Start-SentinelHudProcessMonitoring {
     param(
         [Parameter(Mandatory = $true)]
@@ -887,7 +1099,32 @@ function global:Start-SentinelHudProcessMonitoring {
         [System.Windows.Window]$Window,
 
         [Parameter(Mandatory = $true)]
-        [hashtable]$State
+        [hashtable]$State,
+
+        [AllowEmptyCollection()]
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.HashSet[string]]$SelectedItems,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BundleMode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RouteMode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Provider,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AIPromptMode,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$SendToAI,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$DeterministicDirector,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPath
     )
 
     if (-not $Process.Start()) {
@@ -895,9 +1132,48 @@ function global:Start-SentinelHudProcessMonitoring {
     }
 
     $State.Process = $Process
+    $State.StdOutReader = $Process.StandardOutput
+    $State.StdErrReader = $Process.StandardError
+    $State.StdOutTask = Start-SentinelHudStreamReadTask -Reader $State.StdOutReader
+    $State.StdErrTask = Start-SentinelHudStreamReadTask -Reader $State.StdErrReader
+    $State.ExitHandled = $false
+
+    $timer = [System.Windows.Threading.DispatcherTimer]::new()
+    $timer.Interval = [TimeSpan]::FromMilliseconds(120)
+    $timer.Add_Tick({
+            try {
+                Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
+                Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+
+                if ($State.Process -and $State.Process.HasExited -and -not $State.ExitHandled) {
+                    $State.ExitHandled = $true
+                    Complete-SentinelHudProcessRun -Controls $Controls -Window $Window -State $State -SelectedItems $SelectedItems -BundleMode $BundleMode -RouteMode $RouteMode -Provider $Provider -AIPromptMode $AIPromptMode -SendToAI $SendToAI -DeterministicDirector $DeterministicDirector -TargetPath $TargetPath
+                }
+            }
+            catch {
+                try {
+                    Add-SentinelHudLogLine -Window $Window -LogList $Controls.lstLog -Message ("Falha no monitoramento da execução: {0}" -f $_.Exception.Message)
+                    Set-SentinelHudFooterStatus -Window $Window -FooterStatus $Controls.txtFooterStatus -RunState $Controls.txtRunState -Message 'Monitoramento da HUD falhou, mas a janela foi preservada.' -Badge 'Erro'
+                }
+                catch {
+                }
+
+                if ($State.MonitorTimer) {
+                    try {
+                        $State.MonitorTimer.Stop()
+                    }
+                    catch {
+                    }
+                }
+
+                Set-SentinelHudInputsEnabled -Controls $Controls -Enabled $true
+            }
+        }.GetNewClosure())
+
+    $State.MonitorTimer = $timer
+
     Add-SentinelHudLogLine -Window $Window -LogList $Controls.lstLog -Message ("Processo iniciado. PID={0}" -f $Process.Id)
-    $Process.BeginOutputReadLine()
-    $Process.BeginErrorReadLine()
+    $timer.Start()
 
     return $Process
 }
@@ -942,6 +1218,8 @@ function global:New-SentinelHudProcess {
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $psi.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
     $psi.CreateNoWindow = $true
 
     $null = $psi.ArgumentList.Add('-NoProfile')
@@ -980,66 +1258,6 @@ function global:New-SentinelHudProcess {
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $psi
-    $process.EnableRaisingEvents = $true
-
-    $logList = $Controls.lstLog
-    $footerStatus = $Controls.txtFooterStatus
-    $runState = $Controls.txtRunState
-    $summaryBox = $Controls.txtExecutionSummary
-
-    $outputHandler = [System.Diagnostics.DataReceivedEventHandler]({
-            param($sender, $args)
-            if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
-                Add-SentinelHudLogLine -Window $Window -LogList $logList -Message $args.Data
-            }
-        }.GetNewClosure())
-
-    $errorHandler = [System.Diagnostics.DataReceivedEventHandler]({
-            param($sender, $args)
-            if (-not [string]::IsNullOrWhiteSpace($args.Data)) {
-                Add-SentinelHudLogLine -Window $Window -LogList $logList -Message ("[stderr] {0}" -f $args.Data)
-            }
-        }.GetNewClosure())
-
-    $exitedHandler = [System.EventHandler]({
-            param($sender, $args)
-
-            $exitCode = $sender.ExitCode
-            $summary = @(
-                "ExitCode: $exitCode"
-                "Modo: $bundleMode"
-                "Rota: $routeMode"
-                "Provider: $provider"
-                "Prompt IA: $aiPromptMode"
-                "SendToAI: $sendToAI"
-                "DeterministicDirector: $deterministicDirector"
-                "Selecionados no Sniper: $($SelectedItems.Count)"
-                "Path: $TargetPath"
-            ) -join [Environment]::NewLine
-
-            Set-SentinelHudExecutionSummary -Window $Window -SummaryBox $summaryBox -Content $summary
-
-            if ($exitCode -eq 0) {
-                Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message 'Execução concluída sem explodir. Evoluímos.' -Badge 'Concluído'
-            }
-            else {
-                Set-SentinelHudFooterStatus -Window $Window -FooterStatus $footerStatus -RunState $runState -Message ("Execução encerrada com falha. ExitCode={0}" -f $exitCode) -Badge 'Falhou'
-            }
-
-            $Window.Dispatcher.BeginInvoke([System.Action] {
-                    Set-SentinelHudInputsEnabled -Controls $Controls -Enabled $true
-                }) | Out-Null
-        }.GetNewClosure())
-
-    $process.add_OutputDataReceived($outputHandler)
-    $process.add_ErrorDataReceived($errorHandler)
-    $process.add_Exited($exitedHandler)
-
-    $State.Process = $process
-    $State.OutputHandler = $outputHandler
-    $State.ErrorHandler = $errorHandler
-    $State.ExitedHandler = $exitedHandler
-
     return $process
 }
 
@@ -1162,10 +1380,14 @@ function global:Start-SentinelBundlerHud {
     }
 
     $state = @{
-        Process       = $null
-        OutputHandler = $null
-        ErrorHandler  = $null
-        ExitedHandler = $null
+        Process      = $null
+        StdOutReader = $null
+        StdErrReader = $null
+        StdOutTask   = $null
+        StdErrTask   = $null
+        MonitorTimer = $null
+        ExitHandled  = $false
+        AllowClose   = $false
     }
 
     Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
@@ -1224,12 +1446,13 @@ function global:Start-SentinelBundlerHud {
 
     $controls.btnRun.Add_Click({
             try {
+                $state.AllowClose = $false
                 Set-SentinelHudInputsEnabled -Controls $controls -Enabled $false
                 Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Disparando engine headless...' -Badge 'Executando'
                 Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'Inicializando execução...'
 
                 $process = New-SentinelHudProcess -HeadlessScriptPath $HeadlessScriptPath -TargetPath $resolvedTargetPath -Controls $controls -Window $window -SelectedItems $selectedItems -State $state
-                Start-SentinelHudProcessMonitoring -Process $process -Controls $controls -Window $window -State $state | Out-Null
+                Start-SentinelHudProcessMonitoring -Process $process -Controls $controls -Window $window -State $state -SelectedItems $selectedItems -BundleMode ([string]$controls.cmbBundleMode.SelectedItem.Tag) -RouteMode ([string]$controls.cmbRouteMode.SelectedItem.Tag) -Provider ([string]$controls.cmbProvider.SelectedItem.Tag) -AIPromptMode ([string]$controls.cmbAIPromptMode.SelectedItem.Tag) -SendToAI ([bool]$controls.chkSendToAI.IsChecked) -DeterministicDirector ([bool]$controls.chkDeterministicDirector.IsChecked) -TargetPath $resolvedTargetPath | Out-Null
             }
             catch {
                 Set-SentinelHudInputsEnabled -Controls $controls -Enabled $true
@@ -1239,10 +1462,28 @@ function global:Start-SentinelBundlerHud {
         }.GetNewClosure())
 
     $controls.btnClose.Add_Click({
+            $state.AllowClose = $true
             $window.Close()
-        })
+        }.GetNewClosure())
 
     $window.Add_Closing({
+            param($sender, $eventArgs)
+
+            if (-not $state.AllowClose) {
+                $eventArgs.Cancel = $true
+                Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'HUD preservada. Use o botão Fechar para encerrar manualmente.' -Badge 'Ativa'
+                Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'Tentativa de fechamento automático bloqueada.'
+                return
+            }
+
+            if ($state.MonitorTimer) {
+                try {
+                    $state.MonitorTimer.Stop()
+                }
+                catch {
+                }
+            }
+
             if ($state.Process -and -not $state.Process.HasExited) {
                 try {
                     $state.Process.Kill()
@@ -1250,7 +1491,7 @@ function global:Start-SentinelBundlerHud {
                 catch {
                 }
             }
-        })
+        }.GetNewClosure())
 
     $null = $window.ShowDialog()
 }

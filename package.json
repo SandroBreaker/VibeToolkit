@@ -2,7 +2,7 @@
   "name": "vibetoolkit",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "groq-agent.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -11,8 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "dotenv": "^17.3.1",
-    "groq-sdk": "^0.37.0"
+    "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

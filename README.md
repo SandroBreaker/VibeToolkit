@@ -5,7 +5,7 @@ Toolkit operacional para **empacotar contexto técnico**, **extrair recortes est
 O projeto combina um **HUD moderno em WPF (WPF/XAML)**, módulos PowerShell para descoberta e serialização de contexto, e um agente TypeScript para saída estruturada e integração com provider de IA quando aplicável.
 
 > [!NOTE]
-> Este projeto foi evoluído de uma interface WinForms básica para um HUD robusto em WPF, garantindo melhor performance e experiência visual "glassmorphism" no Windows.
+> Este projeto foi evoluído de uma interface WinForms básica para um HUD robusto em WPF, garantindo melhor performance e experiência visual "identidade visual cyber-noir (fundo sólido `#0B1118`, alto contraste, sem blur).
 
 ---
 

@@ -820,8 +820,7 @@ function Invoke-OrchestratorAgent {
         & $emitAgentLog $Line $DefaultColor
     }.GetNewClosure()
 
-    $bundleParent = Split-Path $BundlePath -Parent
-    $routeToken = if ($OutputRouteModeValue -eq 'executor') { 'executor' } else { 'diretor' }
+     $bundleParent = Split-Path $BundlePath -Parent
     $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?', ''
     $resultMetaFileName = Get-AIResultOutputFileName -ProjectNameValue $normalizedProjectName -RouteMode $OutputRouteModeValue -ExtractionMode $BundleModeValue
     $resultMetaPath = if (-not [string]::IsNullOrWhiteSpace($ExplicitResultMetaPath)) {

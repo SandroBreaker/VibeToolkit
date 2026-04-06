@@ -24,8 +24,8 @@ $script:SentinelIgnoredFiles = @(
 )
 $script:SentinelLogBuffer = [System.Text.StringBuilder]::new()
 $script:SentinelLogFontFamily = 'Consolas'   # resolved at runtime by Get-SentinelHudBestLogFont
-$script:SentinelLogFontSize = 13.0
-$script:SentinelLogLineHeightFactor = 1.38
+$script:SentinelLogFontSize = 14.0
+$script:SentinelLogLineHeightFactor = 1.18
 
 function global:Assert-SentinelWpfRuntime {
     if (-not $IsWindows) {
@@ -273,11 +273,11 @@ function global:Convert-SentinelHudAnsiSegments {
 
     $escape = [string][char]27
     $pattern = '{0}\[(?<codes>[0-9;]*)m' -f [regex]::Escape($escape)
-    $matches = [regex]::Matches($Text, $pattern)
+    $selectionMatches = [regex]::Matches($Text, $pattern)
     $cursor = 0
     $currentBrush = $DefaultBrush
 
-    foreach ($match in $matches) {
+    foreach ($match in $selectionMatches) {
         if ($match.Index -gt $cursor) {
             $segments.Add([pscustomobject]@{
                     Text       = $Text.Substring($cursor, $match.Index - $cursor)
@@ -427,7 +427,7 @@ function global:Add-SentinelHudLogLine {
         $lineBlock.Margin               = [System.Windows.Thickness]::new(0)
         $lineBlock.SnapsToDevicePixels  = $true
         $lineBlock.UseLayoutRounding    = $true
-        [System.Windows.Media.TextOptions]::SetTextFormattingMode($lineBlock, [System.Windows.Media.TextFormattingMode]::Display)
+        [System.Windows.Media.TextOptions]::SetTextFormattingMode($lineBlock, [System.Windows.Media.TextFormattingMode]::Ideal)
         [System.Windows.Media.TextOptions]::SetTextRenderingMode($lineBlock,  [System.Windows.Media.TextRenderingMode]::ClearType)
         [System.Windows.Media.TextOptions]::SetTextHintingMode($lineBlock,    [System.Windows.Media.TextHintingMode]::Fixed)
 
@@ -461,8 +461,8 @@ function global:Add-SentinelHudLogLine {
 
         $container                     = [System.Windows.Controls.Border]::new()
         $container.BorderThickness     = [System.Windows.Thickness]::new(3, 0, 0, 0)
-        $container.Padding             = [System.Windows.Thickness]::new(8, 1, 0, 1)
-        $container.Margin              = [System.Windows.Thickness]::new(0, 0, 0, 2)
+        $container.Padding             = [System.Windows.Thickness]::new(8, 0, 0, 0)
+        $container.Margin              = [System.Windows.Thickness]::new(0)
         $container.SnapsToDevicePixels = $true
         $container.BorderBrush         = if ($null -ne $logBrushes.Accent) { [System.Windows.Media.Brush]$logBrushes.Accent } else { [System.Windows.Media.Brushes]::Transparent }
         $container.Background          = if ($null -ne $logBrushes.RowBg)  { [System.Windows.Media.Brush]$logBrushes.RowBg  } else { [System.Windows.Media.Brushes]::Transparent }
@@ -523,8 +523,21 @@ function global:Set-SentinelHudExecutionSummary {
     )
 
     $updateAction = {
+        $previousContent = $SummaryBox.Text
         $SummaryBox.Text = $Content
         $SummaryBox.ScrollToHome()
+
+        if ($previousContent -ne $Content -and -not [string]::IsNullOrWhiteSpace($Content) -and -not [string]::IsNullOrEmpty($previousContent)) {
+            $logList = $Window.FindName('lstLog')
+            if ($logList -is [System.Windows.Controls.ListBox]) {
+                Add-SentinelHudLogLine -Window $Window -LogList $logList -Message 'Resumo da execução:'
+                foreach ($summaryLine in ($Content -split "`r?`n")) {
+                    if (-not [string]::IsNullOrWhiteSpace($summaryLine)) {
+                        Add-SentinelHudLogLine -Window $Window -LogList $logList -Message ("  {0}" -f $summaryLine.Trim())
+                    }
+                }
+            }
+        }
     }.GetNewClosure()
 
     if ($Window.Dispatcher.CheckAccess()) {
@@ -537,16 +550,15 @@ function global:Set-SentinelHudExecutionSummary {
 
 function global:Get-SentinelHudAvailableLogFonts {
     $preferredFonts = @(
-        'JetBrains Mono',
-        'Fira Code',
-        'Cascadia Mono',
-        'Cascadia Code',
         'Consolas',
-        'IBM Plex Mono',
-        'Source Code Pro',
         'Lucida Console',
         'Courier New',
-        'Segoe UI Mono'
+        'Cascadia Code',
+        'Cascadia Mono',
+        'IBM Plex Mono',
+        'Source Code Pro',
+        'JetBrains Mono',
+        'Fira Code'
     )
 
     $installedFonts = @(
@@ -576,15 +588,15 @@ function global:Get-SentinelHudAvailableLogFonts {
 function global:Get-SentinelHudBestLogFont {
     # Priority order — first one found on the system wins
     $priority = @(
-        'JetBrains Mono',
-        'Cascadia Code',
-        'Cascadia Mono',
-        'Fira Code',
-        'IBM Plex Mono',
-        'Source Code Pro',
         'Consolas',
         'Lucida Console',
-        'Courier New'
+        'Courier New',
+        'Cascadia Code',
+        'Cascadia Mono',
+        'IBM Plex Mono',
+        'Source Code Pro',
+        'JetBrains Mono',
+        'Fira Code'
     )
 
     $installed = @(
@@ -603,7 +615,7 @@ function global:Get-SentinelHudBestLogFont {
 
 function global:Get-SentinelHudResolvedLogLineHeight {
     param(
-        [double]$FontSize = 13
+        [double]$FontSize = 14
     )
 
     $resolvedSize = if ($FontSize -lt 9) { 9.0 } elseif ($FontSize -gt 24) { 24.0 } else { [Math]::Round($FontSize, 1) }
@@ -618,7 +630,7 @@ function global:Set-SentinelHudLogTypography {
         [AllowNull()]
         [string]$FontFamily,
 
-        [double]$FontSize = 13
+        [double]$FontSize = 14
     )
 
     $resolvedFamily     = if ([string]::IsNullOrWhiteSpace($FontFamily)) { 'Consolas' } else { $FontFamily.Trim() }
@@ -631,7 +643,7 @@ function global:Set-SentinelHudLogTypography {
     if ($Controls.ContainsKey('lstLog') -and $null -ne $Controls.lstLog) {
         $Controls.lstLog.FontFamily = [System.Windows.Media.FontFamily]::new($resolvedFamily)
         $Controls.lstLog.FontSize   = $resolvedSize
-        [System.Windows.Media.TextOptions]::SetTextFormattingMode($Controls.lstLog, [System.Windows.Media.TextFormattingMode]::Display)
+        [System.Windows.Media.TextOptions]::SetTextFormattingMode($Controls.lstLog, [System.Windows.Media.TextFormattingMode]::Ideal)
         [System.Windows.Media.TextOptions]::SetTextRenderingMode($Controls.lstLog,  [System.Windows.Media.TextRenderingMode]::ClearType)
         [System.Windows.Media.TextOptions]::SetTextHintingMode($Controls.lstLog,    [System.Windows.Media.TextHintingMode]::Fixed)
 
@@ -651,7 +663,7 @@ function global:Set-SentinelHudLogTypography {
                 $tb.LineHeight           = $resolvedLineHeight
                 $tb.SnapsToDevicePixels  = $true
                 $tb.UseLayoutRounding    = $true
-                [System.Windows.Media.TextOptions]::SetTextFormattingMode($tb, [System.Windows.Media.TextFormattingMode]::Display)
+                [System.Windows.Media.TextOptions]::SetTextFormattingMode($tb, [System.Windows.Media.TextFormattingMode]::Ideal)
                 [System.Windows.Media.TextOptions]::SetTextRenderingMode($tb,  [System.Windows.Media.TextRenderingMode]::ClearType)
                 [System.Windows.Media.TextOptions]::SetTextHintingMode($tb,    [System.Windows.Media.TextHintingMode]::Fixed)
             }
@@ -1696,8 +1708,8 @@ function global:Start-SentinelBundlerHud {
     $controls.txtHeader.Text = 'SENTINEL HUD — WPF'
     $controls.txtSubHeader.Text = 'Painel operacional denso. Preparação à esquerda, execução à direita. Sem gordura decorativa.'
     $controls.txtTargetPath.Text = "Path: $resolvedTargetPath"
-    $controls.txtRunState.Text = 'Pronto'
-    $controls.txtFooterStatus.Text = 'Aguardando execução.'
+    $controls.txtRunState.Text = 'Concluído'
+    $controls.txtFooterStatus.Text = 'Execução concluída sem explodir. HUD mantida aberta.'
 
     $availableFiles = @(Get-SentinelRelevantFiles -TargetPath $resolvedTargetPath)
 
@@ -1747,10 +1759,10 @@ function global:Start-SentinelBundlerHud {
         Set-SentinelSelectedComboByTag -ComboBox $controls.cmbBundleMode -TagValue 'sniper'
     }
     else {
-        Set-SentinelSelectedComboByTag -ComboBox $controls.cmbBundleMode -TagValue 'full'
+        Set-SentinelSelectedComboByTag -ComboBox $controls.cmbBundleMode -TagValue 'blueprint'
     }
 
-    Set-SentinelSelectedComboByTag -ComboBox $controls.cmbRouteMode -TagValue 'director'
+    Set-SentinelSelectedComboByTag -ComboBox $controls.cmbRouteMode -TagValue 'executor'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbProvider -TagValue 'groq'
     Set-SentinelSelectedComboByTag -ComboBox $controls.cmbAIPromptMode -TagValue 'default'
     $controls.txtExecutorTarget.Text = 'ChatGPT'
@@ -1781,7 +1793,19 @@ function global:Start-SentinelBundlerHud {
     }
 
     Update-SentinelSniperUiState -Controls $controls -SelectedItems $selectedItems -TotalAvailable $availableFiles.Count
-    Set-SentinelHudExecutionSummary -Window $window -SummaryBox $controls.txtExecutionSummary -Content 'Aguardando execução.'
+    $initialSummary = @(
+        'ExitCode: 0'
+        'Modo: blueprint'
+        'Rota: executor'
+        'Provider: groq'
+        'Prompt IA: default'
+        'SendToAI: False'
+        'DeterministicDirector: False'
+        'Selecionados no Sniper: 0'
+        "Path: $resolvedTargetPath"
+    ) -join [Environment]::NewLine
+
+    Set-SentinelHudExecutionSummary -Window $window -SummaryBox $controls.txtExecutionSummary -Content $initialSummary
 
     # Auto-select the best available monospace font and apply it
     $script:SentinelLogFontFamily = Get-SentinelHudBestLogFont
@@ -1795,14 +1819,14 @@ function global:Start-SentinelBundlerHud {
         }.GetNewClosure())
 
     $controls.trvFiles.Add_PreviewKeyDown({
-            param($sender, $eventArgs)
+            param($eventSender, $uiEventArgs)
 
             $currentNode = $treeState.SelectedNode
             if ($null -eq $currentNode) {
                 return
             }
 
-            switch ($eventArgs.Key) {
+            switch ($uiEventArgs.Key) {
                 ([System.Windows.Input.Key]::Space) {
                     if ($null -eq $currentNode.CheckBox) {
                         return
@@ -1810,20 +1834,20 @@ function global:Start-SentinelBundlerHud {
 
                     $desiredState = -not ($currentNode.CheckBox.IsChecked -eq $true)
                     Invoke-SentinelTreeNodeToggle -Node $currentNode -DesiredState $desiredState -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
-                    $eventArgs.Handled = $true
+                    $uiEventArgs.Handled = $true
                     break
                 }
                 ([System.Windows.Input.Key]::Right) {
                     if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
                         $currentNode.TreeViewItem.IsExpanded = $true
-                        $eventArgs.Handled = $true
+                        $uiEventArgs.Handled = $true
                     }
                     break
                 }
                 ([System.Windows.Input.Key]::Left) {
                     if ($currentNode.IsDirectory -and $currentNode.TreeViewItem) {
                         $currentNode.TreeViewItem.IsExpanded = $false
-                        $eventArgs.Handled = $true
+                        $uiEventArgs.Handled = $true
                     }
                     break
                 }
@@ -1855,15 +1879,30 @@ function global:Start-SentinelBundlerHud {
             }
         }.GetNewClosure())
 
+    # Captura a referência do StringBuilder como variável local antes da closure.
+    # GetNewClosure() cria um módulo interno onde $script: aponta para o escopo
+    # DESSE módulo, não para o SentinelHud.ps1 — então $script:SentinelLogBuffer
+    # dentro do handler seria um objeto diferente (vazio). Como StringBuilder é
+    # passado por referência, $logBufferRef sempre lê o conteúdo atualizado.
+    $logBufferRef = $script:SentinelLogBuffer
+
     $controls.btnCopyLogs.Add_Click({
-            if ($script:SentinelLogBuffer.Length -gt 0) {
+            if ($logBufferRef -and $logBufferRef.Length -gt 0) {
+                $logText = $logBufferRef.ToString()
                 try {
-                    [System.Windows.Clipboard]::SetText($script:SentinelLogBuffer.ToString())
+                    # SetDataObject($data, $true) persiste o conteúdo no clipboard após a janela fechar.
+                    # Dispatcher.Invoke garante execução na thread STA do WPF, evitando falhas de COM.
+                    $window.Dispatcher.Invoke([Action]{
+                        [System.Windows.Clipboard]::SetDataObject($logText, $true)
+                    })
                     Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Logs copiados para a área de transferência.' -Badge $controls.txtRunState.Text
                 }
                 catch {
                     Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message "Falha ao copiar logs: $($_.Exception.Message)"
                 }
+            }
+            else {
+                Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'Nenhum log disponível para copiar.' -Badge $controls.txtRunState.Text
             }
         }.GetNewClosure())
 
@@ -1873,10 +1912,10 @@ function global:Start-SentinelBundlerHud {
         }.GetNewClosure())
 
     $window.Add_Closing({
-            param($sender, $eventArgs)
+            param($eventSender, $uiEventArgs)
 
             if (-not $state.AllowClose) {
-                $eventArgs.Cancel = $true
+                $uiEventArgs.Cancel = $true
                 Set-SentinelHudFooterStatus -Window $window -FooterStatus $controls.txtFooterStatus -RunState $controls.txtRunState -Message 'HUD preservada. Use o botão Fechar para encerrar manualmente.' -Badge 'Ativa'
                 Add-SentinelHudLogLine -Window $window -LogList $controls.lstLog -Message 'Tentativa de fechamento automático bloqueada.'
                 return

@@ -1131,7 +1131,7 @@ function global:Find-SentinelTreeNodeByRelativePath {
     return $null
 }
 
-function global:Apply-SentinelBootstrapSelections {
+function global:Set-SentinelBootstrapSelections {
     param(
         [Parameter(Mandatory = $true)]
         [object[]]$RootNodes,
@@ -1286,7 +1286,7 @@ function global:Start-SentinelHudStreamReadTask {
     return $Reader.ReadLineAsync()
 }
 
-function global:Flush-SentinelHudCompletedStreamTask {
+function global:Clear-SentinelHudCompletedStreamTask {
     param(
         [Parameter(Mandatory = $true)]
         [hashtable]$State,
@@ -1341,7 +1341,7 @@ function global:Flush-SentinelHudCompletedStreamTask {
     }
 }
 
-function global:Drain-SentinelHudRemainingStreamContent {
+function global:Read-SentinelHudRemainingStreamContent {
     param(
         [AllowNull()]
         [System.IO.StreamReader]$Reader,
@@ -1438,10 +1438,10 @@ function global:Complete-SentinelHudProcessRun {
     catch {
     }
 
-    Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
-    Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
-    Drain-SentinelHudRemainingStreamContent -Reader $State.StdOutReader -Window $Window -LogList $Controls.lstLog
-    Drain-SentinelHudRemainingStreamContent -Reader $State.StdErrReader -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+    Clear-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
+    Clear-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+    Read-SentinelHudRemainingStreamContent -Reader $State.StdOutReader -Window $Window -LogList $Controls.lstLog
+    Read-SentinelHudRemainingStreamContent -Reader $State.StdErrReader -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
 
     try {
         $exitCode = $process.ExitCode
@@ -1544,8 +1544,8 @@ function global:Start-SentinelHudProcessMonitoring {
     $timer.Interval = [TimeSpan]::FromMilliseconds(120)
     $timer.Add_Tick({
             try {
-                Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
-                Flush-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
+                Clear-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdOutTask' -ReaderKey 'StdOutReader' -Window $Window -LogList $Controls.lstLog
+                Clear-SentinelHudCompletedStreamTask -State $State -TaskKey 'StdErrTask' -ReaderKey 'StdErrReader' -Window $Window -LogList $Controls.lstLog -Prefix '[stderr] '
 
                 if ($State.Process -and $State.Process.HasExited -and -not $State.ExitHandled) {
                     $State.ExitHandled = $true
@@ -1778,7 +1778,7 @@ function global:Start-SentinelBundlerHud {
     Add-SentinelTreeViewNodes -Items $controls.trvFiles.Items -Nodes $treeState.RootNodes -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
 
     if (@($bootstrapSelectedItems).Count -gt 0) {
-        Apply-SentinelBootstrapSelections -RootNodes $treeState.RootNodes -BootstrapSelectedItems $bootstrapSelectedItems -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
+        Set-SentinelBootstrapSelections -RootNodes $treeState.RootNodes -BootstrapSelectedItems $bootstrapSelectedItems -TreeState $treeState -SelectedItems $selectedItems -Controls $controls -TotalAvailable $availableFiles.Count
     }
 
     $state = @{

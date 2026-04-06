@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
 $script:VibeUtf8NoBom = New-Object System.Text.UTF8Encoding($false, $false)
 $script:VibeUtf8Bom = New-Object System.Text.UTF8Encoding($true, $false)
@@ -175,10 +175,10 @@ function Get-VibeMarkdownFenceToken {
 
     $safeContent = if ($null -eq $Content) { '' } else { [string]$Content }
     $pattern = [regex]::Escape($FenceChar) + '+'
-    $matches = [regex]::Matches($safeContent, $pattern)
+    $regexMatches = [regex]::Matches($safeContent, $pattern)
     $maxRunLength = 0
 
-    foreach ($match in $matches) {
+    foreach ($match in $regexMatches) {
         if ($match.Length -gt $maxRunLength) {
             $maxRunLength = $match.Length
         }

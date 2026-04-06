@@ -624,7 +624,7 @@ function Resolve-SelectedFilesForSniper {
     return @($selectedMap.Values | Sort-Object FullName)
 }
 
-function Try-CopyToClipboard {
+function Set-ClipboardData {
     param([AllowEmptyString()][string]$Content)
 
     if ($NoClipboard) { return $false }
@@ -1892,7 +1892,7 @@ function New-DeterministicMetaPromptArtifact {
     return ($lines -join "`n")
 }
 
-function Normalize-BundleContentForDiff {
+function Format-BundleContentForDiff {
     param([AllowEmptyString()][string]$Content)
     if ($null -eq $Content) { return "" }
     return (($Content -replace "`0", "") -replace "`r`n", "`n").TrimEnd()
@@ -1900,7 +1900,7 @@ function Normalize-BundleContentForDiff {
 
 function Get-BundleContentHash {
     param([AllowEmptyString()][string]$Content)
-    $normalized = Normalize-BundleContentForDiff -Content $Content
+    $normalized = Format-BundleContentForDiff -Content $Content
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
@@ -1915,7 +1915,7 @@ function Read-NormalizedBundleFile {
     param([string]$Path)
     if (-not (Test-Path $Path)) { return $null }
     $raw = Read-LocalTextArtifact -Path $Path
-    return (Normalize-BundleContentForDiff -Content $raw)
+    return (Format-BundleContentForDiff -Content $raw)
 }
 
 function Resolve-BundlePreflightGate {
@@ -1923,7 +1923,7 @@ function Resolve-BundlePreflightGate {
         [string]$OfficialBundlePath,
         [AllowEmptyString()][string]$NewBundleContent
     )
-    $normalizedNew = Normalize-BundleContentForDiff -Content $NewBundleContent
+    $normalizedNew = Format-BundleContentForDiff -Content $NewBundleContent
     $newHash = Get-BundleContentHash -Content $normalizedNew
 
     $officialExists = Test-Path $OfficialBundlePath
@@ -2411,7 +2411,7 @@ try {
 
         Write-LocalTextArtifact -Path $deterministicOutputFullPath -Content $deterministicContent -UseBom
         $deterministicTokenEstimate = [math]::Round($deterministicContent.Length / 4)
-        $copiedDeterministic = Try-CopyToClipboard -Content $deterministicContent
+        $copiedDeterministic = Set-ClipboardData -Content $deterministicContent
 
         if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
             Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemePink
@@ -2544,7 +2544,7 @@ try {
     }
 
     $tokenEstimate = [math]::Round($finalContent.Length / 4)
-    $copied = Try-CopyToClipboard -Content $finalContent
+    $copied = Set-ClipboardData -Content $finalContent
 
     if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
         Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemePink
@@ -2626,7 +2626,7 @@ try {
 
         if ($finalPromptPath) {
             $finalSummarizedContent = Read-LocalTextArtifact -Path $finalPromptPath
-            if (Try-CopyToClipboard -Content $finalSummarizedContent) {
+            if (Set-ClipboardData -Content $finalSummarizedContent) {
                 Write-UILog -Message 'Prompt final preparado e copiado para o clipboard.' -Color $ThemeSuccess
             }
             else {

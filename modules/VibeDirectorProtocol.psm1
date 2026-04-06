@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 
 function Get-VibeExtractionModeLabel {
     param([string]$ExtractionMode)
@@ -288,6 +288,7 @@ function Get-VibeDirectorHighFidelityMetaPromptEngineeringLayersSection {
     else {
         'não identificados objetivamente'
     }
+    $targetFilesTag = '`' + $targetFilesValue + '`'
 
     return @"
 ### <meta_prompt_engineering_layers>
@@ -301,7 +302,7 @@ Para cada solicitação, o prompt gerado para o **Executor (Sniper)** deve segui
 
 #### <layer_2_technical_blueprint>
 * **Contrato Executável:** Traduza requisitos em assinaturas, esquemas de dados e fluxos determinísticos.
-* **Arquivos-Alvo:** `$targetFilesValue`
+* **Arquivos-Alvo:** $targetFilesTag
 </layer_2_technical_blueprint>
 
 #### <layer_3_context_momentum>

@@ -945,8 +945,30 @@ function Invoke-OrchestratorAgent {
 
     $script:LastAgentFailure = $null
 
+    $agentJsonOutput = $null
+    try {
+        $stdoutLines = @($stdoutTranscript | Where-Object { $_.stream -eq 'stdout' } | ForEach-Object { $_.line })
+        $jsonStart = -1
+        for ($i = $stdoutLines.Count - 1; $i -ge 0; $i--) {
+            if ($stdoutLines[$i] -match '^\{\s*$') {
+                $jsonStart = $i
+                break
+            }
+        }
+        if ($jsonStart -ge 0) {
+            $candidateJson = ($stdoutLines[$jsonStart..($stdoutLines.Count - 1)]) -join "`n"
+            $parsed = $candidateJson | ConvertFrom-Json
+            if ($parsed.ok -eq $true) {
+                $agentJsonOutput = $parsed
+            }
+        }
+    } catch {}
+
     $resultMetaPathFromDisk = $null
-    if (Test-Path $resultMetaPath -PathType Leaf) {
+    if ($agentJsonOutput -and $agentJsonOutput.resultMetaPath -and (Test-Path $agentJsonOutput.resultMetaPath -PathType Leaf)) {
+        $resultMetaPathFromDisk = $agentJsonOutput.resultMetaPath
+    }
+    elseif (Test-Path $resultMetaPath -PathType Leaf) {
         $resultMetaPathFromDisk = $resultMetaPath
     }
 
@@ -992,11 +1014,16 @@ function Invoke-OrchestratorAgent {
             $meta.winnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
             $meta.winnerModel = if ($winner.Model) { $winner.Model } else { $meta.model }
 
+            $finalOutputPath = $meta.outputPath
+            if ($agentJsonOutput -and $agentJsonOutput.outputPath) {
+                $finalOutputPath = $agentJsonOutput.outputPath
+            }
+
             $metaJson = $meta | ConvertTo-Json -Depth 20
             Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson
 
             return [pscustomobject]@{
-                OutputPath     = $meta.outputPath
+                OutputPath     = $finalOutputPath
                 ResultMetaPath = $resultMetaPathFromDisk
                 WinnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
                 WinnerModel    = if ($winner.Model) { $winner.Model } else { $meta.model }
@@ -1004,7 +1031,7 @@ function Invoke-OrchestratorAgent {
         }
         catch {
             return [pscustomobject]@{
-                OutputPath     = $null
+                OutputPath     = if ($agentJsonOutput) { $agentJsonOutput.outputPath } else { $null }
                 ResultMetaPath = $resultMetaPathFromDisk
                 WinnerProvider = $winner.Provider
                 WinnerModel    = $winner.Model
@@ -1013,8 +1040,8 @@ function Invoke-OrchestratorAgent {
     }
 
     return [pscustomobject]@{
-        OutputPath     = $null
-        ResultMetaPath = $null
+        OutputPath     = if ($agentJsonOutput) { $agentJsonOutput.outputPath } else { $null }
+        ResultMetaPath = if ($agentJsonOutput) { $agentJsonOutput.resultMetaPath } else { $null }
         WinnerProvider = $winner.Provider
         WinnerModel    = $winner.Model
     }
@@ -2438,23 +2465,53 @@ try {
 
     $shouldCallAI = $false
     $shouldPersistOfficialBundle = $true
+    
+    $aiSourceFullPath = $outputFullPath
+    $aiSourceContent = $finalContent
 
     if ($ResolvedSendToAI) {
-        $preflight = Resolve-BundlePreflightGate -OfficialBundlePath $outputFullPath -NewBundleContent $finalContent
+        if ($currentExtractionMode -eq 'full') {
+            Write-UILog -Message 'Modo full detectado com chamada de IA. Resolvendo blueprint (Architect) como artefato-fonte...' -Color $ThemeCyan
+
+            $blueprintOutputFile = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode 'blueprint' -RouteMode $ResolvedRouteMode
+            $blueprintOutputFullPath = Join-Path (Get-Location).Path $blueprintOutputFile
+            
+            $blueprintHeaderContent = Get-VibeProtocolHeaderContent -RouteMode $ResolvedRouteMode -ExtractionMode 'blueprint' -ExecutorTargetValue $ExecutorTarget
+            $blueprintContent = $blueprintHeaderContent + "`n`n"
+
+            if ($ResolvedRouteMode -eq 'director') {
+                $blueprintContent += (Get-MomentumSectionContent -MomentumContext $momentumContext) + "`n`n"
+            }
+            
+            $blueprintContent += "## MODO INTELIGENTE: $projectName`n`n### 1. TECH STACK`n"
+            $packageJsonPathCandidate = Join-Path (Get-Location).Path 'package.json'
+            if (Test-Path $packageJsonPathCandidate -PathType Leaf) {
+                try {
+                    $pkg = (Read-LocalTextArtifact -Path $packageJsonPathCandidate) | ConvertFrom-Json
+                    if ($pkg.dependencies) { $blueprintContent += "* **Deps:** $(($pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
+                    if ($pkg.devDependencies) { $blueprintContent += "* **Dev Deps:** $(($pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
+                } catch {}
+            }
+            $blueprintContent += "`n"
+            
+            $blueprintContent += New-BundlerContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading "### 2. PROJECT STRUCTURE" -ContractsHeading "### 3. CORE DOMAINS & CONTRACTS" -LogExtraction:($false)
+
+            $aiSourceFullPath = $blueprintOutputFullPath
+            $aiSourceContent = $blueprintContent
+        }
+
+        $preflight = Resolve-BundlePreflightGate -OfficialBundlePath $aiSourceFullPath -NewBundleContent $aiSourceContent
 
         if (-not $preflight.OfficialExists) {
-            Write-UILog -Message 'Bundle oficial inexistente. Persistindo nova versão e liberando IA.' -Color $ThemeCyan
+            Write-UILog -Message 'Artefato-fonte oficial inexistente. Persistindo nova versão e liberando IA.' -Color $ThemeCyan
             $shouldCallAI = $true
-            $shouldPersistOfficialBundle = $true
         }
         elseif (-not $preflight.IsIdentical) {
-            Write-UILog -Message 'Diferença detectada no bundle. Atualizando arquivo oficial e liberando IA.' -Color $ThemeCyan
+            Write-UILog -Message 'Diferença detectada no artefato-fonte. Atualizando versão oficial e liberando IA.' -Color $ThemeCyan
             $shouldCallAI = $true
-            $shouldPersistOfficialBundle = $true
         }
         else {
-            Write-UILog -Message 'Conteúdo idêntico detectado entre o bundle oficial e o bundle recém-gerado.' -Color $ThemeWarn
-            $shouldPersistOfficialBundle = $false
+            Write-UILog -Message 'Conteúdo idêntico detectado entre o artefato-fonte oficial e o recém-gerado.' -Color $ThemeWarn
 
             if ($ForceAIAgainstIdenticalBundle) {
                 Write-UILog -Message 'Flag -ForceAIAgainstIdenticalBundle ativa. IA liberada apesar do conteúdo idêntico.' -Color $ThemeCyan
@@ -2465,14 +2522,25 @@ try {
                 $shouldCallAI = $false
             }
         }
+        
+        if ($currentExtractionMode -eq 'full') {
+            if (-not $preflight.IsIdentical -or -not $preflight.OfficialExists) {
+                Write-LocalTextArtifact -Path $aiSourceFullPath -Content $aiSourceContent -UseBom
+                Write-UILog -Message ("Artefato-fonte (blueprint) persisitido em: {0}" -f $aiSourceFullPath) -Color $ThemeSuccess
+            }
+        } else {
+            if ($preflight.IsIdentical -and -not $ForceAIAgainstIdenticalBundle) {
+                $shouldPersistOfficialBundle = $false
+            }
+        }
     }
 
     if ($shouldPersistOfficialBundle) {
         Write-LocalTextArtifact -Path $outputFullPath -Content $finalContent -UseBom
-        Write-UILog -Message ("Bundle oficial salvo em: {0}" -f $outputFullPath) -Color $ThemeSuccess
+        Write-UILog -Message ("Artefato operacional salvo em: {0}" -f $outputFullPath) -Color $ThemeSuccess
     }
     else {
-        Write-UILog -Message 'Bundle oficial preservado sem regravação por não haver diferença de conteúdo.' -Color $ThemeSuccess
+        Write-UILog -Message 'Artefato operacional preservado sem regravação por não haver diferença de conteúdo.' -Color $ThemeSuccess
     }
 
     $tokenEstimate = [math]::Round($finalContent.Length / 4)
@@ -2488,14 +2556,19 @@ try {
         Write-UILog -Message 'Artefato consolidado com sucesso.' -Color $ThemeSuccess
     }
 
-    Write-UILog -Message ("Arquivo: {0}" -f $outputFile)
-    Write-UILog -Message ("Tokens estimados: ~{0}" -f $tokenEstimate)
+    Write-UILog -Message ("Artefato operacional: {0}" -f $outputFile)
+    Write-UILog -Message ("Tokens estimados (operacional): ~{0}" -f $tokenEstimate)
+
+    if ($ResolvedSendToAI) {
+        $aiSourceFileNameForLog = [System.IO.Path]::GetFileName($aiSourceFullPath)
+        Write-UILog -Message ("Artefato-fonte da IA: {0}" -f $aiSourceFileNameForLog)
+    }
 
     if ($copied) {
-        Write-UILog -Message 'Bundle copiado para a área de clipboard.' -Color $ThemeCyan
+        Write-UILog -Message 'Artefato operacional copiado para a área de clipboard.' -Color $ThemeCyan
     }
     else {
-        Write-UILog -Message 'Arquivo salvo. Clipboard indisponível.' -Color $ThemeWarn
+        Write-UILog -Message 'Artefato operacional salvo. Clipboard indisponível.' -Color $ThemeWarn
     }
 
     if ($ResolvedSendToAI -and $shouldCallAI) {
@@ -2520,12 +2593,14 @@ try {
         Write-UILog -Message 'Chamando agente de IA...' -Color $ThemeCyan
         Write-UILog -Message ("Provider primário: {0} | fallback automático ativo." -f $ResolvedProvider) -Color $ThemeCyan
 
+        $aiSourceExtractionMode = if ($currentExtractionMode -eq 'full') { 'blueprint' } else { $currentExtractionMode }
+
         $agentResult = Invoke-OrchestratorAgent `
             -AgentScriptPath $agentScript `
-            -BundlePath $outputFullPath `
+            -BundlePath $aiSourceFullPath `
             -ProjectNameValue $projectName `
             -ExecutorTargetValue $ExecutorTarget `
-            -BundleModeValue $currentExtractionMode `
+            -BundleModeValue $aiSourceExtractionMode `
             -PrimaryProviderValue $ResolvedProvider `
             -OutputRouteModeValue $ResolvedRouteMode `
             -CustomPromptConfigPath $promptConfig.Path
@@ -2537,7 +2612,7 @@ try {
         else {
             $bundleParent = Split-Path $outputFullPath -Parent
             $candidateContextPaths = @(
-                (Join-Path $bundleParent (Get-AIContextOutputFileName -ProjectNameValue $projectName -RouteMode $ResolvedRouteMode -ExtractionMode $currentExtractionMode)),
+                (Join-Path $bundleParent (Get-AIContextOutputFileName -ProjectNameValue $projectName -RouteMode $ResolvedRouteMode -ExtractionMode $aiSourceExtractionMode)),
                 (Join-Path $bundleParent "_AI_CONTEXT_${projectName}.md")
             )
 

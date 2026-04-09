@@ -189,20 +189,43 @@ function Get-VibeMarkdownFenceToken {
 }
 
 function ConvertTo-VibeSafeMarkdownCodeBlock {
+    [CmdletBinding()]
     param(
-        [AllowNull()][string]$Content,
+        [AllowNull()]
+        [string]$Content,
         [string]$Language = '',
         [string]$FenceChar = '`'
     )
 
-    $safeContent = if ($null -eq $Content) { '' } else { [string]$Content }
-    $fence = Get-VibeMarkdownFenceToken -Content $safeContent -FenceChar $FenceChar
-
-    if ([string]::IsNullOrWhiteSpace($Language)) {
-        return $fence + "`n" + $safeContent + "`n" + $fence
+    if ($null -eq $Content) {
+        return ''
     }
 
-    return $fence + $Language + "`n" + $safeContent + "`n" + $fence
+    $normalizedContent = $Content -replace "`r`n", "`n"
+
+    # Conta a maior sequência de backticks consecutivos no conteúdo
+    $maxBackticks = 0
+    $current = 0
+    foreach ($ch in $normalizedContent.ToCharArray()) {
+        if ($ch -eq $FenceChar) {
+            $current++
+            if ($current -gt $maxBackticks) { $maxBackticks = $current }
+        }
+        else {
+            $current = 0
+        }
+    }
+
+    # O fence precisa ter pelo menos maxBackticks + 1
+    $fenceLength = [Math]::Max(3, $maxBackticks + 1)
+    $fence = $FenceChar * $fenceLength
+
+    $langPart = if ([string]::IsNullOrWhiteSpace($Language)) { '' } else { $Language.Trim() }
+
+    # Se o conteúdo terminar com newline, não adicionar outra vazia
+    $trailingNewline = if ($normalizedContent.EndsWith("`n")) { '' } else { "`n" }
+
+    return "${fence}${langPart}`n${normalizedContent}${trailingNewline}${fence}"
 }
 
 function Get-VibeMomentumSectionContent {

@@ -1948,23 +1948,27 @@ function Resolve-BundlePreflightGate {
 }
 
 $script:AllowedExtensions = @(
-    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
-    '.css', '.html', '.json', '.yaml', '.yml', '.xml', '.toml', '.ini',
-    '.md', '.txt',
-    '.py', '.java', '.cs', '.c', '.cpp', '.h', '.hpp', '.go', '.rb', '.php', '.rs', '.swift',
-    '.kt', '.kts', '.scala', '.dart', '.r',
-    '.sh', '.bat', '.ps1', '.psm1',
-    '.sql', '.prisma',
-    '.csv', '.xaml', '.properties', '.gradle', '.reg', '.cmd'
+    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.vue', '.svelte', '.astro',
+    '.css', '.scss', '.sass', '.less', '.html', '.htm', '.xhtml', '.cshtml', '.razor', '.xaml', '.svg',
+    '.json', '.jsonc', '.json5', '.yaml', '.yml', '.xml', '.toml', '.ini', '.cfg', '.conf', '.config',
+    '.properties', '.props', '.targets', '.editorconfig', '.plist', '.pbxproj', '.xcconfig',
+    '.md', '.mdx', '.txt', '.rst', '.adoc', '.tex', '.csv', '.tsv',
+    '.py', '.pyi', '.java', '.cs', '.vb', '.fs', '.fsi', '.fsx', '.c', '.cpp', '.cc', '.cxx', '.h', '.hh', '.hpp', '.hxx',
+    '.go', '.rb', '.php', '.phtml', '.rs', '.swift', '.kt', '.kts', '.scala', '.dart', '.r', '.lua', '.pl', '.pm',
+    '.jl', '.zig', '.nim', '.elm', '.ex', '.exs', '.erl', '.hrl', '.clj', '.cljs', '.cljc', '.edn', '.ml', '.mli',
+    '.sh', '.bash', '.zsh', '.fish', '.ksh', '.bat', '.cmd', '.ps1', '.psm1', '.psd1', '.ps1xml',
+    '.sql', '.prisma', '.graphql', '.gql', '.proto', '.tf', '.tfvars', '.hcl', '.bicep',
+    '.gradle', '.sln', '.csproj', '.vbproj', '.fsproj', '.vcxproj', '.filters', '.reg'
 )
 
 $script:SignatureExtensions = @(
-    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
-    '.py', '.java', '.cs', '.c', '.cpp', '.h', '.hpp', '.go', '.rb', '.php', '.rs', '.swift',
-    '.kt', '.kts', '.scala', '.dart',
-    '.sh', '.bat', '.ps1', '.psm1',
-    '.sql', '.prisma',
-    '.xaml', '.reg', '.cmd'
+    '.tsx', '.ts', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.vue', '.svelte', '.astro',
+    '.py', '.pyi', '.java', '.cs', '.vb', '.fs', '.fsi', '.fsx', '.c', '.cpp', '.cc', '.cxx', '.h', '.hh', '.hpp', '.hxx',
+    '.go', '.rb', '.php', '.phtml', '.rs', '.swift', '.kt', '.kts', '.scala', '.dart', '.r', '.lua',
+    '.pl', '.pm', '.jl', '.zig', '.nim', '.elm', '.ex', '.exs', '.erl', '.hrl', '.clj', '.cljs', '.cljc', '.edn', '.ml', '.mli',
+    '.sh', '.bash', '.zsh', '.fish', '.ksh', '.bat', '.cmd', '.ps1', '.psm1', '.psd1', '.ps1xml',
+    '.sql', '.prisma', '.graphql', '.gql', '.proto', '.tf', '.tfvars', '.hcl', '.bicep',
+    '.cshtml', '.razor', '.xaml', '.xml', '.gradle', '.sln', '.csproj', '.vbproj', '.fsproj', '.vcxproj', '.props', '.targets', '.reg'
 )
 
 $script:IgnoredDirs = @(

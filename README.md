@@ -1,6 +1,6 @@
 # VibeToolkit
 
-Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturados do projeto** e **gerar artefatos prontos para Diretor/Executor** no fluxo de engenharia agêntica.
+Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturados do projeto** e **gerar artefatos prontos para Diretor/Executor** no fluxo de engenharia agêntica – **exclusivamente via linha de comando (CLI/headless)**.
 
 O projeto combina módulos PowerShell para descoberta e serialização de contexto com um agente TypeScript para saída estruturada e integração com providers de IA.
 
@@ -8,20 +8,20 @@ O projeto combina módulos PowerShell para descoberta e serialização de contex
 
 ## Visão geral
 
-O VibeToolkit foi desenhado para transformar uma pasta de código em artefatos operacionais com alto sinal técnico.
+O VibeToolkit transforma uma pasta de código em artefatos operacionais com alto sinal técnico, sem qualquer dependência de interface gráfica.
 
 Capacidades centrais:
 
 - **Bundler Engine**: consolida arquivos relevantes do projeto em um artefato legível.
-- **CLI / Headless**: execução interativa via terminal com seletores de modo e monitoramento de progresso (via `project-bundler-headless.ps1` ou `project-bundler-cli.ps1`).
+- **CLI interativa**: execução via terminal com seletores de modo e monitoramento de progresso (`project-bundler-cli.ps1`).
 - **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e superfícies de integração.
 - **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
 - **Route modes**:
   - **Director**: produz contexto/meta-prompt para análise e especificação.
   - **Executor**: produz contexto pronto para implementação direta.
-- **Deterministic mode**: permite gerar meta-prompt localmente, sem provider remoto.
+- **Deterministic mode**: gera meta-prompt localmente, sem provider remoto.
 - **Momentum context**: reaproveita o último `_ai__*.json` válido como estado anterior.
-- **Safe patching**: inclui utilitário para correção segura de trechos conhecidos do `groq-agent.ts`.
+- **Safe patching**: utilitário `patch_agent.js` para correção segura de trechos conhecidos do `groq-agent.ts`.
 
 ---
 
@@ -32,7 +32,7 @@ Capacidades centrais:
 Arquivos principais:
 
 - `project-bundler-cli.ps1`: Engine canônica com menus interativos e controle total do fluxo.
-- `project-bundler-headless.ps1`: Wrapper de integração — delega para a engine canônica CLI, preservando todos os contratos de parâmetros.
+- `project-bundler-headless.ps1`: Wrapper de integração – delega para a engine canônica CLI, preservando todos os contratos de parâmetros.
 
 ### 2. Camada de utilitários PowerShell
 
@@ -57,9 +57,7 @@ Responsável por descoberta recursiva de arquivos relevantes e exclusão de arte
 
 #### `modules/VibeSignatureExtractor.psm1`
 
-Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, com suporte para:
-
-- PowerShell, TypeScript/JavaScript, C#, Python, Go, Rust.
+Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, com suporte para PowerShell, TypeScript/JavaScript, C#, Python, Go, Rust.
 
 #### `lib/SentinelUI.ps1`
 
@@ -83,12 +81,12 @@ Arquivo auxiliar: `patch_agent.js`
 
 ---
 
-## Estrutura do projeto
+## Estrutura do projeto (CLI‑only)
 
 ```text
 .
 ├─ lib/
-│  └─ SentinelUI.ps1         # Helpers de apresentação textual (CLI)
+│  └─ SentinelUI.ps1         # Helpers de apresentação textual (console)
 ├─ modules/
 │  ├─ VibeBundleWriter.psm1
 │  ├─ VibeDirectorProtocol.psm1
@@ -98,7 +96,7 @@ Arquivo auxiliar: `patch_agent.js`
 ├─ patch_agent.js
 ├─ project-bundler-headless.ps1   # Wrapper/shim de integração
 ├─ project-bundler-cli.ps1        # Engine canônica CLI
-├─ run-vibe-headless.vbs          # Launcher silencioso → projeto-bundler-headless.ps1
+├─ run-vibe-headless.vbs          # Launcher silencioso → project-bundler-headless.ps1
 ├─ install-vibe-menu.ps1          # Instala entrada CLI no menu de contexto
 ├─ uninstall-vibe-menu.ps1        # Remove entradas do menu de contexto
 ├─ package.json
@@ -119,6 +117,7 @@ Arquivo auxiliar: `patch_agent.js`
 - `full`: visão ampla do projeto contido no bundle.
 - `blueprint`: foco em contratos, assinaturas e organização.
 - `sniper`: recorte manual/parcial.
+- `txtExport`: exporta arquivos como texto plano em diretório + ZIP.
 
 ---
 
@@ -126,7 +125,7 @@ Arquivo auxiliar: `patch_agent.js`
 
 ### Ambiente Windows
 
-- **PowerShell 7.2+** (recomendado para melhor performance);
+- **PowerShell 7.2+** (recomendado);
 - Windows 10/11.
 
 ### Node.js / TypeScript
@@ -138,20 +137,15 @@ Arquivo auxiliar: `patch_agent.js`
 
 ## Instalação
 
-1. **Clonar o repositório** em qualquer diretório de sua preferência.
-
+1. **Clonar o repositório** em qualquer diretório.
 2. **Instalar dependências Node**:
-
    ```bash
    npm install
    ```
-
-3. **Permissões PowerShell**:
-
+3. **Permissões PowerShell** (caso necessário):
    ```powershell
    Set-ExecutionPolicy -Scope Process Bypass
    ```
-
 4. **Configurar .env**:
    Crie um `.env` com sua `GROQ_API_KEY` ou outras chaves necessárias.
 
@@ -163,15 +157,15 @@ O VibeToolkit oferece integração direta com o Windows Explorer para facilitar 
 
 1. **Instalação**:
    - Execute `install-vibe-menu.cmd` (ou `install-vibe-menu.ps1` diretamente).
-   - Isso adicionará ao menu de contexto do botão direito em pastas/diretórios:
-     - **VibeToolkit: Abrir Terminal (CLI)**: Inicia a engine interativa diretamente no terminal.
+   - Isso adicionará ao menu de contexto do botão direito em pastas/diretórios a opção:
+     - **VibeToolkit: Abrir Terminal (CLI)** – inicia a engine interativa diretamente no terminal.
 
 2. **Desinstalação**:
    - Execute `uninstall-vibe-menu.cmd` (ou `uninstall-vibe-menu.ps1`).
-   - O script remove entradas atuais e legadas automaticamente.
+   - O script remove todas as entradas (atuais e legadas) automaticamente.
 
 > [!NOTE]
-> O instalador grava o caminho real do clone atual — não exige instalação em `C:\dev\VibeToolkit`.
+> O instalador grava o caminho real do clone atual – não exige instalação em `C:\dev\VibeToolkit`.
 
 ---
 
@@ -183,7 +177,7 @@ O VibeToolkit oferece integração direta com o Windows Explorer para facilitar 
 .\project-bundler-cli.ps1
 ```
 
-### Via wrapper headless (contratos de integração)
+### Via wrapper headless (para integração com launchers)
 
 ```powershell
 .\project-bundler-headless.ps1 -Path "C:\dev\SeuProjeto"
@@ -224,3 +218,4 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 ### Stack
 
 - PowerShell, Node.js, TypeScript.
+```

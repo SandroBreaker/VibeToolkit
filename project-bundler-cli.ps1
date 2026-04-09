@@ -1955,7 +1955,7 @@ $script:AllowedExtensions = @(
     '.kt', '.kts', '.scala', '.dart', '.r',
     '.sh', '.bat', '.ps1', '.psm1',
     '.sql', '.prisma',
-    '.csv', '.xaml', '.properties', '.gradle', '.reg'
+    '.csv', '.xaml', '.properties', '.gradle', '.reg', '.cmd'
 )
 
 $script:SignatureExtensions = @(
@@ -1964,7 +1964,7 @@ $script:SignatureExtensions = @(
     '.kt', '.kts', '.scala', '.dart',
     '.sh', '.bat', '.ps1', '.psm1',
     '.sql', '.prisma',
-    '.xaml', '.reg'
+    '.xaml', '.reg', '.cmd'
 )
 
 $script:IgnoredDirs = @(

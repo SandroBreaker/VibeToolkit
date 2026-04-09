@@ -1,6 +1,18 @@
 Windows Registry Editor Version 5.00
 
-; Remoção completa do Menu do VibeToolkit (incluindo versões HUD, Terminal e Legado)
+; Remoção do Menu do VibeToolkit (portável + legado)
+
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\VibeToolkit]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\VibeToolkit]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\VibeToolkit]
+
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\VibeToolkitHUD]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\VibeToolkitHUD]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\VibeToolkitHUD]
+
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\VibeToolkitTerminal]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\Background\shell\VibeToolkitTerminal]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\VibeToolkitTerminal]
 
 [-HKEY_CLASSES_ROOT\Directory\shell\VibeToolkit]
 [-HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkit]

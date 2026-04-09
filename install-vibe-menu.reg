@@ -1,48 +1,13 @@
 Windows Registry Editor Version 5.00
 
-; Configuração do Menu de Contexto do Windows Explorer com Ícones do PowerShell
-; NOTA: Este arquivo deve ser re-importado se o local da pasta mudar.
-
-; --- HUD WPF ---
-[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkitHUD]
-@="VibeToolkit: Abrir HUD (WPF)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkitHUD\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-toolkit.vbs\" \"%V\""
-
-[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkitHUD]
-@="VibeToolkit: Abrir HUD (WPF)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkitHUD\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-toolkit.vbs\" \"%V\""
-
-[HKEY_CLASSES_ROOT\Drive\shell\VibeToolkitHUD]
-@="VibeToolkit: Abrir HUD (WPF)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Drive\shell\VibeToolkitHUD\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-toolkit.vbs\" \"%1\""
-
-; --- TERMINAL CLI ---
-[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkitTerminal]
-@="VibeToolkit: Abrir Terminal (CLI)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Directory\shell\VibeToolkitTerminal\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-headless.vbs\" \"%V\""
-
-[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkitTerminal]
-@="VibeToolkit: Abrir Terminal (CLI)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Directory\Background\shell\VibeToolkitTerminal\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-headless.vbs\" \"%V\""
-
-[HKEY_CLASSES_ROOT\Drive\shell\VibeToolkitTerminal]
-@="VibeToolkit: Abrir Terminal (CLI)"
-"Icon"="C:\\Program Files\\PowerShell\\7\\pwsh.exe,0"
-
-[HKEY_CLASSES_ROOT\Drive\shell\VibeToolkitTerminal\command]
-@="wscript.exe \"C:\\dev\\VibeToolkit\\run-vibe-headless.vbs\" \"%1\""
+; ARQUIVO LEGADO / DESCONTINUADO.
+; A instalação portátil agora é feita por script para gravar o caminho real do clone atual.
+; Use um destes arquivos no mesmo diretório:
+; - install-vibe-menu.cmd
+; - install-vibe-menu.ps1
+;
+; Motivo: um .reg estático não consegue descobrir automaticamente onde o repositório foi clonado.
+; Manter entradas aqui recriaria o problema de hardcode em caminhos absolutos.
+;
+; O VibeToolkit opera em modo estritamente CLI/headless.
+; A entrada instalada é VibeToolkitTerminal (run-vibe-headless.vbs).

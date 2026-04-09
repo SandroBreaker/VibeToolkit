@@ -2,10 +2,7 @@
 
 Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturados do projeto** e **gerar artefatos prontos para Diretor/Executor** no fluxo de engenharia agêntica.
 
-O projeto combina um **HUD moderno em WPF (WPF/XAML)**, módulos PowerShell para descoberta e serialização de contexto, e um agente TypeScript para saída estruturada e integração com provider de IA quando aplicável.
-
-> [!NOTE]
-> Este projeto foi evoluído de uma interface WinForms básica para um HUD robusto em WPF, garantindo melhor performance e experiência visual "identidade visual cyber-noir (fundo sólido `#0B1118`, alto contraste, sem blur).
+O projeto combina módulos PowerShell para descoberta e serialização de contexto com um agente TypeScript para saída estruturada e integração com providers de IA.
 
 ---
 
@@ -16,8 +13,7 @@ O VibeToolkit foi desenhado para transformar uma pasta de código em artefatos o
 Capacidades centrais:
 
 - **Bundler Engine**: consolida arquivos relevantes do projeto em um artefato legível.
-- **WPF HUD**: interface gráfica moderna (XAML) para controle total do processo com feedback visual.
-- **Headless Interface**: versão otimizada para terminal com seletores interativos (via `project-bundler-headless.ps1`).
+- **CLI / Headless**: execução interativa via terminal com seletores de modo e monitoramento de progresso (via `project-bundler-headless.ps1` ou `project-bundler-cli.ps1`).
 - **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e superfícies de integração.
 - **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
 - **Route modes**:
@@ -31,34 +27,14 @@ Capacidades centrais:
 
 ## Arquitetura
 
-### 1. Camada de entrada / HUD
+### 1. Camada de entrada / CLI
 
 Arquivos principais:
 
-- `project-bundler-hud.ps1`: Ponto de entrada para a interface gráfica.
-- `lib/SentinelHud.ps1`: Orquestrador da HUD WPF.
-- `lib/SentinelHud.xaml`: Definição visual (XAML) do dashboard.
-- `lib/SentinelHudViewModel.cs`: Lógica de binding e estado da UI em C#.
+- `project-bundler-cli.ps1`: Engine canônica com menus interativos e controle total do fluxo.
+- `project-bundler-headless.ps1`: Wrapper de integração — delega para a engine canônica CLI, preservando todos os contratos de parâmetros.
 
-A HUD utiliza **WPF (Windows Presentation Foundation)** para uma identidade visual premium:
-
-- Design moderno "Glassmorphism" com transparência e alta legibilidade (texto em alto contraste).
-- Feedback em tempo real com barra de progresso, logs detalhados e opção **Copy Logs** para exportação rápida do histórico de operação.
-- Seleção intuitiva de pastas e modos operacionais.
-
-### 2. Camada de Engine CLI
-
-Arquivo principal:
-
-- `project-bundler-cli.ps1` e `project-bundler-headless.ps1`
-
-Responsabilidades:
-
-- **CLI Engine**: núcleo de processamento para automação.
-- **Headless CLI**: interface de terminal com menus interativos para seleção Sniper e monitoramento de progresso.
-- orquestração do fluxo de geração dos artefatos sem necessidade de UI.
-
-### 3. Camada de utilitários PowerShell
+### 2. Camada de utilitários PowerShell
 
 #### `modules/VibeBundleWriter.psm1`
 
@@ -85,7 +61,11 @@ Extrai assinaturas relevantes de arquivos para visão arquitetural/blueprint, co
 
 - PowerShell, TypeScript/JavaScript, C#, Python, Go, Rust.
 
-### 4. Camada de agente TypeScript
+#### `lib/SentinelUI.ps1`
+
+Utilitários de apresentação textual para o terminal: tema ANSI, funções de log, menu interativo e spinner. Carregado automaticamente pela engine CLI.
+
+### 3. Camada de agente TypeScript
 
 Arquivo principal: `groq-agent.ts`
 
@@ -95,7 +75,7 @@ Responsabilidades:
 - integração com providers (Groq, Gemini, OpenAI, Anthropic);
 - suporte a template determinístico `director_meta_v1`.
 
-### 5. Camada de reparo local
+### 4. Camada de reparo local
 
 Arquivo auxiliar: `patch_agent.js`
 
@@ -108,10 +88,7 @@ Arquivo auxiliar: `patch_agent.js`
 ```text
 .
 ├─ lib/
-│  ├─ SentinelHud.ps1        # Script da HUD WPF
-│  ├─ SentinelHud.xaml       # View (XAML)
-│  ├─ SentinelHudViewModel.cs # ViewModel (C#)
-│  └─ SentinelUI.ps1         # Helpers de UI Console
+│  └─ SentinelUI.ps1         # Helpers de apresentação textual (CLI)
 ├─ modules/
 │  ├─ VibeBundleWriter.psm1
 │  ├─ VibeDirectorProtocol.psm1
@@ -119,9 +96,11 @@ Arquivo auxiliar: `patch_agent.js`
 │  └─ VibeSignatureExtractor.psm1
 ├─ groq-agent.ts
 ├─ patch_agent.js
-├─ project-bundler-hud.ps1        # Entry point HUD
-├─ project-bundler-headless.ps1   # Entry point Terminal Interativo
-├─ project-bundler-cli.ps1        # Entry point CLI Engine
+├─ project-bundler-headless.ps1   # Wrapper/shim de integração
+├─ project-bundler-cli.ps1        # Engine canônica CLI
+├─ run-vibe-headless.vbs          # Launcher silencioso → projeto-bundler-headless.ps1
+├─ install-vibe-menu.ps1          # Instala entrada CLI no menu de contexto
+├─ uninstall-vibe-menu.ps1        # Remove entradas do menu de contexto
 ├─ package.json
 └─ tsconfig.json
 ```
@@ -148,8 +127,7 @@ Arquivo auxiliar: `patch_agent.js`
 ### Ambiente Windows
 
 - **PowerShell 7.2+** (recomendado para melhor performance);
-- **.NET Desktop Runtime** (para suporte a WPF);
-- Windows 10/11 para melhor compatibilidade com o HUD.
+- Windows 10/11.
 
 ### Node.js / TypeScript
 
@@ -158,13 +136,9 @@ Arquivo auxiliar: `patch_agent.js`
 
 ---
 
----
-
 ## Instalação
 
-1. **Clonar/Mover para o Diretório Padrão** (Recomendado):
-   Para que os scripts do menu de contexto funcionem sem ajustes manuais, instale o toolkit em:
-   `C:\dev\VibeToolkit`
+1. **Clonar o repositório** em qualquer diretório de sua preferência.
 
 2. **Instalar dependências Node**:
 
@@ -188,28 +162,28 @@ Arquivo auxiliar: `patch_agent.js`
 O VibeToolkit oferece integração direta com o Windows Explorer para facilitar o empacotamento de pastas e unidades.
 
 1. **Instalação**:
-   - Execute o arquivo `install-vibe-menu.reg`.
-   - Isso adicionará duas opções ao clicar com o botão direito em pastas ou no fundo do diretório:
-     - **VibeToolkit: Abrir HUD (WPF)**: Inicia a interface gráfica moderna.
-     - **VibeToolkit: Abrir Terminal (Headless)**: Inicia o processo interativo diretamente no terminal.
+   - Execute `install-vibe-menu.cmd` (ou `install-vibe-menu.ps1` diretamente).
+   - Isso adicionará ao menu de contexto do botão direito em pastas/diretórios:
+     - **VibeToolkit: Abrir Terminal (CLI)**: Inicia a engine interativa diretamente no terminal.
 
 2. **Desinstalação**:
-   - Execute o arquivo `uninstall-vibe-menu.reg` para remover as entradas do registro.
+   - Execute `uninstall-vibe-menu.cmd` (ou `uninstall-vibe-menu.ps1`).
+   - O script remove entradas atuais e legadas automaticamente.
 
-> [!IMPORTANT]
-> Se você optar por instalar o toolkit em um diretório diferente de `C:\dev\VibeToolkit`, deverá atualizar os caminhos nos arquivos `install-vibe-menu.reg`, `run-vibe-toolkit.vbs` e `run-vibe-headless.vbs` antes de importar o registro.
+> [!NOTE]
+> O instalador grava o caminho real do clone atual — não exige instalação em `C:\dev\VibeToolkit`.
 
 ---
 
 ## Como executar
 
-### Iniciar o HUD WPF (Recomendado)
+### Via CLI (padrão)
 
 ```powershell
-.\project-bundler-hud.ps1
+.\project-bundler-cli.ps1
 ```
 
-### Executar via Terminal (Headless / Interativo)
+### Via wrapper headless (contratos de integração)
 
 ```powershell
 .\project-bundler-headless.ps1 -Path "C:\dev\SeuProjeto"
@@ -230,7 +204,6 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 ## Padrões de projeto
 
 - **Strict mode** em módulos PowerShell.
-- **MVVM simplificado** para o HUD WPF (XAML + ViewModel).
 - **Tipagem forte** no agente TypeScript.
 - **Blindagem de encoding** para evitar corrupção de texto.
 - **Tratamento de erro classificado** no pipeline do agente.
@@ -241,8 +214,8 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 
 ### Arquivos centrais
 
-- `project-bundler-hud.ps1` / `project-bundler-headless.ps1` / `project-bundler-cli.ps1`
-- `lib/SentinelHud.ps1`
+- `project-bundler-headless.ps1` / `project-bundler-cli.ps1`
+- `lib/SentinelUI.ps1`
 - `modules/VibeBundleWriter.psm1`
 - `modules/VibeDirectorProtocol.psm1`
 - `groq-agent.ts`
@@ -250,4 +223,4 @@ O sistema busca automaticamente o **context momentum** (JSON mais recente `_ai_*
 
 ### Stack
 
-- PowerShell, WPF, C#, Node.js, TypeScript.
+- PowerShell, Node.js, TypeScript.

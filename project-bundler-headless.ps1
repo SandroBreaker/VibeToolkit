@@ -14,33 +14,17 @@ param(
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
     [string]$ExecutorTarget = 'ChatGPT',
-    [switch]$SendToAI,
-    [switch]$DeterministicDirector,
-    [string]$Provider = '',
-    [string]$AIPromptMode = '',
-    [string]$PromptConfigFilePath,
-    [string]$TemplateId,
-    [string]$TemplateObjective,
-    [string]$TemplateDelivery,
-    [string[]]$TemplateFocusTags,
-    [string[]]$TemplateConstraints,
-    [ValidateSet('normal', 'deep', 'max')]
-    [string]$TemplateDepth,
-    [string]$TemplateAdditionalInstructions,
-    [string]$ExpertSystemPrompt,
-    [switch]$ForceAIAgainstIdenticalBundle,
-    [switch]$NoClipboard
+    [switch]$NoClipboard,
+    [switch]$NonInteractive
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$cliScript = Join-Path $PSScriptRoot "project-bundler-cli.ps1"
+$cliScript = Join-Path $PSScriptRoot 'project-bundler-cli.ps1'
 
 if (-not (Test-Path $cliScript -PathType Leaf)) {
     throw "Erro Crítico: A engine canônica CLI não foi encontrada em: $cliScript`no wrapper headless requer a CLI para funcionar."
 }
 
-# Delega a execução integralmente para a engine canônica CLI, 
-# preservando contratos, stdout, stderr e exit code.
 & $cliScript @PSBoundParameters

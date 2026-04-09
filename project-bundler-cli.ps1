@@ -2,27 +2,12 @@
 
 [CmdletBinding()]
 param(
-    [string]$Path = ".",
+    [string]$Path = '.',
     [Alias('Mode')]
     [string]$BundleMode = '',
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
     [string]$ExecutorTarget = 'ChatGPT',
-    [switch]$SendToAI,
-    [switch]$DeterministicDirector,
-    [string]$Provider = '',
-    [string]$AIPromptMode = '',
-    [string]$PromptConfigFilePath,
-    [string]$TemplateId,
-    [string]$TemplateObjective,
-    [string]$TemplateDelivery,
-    [string[]]$TemplateFocusTags,
-    [string[]]$TemplateConstraints,
-    [ValidateSet('normal', 'deep', 'max')]
-    [string]$TemplateDepth,
-    [string]$TemplateAdditionalInstructions,
-    [string]$ExpertSystemPrompt,
-    [switch]$ForceAIAgainstIdenticalBundle,
     [switch]$NoClipboard,
     [switch]$NonInteractive
 )
@@ -50,7 +35,9 @@ catch {
 }
 
 $script:ToolkitDir = $PSScriptRoot
-$script:LastAgentFailure = $null
+$script:OriginalWorkingDirectory = Get-Location
+$script:CloneCleanupInfo = $null
+$script:EffectiveOutputDirectory = $null
 
 $ThemeText = 'Info'
 $ThemeCyan = 'Info'
@@ -65,13 +52,15 @@ function Write-UILog {
         [string]$Color = $ThemeText
     )
 
-    if ([string]::IsNullOrWhiteSpace($Message)) { return }
+    if ([string]::IsNullOrWhiteSpace($Message)) {
+        return
+    }
 
     $statusType = switch ($Color) {
         'Success' { 'Success' }
         'Warning' { 'Warning' }
-        'Error'   { 'Error' }
-        default   { 'Info' }
+        'Error' { 'Error' }
+        default { 'Info' }
     }
 
     try {
@@ -163,8 +152,8 @@ function Register-SentinelCliFallback {
         $prefix = switch ($Type) {
             'Success' { '[+]' }
             'Warning' { '[!]' }
-            'Error'   { '[x]' }
-            default   { '[*]' }
+            'Error' { '[x]' }
+            default { '[*]' }
         }
 
         Write-Host ("{0} {1}" -f $prefix, $Message)
@@ -211,37 +200,41 @@ function Assert-SentinelUiBootstrapContract {
 
 function Test-IsGeneratedArtifactFileName {
     param([string]$FileName)
-    if ([string]::IsNullOrWhiteSpace($FileName)) { return $false }
-    if (Test-VibeGeneratedArtifactFileName -FileName $FileName) { return $true }
-    $patterns = @(
-        '^_?(Diretor|Executor)_',
-        '^_(COPIAR_TUDO|INTELIGENTE|MANUAL)__',
-        '^_meta-prompt_(INTELIGENTE|COPIAR_TUDO|MANUAL|blueprint|bundle|sniper|full|manual)',
-        '^_?(diretor|executor)_AI_CONTEXT_',
-        '^_?(diretor|executor)_ai_',
-        '^_AI_CONTEXT_(bundle|blueprint|sniper|full|manual)_(diretor|executor)_',
-        '^_ai_(bundle|blueprint|sniper|full|manual)_(diretor|executor)_',
-        '^_TXT_EXPORT__',
-        '_TXT_EXPORT__.*\.zip$',
-        '^_?(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
-        '^_meta-prompt_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
-        '^_AI_CONTEXT_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__',
-        '^_ai_(bundle|blueprint|manual)_(diretor|executor)(_[a-zA-Z0-9\-]+)?__'
-    )
-    foreach ($pattern in $patterns) {
-        if ($FileName -match $pattern) { return $true }
+
+    if ([string]::IsNullOrWhiteSpace($FileName)) {
+        return $false
     }
+
+    if (Test-VibeGeneratedArtifactFileName -FileName $FileName) {
+        return $true
+    }
+
+    $patterns = @(
+        '^_(?:bundle|blueprint|manual|txt_export)_(?:diretor|executor)(?:_[A-Za-z0-9\-]+)?__.*\.(?:md|json)$',
+        '^_meta-prompt_(?:bundle|blueprint|manual)_(?:diretor|executor)(?:_[A-Za-z0-9\-]+)?__.*\.(?:md|json)$',
+        '^_TXT_EXPORT__',
+        '^_TXT_EXPORT__.*\.zip$'
+    )
+
+    foreach ($pattern in $patterns) {
+        if ($FileName -match $pattern) {
+            return $true
+        }
+    }
+
     return $false
 }
 
 function Get-RelevantFiles {
     param([string]$CurrentPath)
+
     $files = Get-VibeRelevantFiles -CurrentPath $CurrentPath -AllowedExtensions $script:AllowedExtensions -IgnoredDirs $script:IgnoredDirs -IgnoredFiles $script:IgnoredFiles
     return @($files | Where-Object { -not (Test-IsGeneratedArtifactFileName -FileName $_.Name) })
 }
 
 function Read-LocalTextArtifact {
     param([string]$Path)
+
     return (Read-VibeTextFile -Path $Path)
 }
 
@@ -251,12 +244,8 @@ function Write-LocalTextArtifact {
         [AllowEmptyString()][string]$Content,
         [switch]$UseBom
     )
-    Write-VibeTextFile -Path $Path -Content $Content -UseBom:$UseBom
-}
 
-function Resolve-LatestMomentumContext {
-    param([string]$SearchRoot)
-    return (Resolve-VibeLatestMomentumContext -SearchRoot $SearchRoot)
+    Write-VibeTextFile -Path $Path -Content $Content -UseBom:$UseBom
 }
 
 function Convert-ToSafeMarkdownCodeBlock {
@@ -265,68 +254,87 @@ function Convert-ToSafeMarkdownCodeBlock {
         [string]$Language = '',
         [string]$FenceChar = '`'
     )
-    return (ConvertTo-VibeSafeMarkdownCodeBlock -Content $Content -Language $Language -FenceChar $FenceChar)
-}
 
-function Get-MomentumSectionContent {
-    param($MomentumContext)
-    return (Get-VibeMomentumSectionContent -MomentumContext $MomentumContext)
+    return (ConvertTo-VibeSafeMarkdownCodeBlock -Content $Content -Language $Language -FenceChar $FenceChar)
 }
 
 function Get-CodeFenceLanguageFromExtension {
     param([string]$Extension)
+
     return (Get-VibeCodeFenceLanguageFromExtension -Extension $Extension)
 }
 
 function Get-BundlerSignaturesForFile {
     param([System.IO.FileInfo]$File, [ref]$IssueMessage)
+
     return @(Get-VibeBundlerSignaturesForFile -File $File -IssueMessage $IssueMessage)
 }
 
 function New-BundlerContractsBlock {
-    param([System.IO.FileInfo[]]$Files, [ref]$IssueCollector,
-        [string]$StructureHeading, [string]$ContractsHeading, [switch]$LogExtraction)
-    if ($null -eq $Files -or $Files.Count -eq 0) { return "" }
+    param(
+        [System.IO.FileInfo[]]$Files,
+        [ref]$IssueCollector,
+        [string]$StructureHeading,
+        [string]$ContractsHeading,
+        [switch]$LogExtraction
+    )
+
+    if ($null -eq $Files -or $Files.Count -eq 0) {
+        return ''
+    }
 
     $structureLines = New-Object System.Collections.Generic.List[string]
-    foreach ($File in $Files) {
-        $structureLines.Add((Resolve-Path -Path $File.FullName -Relative))
+    foreach ($file in $Files) {
+        $structureLines.Add((Resolve-Path -Path $file.FullName -Relative)) | Out-Null
     }
 
-    $Block = "${StructureHeading}`n"
-    $Block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
-    $Block += "`n`n"
-    $Block += "${ContractsHeading}`n"
+    $block = "${StructureHeading}`n"
+    $block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
+    $block += "`n`n"
+    $block += "${ContractsHeading}`n"
 
-    foreach ($File in $Files) {
-        if ($script:SignatureExtensions -notcontains $File.Extension) { continue }
-        $RelPath = Resolve-Path -Path $File.FullName -Relative
-        if ($LogExtraction) { Write-UILog -Message "Extraindo assinaturas de $RelPath" }
-        $IssueMessage = $null
-        $Signatures = @(Get-BundlerSignaturesForFile -File $File -IssueMessage ([ref]$IssueMessage))
-        if ($IssueMessage) {
-            if ($IssueCollector) { $IssueCollector.Value += $IssueMessage }
+    foreach ($file in $Files) {
+        if ($script:SignatureExtensions -notcontains $file.Extension) {
             continue
         }
-        if ($Signatures.Count -le 0) { continue }
-        $FenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $File.Extension
-        $SignatureContent = ($Signatures -join '')
-        $Block += "#### File: $RelPath`n"
-        $Block += (Convert-ToSafeMarkdownCodeBlock -Content $SignatureContent -Language $FenceLanguage)
-        $Block += "`n`n"
+
+        $relPath = Resolve-Path -Path $file.FullName -Relative
+        if ($LogExtraction) {
+            Write-UILog -Message "Extraindo assinaturas de $relPath"
+        }
+
+        $issueMessage = $null
+        $signatures = @(Get-BundlerSignaturesForFile -File $file -IssueMessage ([ref]$issueMessage))
+        if ($issueMessage) {
+            if ($IssueCollector) {
+                $IssueCollector.Value += $issueMessage
+            }
+            continue
+        }
+
+        if ($signatures.Count -le 0) {
+            continue
+        }
+
+        $fenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
+        $signatureContent = ($signatures -join '')
+        $block += "#### File: $relPath`n"
+        $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
+        $block += "`n`n"
     }
-    return $Block
+
+    return $block
 }
 
 function Resolve-ChoiceFromBundleMode {
     param([string]$ModeValue)
 
     switch ($ModeValue) {
-        'full'      { return '1' }
+        'full' { return '1' }
         'blueprint' { return '2' }
-        'sniper'    { return '3' }
+        'sniper' { return '3' }
         'txtExport' { return '4' }
-        default     { throw "Modo inválido: $ModeValue" }
+        default { throw "Modo inválido: $ModeValue" }
     }
 }
 
@@ -334,11 +342,26 @@ function Resolve-ExtractionModeFromBundleMode {
     param([string]$ModeValue)
 
     switch ($ModeValue) {
-        'full'      { return 'full' }
+        'full' { return 'full' }
         'blueprint' { return 'blueprint' }
-        'sniper'    { return 'sniper' }
-        default     { return 'full' }
+        'sniper' { return 'sniper' }
+        'txtExport' { return 'txt_export' }
+        default { return 'full' }
     }
+}
+
+function Resolve-DocumentModeFromExtractionMode {
+    param([string]$ExtractionMode)
+
+    if ($ExtractionMode -eq 'sniper') {
+        return 'manual'
+    }
+
+    if ($ExtractionMode -eq 'txt_export') {
+        return 'txt_export'
+    }
+
+    return 'full'
 }
 
 function Test-InteractiveConsoleSelectionSupported {
@@ -423,10 +446,7 @@ function Invoke-ConsoleMultiSelect {
 
         Write-Host ''
         Write-Host ('  Marcados: {0} de {1}' -f $selected.Count, $Items.Count) -ForegroundColor Yellow
-
-        $rangeStart = $offset + 1
-        $rangeEnd = $endIndex + 1
-        Write-Host ('  Exibindo: {0}-{1} de {2}' -f $rangeStart, $rangeEnd, $Items.Count) -ForegroundColor DarkGray
+        Write-Host ('  Exibindo: {0}-{1} de {2}' -f ($offset + 1), ($endIndex + 1), $Items.Count) -ForegroundColor DarkGray
 
         $keyInfo = [Console]::ReadKey($true)
         $keyChar = ''
@@ -470,7 +490,7 @@ function Invoke-ConsoleMultiSelect {
                 continue
             }
             'Escape' {
-                throw 'Selecao sniper cancelada pelo usuario.'
+                throw 'Seleção sniper cancelada pelo usuário.'
             }
             'Enter' {
                 if ($selected.Count -eq 0) {
@@ -497,7 +517,7 @@ function Invoke-ConsoleMultiSelect {
                 continue
             }
             'q' {
-                throw 'Selecao sniper cancelada pelo usuario.'
+                throw 'Seleção sniper cancelada pelo usuário.'
             }
         }
     }
@@ -517,7 +537,7 @@ function Resolve-SniperRequestedPaths {
     }
 
     if ($NonInteractive) {
-        throw 'No modo sniper não interativo, informe -SelectedPaths com pelo menos um arquivo ou diretorio.'
+        throw 'No modo sniper não interativo, informe -SelectedPaths com pelo menos um arquivo ou diretório.'
     }
 
     $relativeOptions = @(
@@ -528,19 +548,16 @@ function Resolve-SniperRequestedPaths {
 
     if (Test-InteractiveConsoleSelectionSupported) {
         return @(
-            Invoke-ConsoleMultiSelect `
-                -Items $relativeOptions `
-                -Title 'SENTINEL HEADLESS — Selecao Sniper' `
-                -Hint '↑↓ Navegar   ESPACO Marcar/Desmarcar   A Todos   N Nenhum   ENTER Confirmar   Q Cancelar'
+            Invoke-ConsoleMultiSelect -Items $relativeOptions -Title 'SENTINEL HEADLESS — Seleção Sniper' -Hint '↑↓ Navegar   ESPAÇO Marcar/Desmarcar   A Todos   N Nenhum   ENTER Confirmar   Q Cancelar'
         )
     }
 
     Write-Host ''
-    Write-Host '  Selecao manual do modo Sniper:' -ForegroundColor Cyan
+    Write-Host '  Seleção manual do modo Sniper:' -ForegroundColor Cyan
     Write-Host "    - Informe um ou mais caminhos relativos ou absolutos separados por ';'"
-    Write-Host '    - Pode ser arquivo ou diretorio'
+    Write-Host '    - Pode ser arquivo ou diretório'
     Write-Host ''
-    Write-Host '  Arquivos elegiveis detectados (previa):' -ForegroundColor Cyan
+    Write-Host '  Arquivos elegíveis detectados (prévia):' -ForegroundColor Cyan
 
     foreach ($previewFile in ($relativeOptions | Select-Object -First 20)) {
         Write-Host ('    - {0}' -f $previewFile)
@@ -552,7 +569,7 @@ function Resolve-SniperRequestedPaths {
 
     $inputValue = (Read-Host '  Caminhos do Sniper').Trim()
     if ([string]::IsNullOrWhiteSpace($inputValue)) {
-        throw 'No modo sniper, informe -SelectedPaths com pelo menos um arquivo ou diretorio.'
+        throw 'No modo sniper, informe -SelectedPaths com pelo menos um arquivo ou diretório.'
     }
 
     return @(
@@ -570,7 +587,7 @@ function Resolve-SelectedFilesForSniper {
     )
 
     if ($null -eq $RequestedPaths -or $RequestedPaths.Count -eq 0) {
-        throw "No modo sniper, informe -SelectedPaths com pelo menos um arquivo ou diretório."
+        throw 'No modo sniper, informe -SelectedPaths com pelo menos um arquivo ou diretório.'
     }
 
     $allowedMap = @{}
@@ -581,7 +598,9 @@ function Resolve-SelectedFilesForSniper {
     $selectedMap = @{}
 
     foreach ($requestedPath in @($RequestedPaths)) {
-        if ([string]::IsNullOrWhiteSpace($requestedPath)) { continue }
+        if ([string]::IsNullOrWhiteSpace($requestedPath)) {
+            continue
+        }
 
         $candidatePath = $requestedPath
         if (-not [System.IO.Path]::IsPathRooted($candidatePath)) {
@@ -617,7 +636,7 @@ function Resolve-SelectedFilesForSniper {
     }
 
     if ($selectedMap.Count -eq 0) {
-        throw "No modo sniper, nenhum arquivo elegível foi selecionado."
+        throw 'No modo sniper, nenhum arquivo elegível foi selecionado.'
     }
 
     return @($selectedMap.Values | Sort-Object FullName)
@@ -626,7 +645,9 @@ function Resolve-SelectedFilesForSniper {
 function Set-ClipboardData {
     param([AllowEmptyString()][string]$Content)
 
-    if ($NoClipboard) { return $false }
+    if ($NoClipboard) {
+        return $false
+    }
 
     try {
         Set-Clipboard -Value $Content
@@ -637,412 +658,312 @@ function Set-ClipboardData {
     }
 }
 
-function New-HeadlessPromptConfigFile {
-    param(
-        [string]$RouteModeValue,
-        [string]$ExtractionModeValue,
-        [string]$ExecutorTargetValue,
-        [string]$PromptModeValue,
-        [string]$ExistingConfigPath,
-        [string]$TemplateIdValue,
-        [string]$TemplateObjectiveValue,
-        [string]$TemplateDeliveryValue,
-        [string[]]$TemplateFocusTagsValue,
-        [string[]]$TemplateConstraintsValue,
-        [string]$TemplateDepthValue,
-        [string]$TemplateAdditionalInstructionsValue,
-        [string]$ExpertSystemPromptValue
-    )
+function Get-VibeArtifactRouteLabel {
+    param([string]$RouteMode)
 
-    if (-not [string]::IsNullOrWhiteSpace($ExistingConfigPath)) {
-        if (-not (Test-Path $ExistingConfigPath -PathType Leaf)) {
-            throw "Arquivo de configuração de prompt não encontrado: $ExistingConfigPath"
-        }
-
-        return [pscustomobject]@{
-            Path        = (Resolve-Path -Path $ExistingConfigPath).Path
-            IsTemporary = $false
-        }
+    if ($RouteMode -match '(?i)executor') {
+        return 'executor'
     }
 
-    $configPayload = $null
+    return 'diretor'
+}
 
-    switch ($PromptModeValue) {
-        'template' {
-            if ([string]::IsNullOrWhiteSpace($TemplateIdValue)) {
-                throw "No modo template, informe -TemplateId ou use -PromptConfigFilePath."
-            }
+function Get-VibeArtifactModeLabel {
+    param([string]$ExtractionMode)
 
-            $configPayload = @{
-                promptMode             = 'template'
-                routeMode              = $RouteModeValue
-                extractionMode         = $ExtractionModeValue
-                executorTarget         = $ExecutorTargetValue
-                templateId             = $TemplateIdValue
-                objective              = $TemplateObjectiveValue
-                deliveryType           = $TemplateDeliveryValue
-                focusTags              = @($TemplateFocusTagsValue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-                constraints            = @($TemplateConstraintsValue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-                depth                  = $TemplateDepthValue
-                additionalInstructions = $TemplateAdditionalInstructionsValue
-            }
-        }
-        'expert' {
-            if ([string]::IsNullOrWhiteSpace($ExpertSystemPromptValue)) {
-                throw "No modo expert, informe -ExpertSystemPrompt ou use -PromptConfigFilePath."
-            }
-
-            $configPayload = @{
-                promptMode         = 'expertOverride'
-                routeMode          = $RouteModeValue
-                extractionMode     = $ExtractionModeValue
-                executorTarget     = $ExecutorTargetValue
-                expertSystemPrompt = $ExpertSystemPromptValue
-            }
-        }
-        default {
-            $configPayload = @{
-                promptMode     = 'default'
-                routeMode      = $RouteModeValue
-                extractionMode = $ExtractionModeValue
-                executorTarget = $ExecutorTargetValue
-            }
-        }
-    }
-
-    $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("vibetoolkit-config-" + [System.Guid]::NewGuid().ToString("N") + ".json")
-    $configJson = $configPayload | ConvertTo-Json -Depth 5 -Compress
-    Write-LocalTextArtifact -Path $tempPath -Content $configJson
-
-    return [pscustomobject]@{
-        Path        = $tempPath
-        IsTemporary = $true
+    switch -Regex ($ExtractionMode) {
+        '(?i)sniper|manual|^3$' { return 'manual' }
+        '(?i)blueprint|architect|^2$' { return 'blueprint' }
+        '(?i)txt_export|txtExport|^4$' { return 'txt_export' }
+        default { return 'bundle' }
     }
 }
 
-function Invoke-OrchestratorAgent {
+function Get-VibeArtifactFileName {
     param(
-        [string]$AgentScriptPath,
-        [string]$BundlePath,
+        [string]$ProjectNameValue,
+        [string]$ExtractionMode,
+        [string]$RouteMode,
+        [string]$Prefix = '',
+        [string]$Extension = '.md'
+    )
+
+    $mode = Get-VibeArtifactModeLabel -ExtractionMode $ExtractionMode
+    $route = Get-VibeArtifactRouteLabel -RouteMode $RouteMode
+    $pfx = if ([string]::IsNullOrWhiteSpace($Prefix)) { '_' } else { "_${Prefix}_" }
+
+    return "${pfx}${mode}_${route}__${ProjectNameValue}${Extension}"
+}
+
+function Get-ResultMetaOutputFileName {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode
+    )
+
+    return (Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Extension '.json')
+}
+
+function Get-DeterministicMetaPromptOutputFileName {
+    param(
+        [string]$ProjectNameValue,
+        [string]$ExtractionMode,
+        [string]$RouteMode
+    )
+
+    return (Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix 'meta-prompt')
+}
+
+function Get-DeterministicRelevantFiles {
+    param([System.IO.FileInfo[]]$Files)
+
+    $priorityPatterns = @(
+        '.\project-bundler-cli.ps1',
+        '.\project-bundler-headless.ps1',
+        '.\modules\VibeDirectorProtocol.psm1',
+        '.\modules\VibeBundleWriter.psm1',
+        '.\modules\VibeFileDiscovery.psm1',
+        '.\modules\VibeSignatureExtractor.psm1',
+        '.\README.md'
+    )
+
+    $relativeMap = @{}
+    foreach ($file in @($Files)) {
+        try {
+            $relativePath = Resolve-Path -Path $file.FullName -Relative
+            $relativeMap[$relativePath] = $true
+        }
+        catch {
+        }
+    }
+
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($pattern in $priorityPatterns) {
+        if ($relativeMap.ContainsKey($pattern)) {
+            $result.Add($pattern) | Out-Null
+        }
+    }
+
+    if ($result.Count -eq 0) {
+        foreach ($key in ($relativeMap.Keys | Select-Object -First 8)) {
+            $result.Add([string]$key) | Out-Null
+        }
+    }
+
+    return @($result)
+}
+
+function New-DeterministicMetaPromptArtifact {
+    param(
         [string]$ProjectNameValue,
         [string]$ExecutorTargetValue,
-        [string]$BundleModeValue,
-        [string]$PrimaryProviderValue,
-        [string]$OutputRouteModeValue,
-        [string]$CustomPromptConfigPath = $null,
-        [string]$DocumentModeValue = $null,
-        [string]$PromptModeValue = $null,
-        [AllowNull()][string]$TemplateIdValue = $null,
-        [AllowNull()][string]$ExplicitOutputPath = $null,
-        [AllowNull()][string]$ExplicitResultMetaPath = $null,
-        [AllowNull()][string]$SkipReasonValue = $null,
-        [AllowNull()][string]$LocalModelValue = $null
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$SourceArtifactFileName,
+        [string]$OutputArtifactFileName,
+        [AllowEmptyString()][string]$BundleContent,
+        [System.IO.FileInfo[]]$Files
     )
 
-    if (-not (Test-Path $AgentScriptPath -PathType Leaf)) { throw "Script groq-agent.ts não localizado." }
+    $generatedAt = [DateTime]::UtcNow.ToString('o')
+    $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
+    $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
+    $extractionLabel = Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode
 
-    $winner = [ordered]@{ Provider = $null; Model = $null }
-    $failure = [ordered]@{ Type = $null; Status = $null; Message = $null; Details = $null }
-    $script:LastAgentFailure = $null
-    $stdoutTranscript = New-Object 'System.Collections.Generic.List[object]'
-    $stderrTranscript = New-Object 'System.Collections.Generic.List[object]'
-    $combinedTranscript = New-Object 'System.Collections.Generic.List[object]'
-    $processStartedAtUtc = $null
-    $processFinishedAtUtc = $null
-    $processDurationMs = 0
-    $processId = $null
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('## PROTOCOLO OPERACIONAL TRANSVERSAL — ELITE v3.1') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('### §0 — IDENTIDADE E MANDATO (O DIRETOR)') | Out-Null
+    $lines.Add('- Papel ativo: Diretor de Engenharia Agêntica em modo determinístico local.') | Out-Null
+    $lines.Add('- Saída compilada integralmente em PowerShell, sem qualquer dependência remota ou estado anterior reaproveitado.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('### §1 — ENQUADRAMENTO OPERACIONAL') | Out-Null
+    $lines.Add('- Rota ativa: VIA DIRETOR.') | Out-Null
+    $lines.Add(("- Extração efetiva: {0}." -f $extractionLabel)) | Out-Null
+    $lines.Add(("- Executor alvo de referência: {0}." -f $ExecutorTargetValue)) | Out-Null
+    $lines.Add('- O bloco [META-PROMPT PARA EXECUTOR] abaixo está pronto para cópia.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## EXECUTION META') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add(("- Projeto: {0}" -f $ProjectNameValue)) | Out-Null
+    $lines.Add(("- Artefato fonte: {0}" -f $SourceArtifactFileName)) | Out-Null
+    $lines.Add(("- Artefato final: {0}" -f $OutputArtifactFileName)) | Out-Null
+    $lines.Add(("- Executor alvo: {0}" -f $ExecutorTargetValue)) | Out-Null
+    $lines.Add('- Route mode: director') | Out-Null
+    $lines.Add(("- Gerado em: {0}" -f $generatedAt)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## SOURCE OF TRUTH') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add(("> Modo de extração: {0}." -f $extractionLabel)) | Out-Null
+    $lines.Add('> Route mode: director.') | Out-Null
+    $lines.Add(("> Document mode: {0}." -f $DocumentMode)) | Out-Null
+    $lines.Add('> Governança local: PowerShell puro.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('[META-PROMPT PARA EXECUTOR]') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## ANÁLISE DO DIRETOR') | Out-Null
+    $lines.Add('O bundle visível fornece contexto suficiente para orientar uma execução local rastreável sem dependência de IA remota, mantendo contratos, escopo e regras operacionais observáveis.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## RACIOCÍNIO (CoT)') | Out-Null
+    $lines.Add('A saída final precisa permanecer determinística, rastreável e estritamente limitada ao bundle visível. O Executor deve operar com Lei da Subtração, preservar contratos e declarar lacunas em vez de inventar arquitetura. Os recortes prioritários para leitura são: ' + $relevantFilesValue + '.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)') | Out-Null
+    $lines.Add('--- INÍCIO DO PROMPT ---') | Out-Null
+    $lines.Add('### LAYER 1: IDENTIDADE E REGRAS') | Out-Null
+    $lines.Add('- Papel do Executor: Senior Implementation Agent (Sniper).') | Out-Null
+    $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
+    $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
+    $lines.Add('- Não inferir módulos, contratos ou comportamentos fora do bundle visível.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('### LAYER 2: BLUEPRINT TÉCNICO') | Out-Null
+    $lines.Add('- Objetivo: materializar a solicitação estritamente dentro do escopo visível do bundle.') | Out-Null
+    $lines.Add('- Entrega esperada: arquivos completos alterados, sem refactor paralelo e com validação objetiva.') | Out-Null
+    $lines.Add('- Route mode de origem: director.') | Out-Null
+    $lines.Add(("- Extraction mode: {0}." -f $ExtractionMode)) | Out-Null
+    $lines.Add(("- Executor alvo: {0}." -f $ExecutorTargetValue)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('### LAYER 3: ARQUIVOS-ALVO E ESCOPO') | Out-Null
+    $lines.Add(("- Recortes prioritários: {0}" -f $relevantFilesValue)) | Out-Null
+    $lines.Add('- Declarar explicitamente qualquer lacuna de contexto em vez de improvisar comportamento ausente.') | Out-Null
+    $lines.Add('- Não usar memória anterior reaproveitada, seleção remota, parametrização externa ou qualquer superfície de IA removida.') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('### LAYER 4: PROTOCOLO DE VERIFICAÇÃO') | Out-Null
+    $lines.Add('- Exigir Relatório de Impacto, implementação por arquivo, verificação de segurança e validação final.') | Out-Null
+    $lines.Add('- Propor checks de regressão, cenários negativos e validações compatíveis com o escopo.') | Out-Null
+    $lines.Add('--- FIM DO PROMPT ---') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('## BUNDLE VISÍVEL') | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('```text') | Out-Null
+    $lines.Add((Format-BundleContentForDiff -Content $BundleContent)) | Out-Null
+    $lines.Add('```') | Out-Null
 
-    $emitAgentLog = {
-        param([string]$Message, [string]$Color)
+    return ($lines -join "`n")
+}
 
-        if ([string]::IsNullOrWhiteSpace($Message)) { return }
+function Format-BundleContentForDiff {
+    param([AllowEmptyString()][string]$Content)
 
-        $statusType = switch ($Color) {
-            'Success' { 'Success' }
-            'Warning' { 'Warning' }
-            'Error'   { 'Error' }
-            default   { 'Info' }
-        }
+    if ($null -eq $Content) {
+        return ''
+    }
 
-        try {
-            Write-SentinelStatus -Message $Message -Type $statusType
-        }
-        catch {
-            Write-Host $Message
-        }
-    }.GetNewClosure()
+    return (($Content -replace "`0", '') -replace "`r`n", "`n").TrimEnd()
+}
 
-    $handleAgentLine = {
-        param([string]$Line, [string]$DefaultColor, [string]$StreamName = 'stdout')
-        if ([string]::IsNullOrWhiteSpace($Line)) { return }
+function Get-BundleContentHash {
+    param([AllowEmptyString()][string]$Content)
 
-        $capturedAt = [DateTime]::UtcNow.ToString('o')
-        $transcriptEntry = @{
-            stream     = $StreamName
-            capturedAt = $capturedAt
-            line       = $Line
-        }
+    $normalized = Format-BundleContentForDiff -Content $Content
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
 
-        if ($StreamName -eq 'stderr') {
-            $stderrTranscript.Add($transcriptEntry) | Out-Null
-        }
-        else {
-            $stdoutTranscript.Add($transcriptEntry) | Out-Null
-        }
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
 
-        $combinedTranscript.Add($transcriptEntry) | Out-Null
+function Get-FileHashSha256 {
+    param([string]$Path)
 
-        if ($Line -match '^\[AI_ERROR\]\s+(.+)$') {
-            try {
-                $parsedFailure = $Matches[1] | ConvertFrom-Json
-                $failure.Type = [string]$parsedFailure.type
-                $failure.Status = [string]$parsedFailure.status
-                $failure.Message = [string]$parsedFailure.message
-                $failure.Details = [string]$parsedFailure.details
-                $script:LastAgentFailure = [pscustomobject]@{
-                    Type    = $failure.Type
-                    Status  = $failure.Status
-                    Message = $failure.Message
-                    Details = $failure.Details
-                }
-            }
-            catch {}
-            return
-        }
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path -PathType Leaf)) {
+        return $null
+    }
 
-        if ($Line -match '\[_ai_\]\s+provider=([^;]+);model=(.+)$') {
-            $winner.Provider = $Matches[1].Trim()
-            $winner.Model = $Matches[2].Trim()
-            return
-        }
+    return (Get-FileHash -Path $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 
-        & $emitAgentLog $Line $DefaultColor
-    }.GetNewClosure()
+function Get-EnvironmentSnapshot {
+    $psVersion = $null
+    try {
+        $psVersion = $PSVersionTable.PSVersion.ToString()
+    }
+    catch {
+    }
 
-     $bundleParent = Split-Path $BundlePath -Parent
-    $normalizedProjectName = [System.IO.Path]::GetFileNameWithoutExtension($BundlePath) -replace '^_+(?:Diretor|Executor)_(?:BUNDLER__|BLUEPRINT__|SELECTIVE__|COPIAR_TUDO__|INTELIGENTE__|MANUAL__)?', ''
-    $resultMetaFileName = Get-AIResultOutputFileName -ProjectNameValue $normalizedProjectName -RouteMode $OutputRouteModeValue -ExtractionMode $BundleModeValue
-    $resultMetaPath = if (-not [string]::IsNullOrWhiteSpace($ExplicitResultMetaPath)) {
-        $ExplicitResultMetaPath
+    return [ordered]@{
+        osVersion = [System.Environment]::OSVersion.VersionString
+        psVersion = $psVersion
+        isWindows = $IsWindows
+        hostname = [System.Environment]::MachineName
+        processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+    }
+}
+
+function Get-UserSnapshot {
+    $username = $env:USERNAME
+    if ([string]::IsNullOrWhiteSpace($username)) {
+        $username = $env:USER
+    }
+
+    return [ordered]@{
+        username = $username
+        domain = $env:USERDOMAIN
+        homeDirectory = $(if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $env:USERPROFILE } else { $env:HOME })
+    }
+}
+
+function Write-LocalExecutionMeta {
+    param(
+        [string]$ProjectNameValue,
+        [string]$RouteMode,
+        [string]$ExtractionMode,
+        [string]$DocumentMode,
+        [string]$ExecutorTargetValue,
+        [AllowNull()][string]$SourceArtifactPath = $null,
+        [AllowNull()][string]$OutputPath = $null,
+        [AllowNull()][string]$ResultMetaPath = $null,
+        [int]$DurationMs = 0,
+        [hashtable]$ExtraData
+    )
+
+    $resolvedResultMetaPath = if ([string]::IsNullOrWhiteSpace($ResultMetaPath)) {
+        $baseDir = if ($script:EffectiveOutputDirectory) { $script:EffectiveOutputDirectory } else { (Get-Location).Path }
+        Join-Path $baseDir (Get-ResultMetaOutputFileName -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
     }
     else {
-        Join-Path $bundleParent $resultMetaFileName
+        $ResultMetaPath
     }
 
-    $commandParts = @(
-        'npx',
-        '--quiet',
-        'tsx',
-        ('"{0}"' -f $AgentScriptPath),
-        '--bundlePath',
-        ('"{0}"' -f $BundlePath),
-        '--projectName',
-        ('"{0}"' -f $ProjectNameValue),
-        '--executorTarget',
-        ('"{0}"' -f $ExecutorTargetValue),
-        '--extractionMode',
-        ('"{0}"' -f $BundleModeValue),
-        '--provider',
-        ('"{0}"' -f $PrimaryProviderValue),
-        '--routeMode',
-        ('"{0}"' -f $OutputRouteModeValue),
-        '--resultMetaPath',
-        ('"{0}"' -f $resultMetaPath)
-    )
+    $sourceHash = Get-FileHashSha256 -Path $SourceArtifactPath
+    $outputHash = Get-FileHashSha256 -Path $OutputPath
 
-    if (-not [string]::IsNullOrWhiteSpace($CustomPromptConfigPath)) {
-        $commandParts += '--promptConfigFilePath'
-        $commandParts += ('"{0}"' -f $CustomPromptConfigPath)
+    $meta = [ordered]@{
+        ok = $true
+        executionId = [guid]::NewGuid().ToString()
+        executionMode = 'local'
+        routeMode = $RouteMode
+        extractionMode = $ExtractionMode
+        documentMode = $DocumentMode
+        executorTarget = $ExecutorTargetValue
+        generatedAt = [DateTime]::UtcNow.ToString('o')
+        durationMs = $DurationMs
+        sourceArtifactPath = $SourceArtifactPath
+        sourceArtifactHash = $sourceHash
+        outputPath = $OutputPath
+        outputHash = $outputHash
+        resultMetaPath = $resolvedResultMetaPath
+        generatedLocally = $true
+        environment = Get-EnvironmentSnapshot
+        user = Get-UserSnapshot
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($DocumentModeValue)) {
-        $commandParts += '--documentMode'
-        $commandParts += ('"{0}"' -f $DocumentModeValue)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($PromptModeValue)) {
-        $commandParts += '--promptMode'
-        $commandParts += ('"{0}"' -f $PromptModeValue)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($TemplateIdValue)) {
-        $commandParts += '--templateId'
-        $commandParts += ('"{0}"' -f $TemplateIdValue)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($ExplicitOutputPath)) {
-        $commandParts += '--outputPath'
-        $commandParts += ('"{0}"' -f $ExplicitOutputPath)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($SkipReasonValue)) {
-        $commandParts += '--skipReason'
-        $commandParts += ('"{0}"' -f $SkipReasonValue)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($LocalModelValue)) {
-        $commandParts += '--localModel'
-        $commandParts += ('"{0}"' -f $LocalModelValue)
-    }
-
-    $entrypointDisplay = ('npx --quiet tsx {0}' -f [System.IO.Path]::GetFileName($AgentScriptPath))
-    $commandLine = '/c ' + ($commandParts -join ' ')
-
-    Write-UILog -Message 'Host de execução do agente: cmd.exe /c' -Color $ThemeCyan
-    Write-UILog -Message ("Entrypoint do agente: {0}" -f $entrypointDisplay) -Color $ThemeCyan
-    Write-UILog -Message ("Provider alvo: {0} | Bundle: {1}" -f $PrimaryProviderValue, [System.IO.Path]::GetFileName($BundlePath)) -Color $ThemeCyan
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $process.StartInfo.FileName = 'cmd.exe'
-    $process.StartInfo.Arguments = $commandLine
-    $process.StartInfo.WorkingDirectory = $script:ToolkitDir
-    $process.StartInfo.UseShellExecute = $false
-    $process.StartInfo.CreateNoWindow = $true
-    $process.StartInfo.RedirectStandardOutput = $true
-    $process.StartInfo.RedirectStandardError = $true
-    $process.StartInfo.EnvironmentVariables['DOTENV_CONFIG_SILENT'] = 'true'
-    $process.StartInfo.EnvironmentVariables['npm_config_update_notifier'] = 'false'
-    $process.StartInfo.EnvironmentVariables['NO_UPDATE_NOTIFIER'] = '1'
-
-    if (-not $process.Start()) { throw 'Falha ao iniciar o processo do agente de IA.' }
-
-    $processStartedAtUtc = [DateTime]::UtcNow
-    $processId = $process.Id
-
-    while (-not $process.HasExited) {
-        while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan 'stdout' }
-        while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink 'stderr' }
-        Start-Sleep -Milliseconds 100
-    }
-
-    $process.WaitForExit()
-
-    while ($process.StandardOutput.Peek() -ge 0) { & $handleAgentLine $process.StandardOutput.ReadLine() $ThemeCyan 'stdout' }
-    while ($process.StandardError.Peek() -ge 0) { & $handleAgentLine $process.StandardError.ReadLine() $ThemePink 'stderr' }
-
-    $processFinishedAtUtc = [DateTime]::UtcNow
-    if ($processStartedAtUtc) {
-        $processDurationMs = [int][Math]::Round(($processFinishedAtUtc - $processStartedAtUtc).TotalMilliseconds)
-    }
-
-    if ($process.ExitCode -ne 0) {
-        $failureSummary = $null
-        if (-not [string]::IsNullOrWhiteSpace([string]$failure.Message)) {
-            $failureSummary = [string]$failure.Message
-        }
-        elseif (-not [string]::IsNullOrWhiteSpace([string]$failure.Type)) {
-            $failureSummary = [string]$failure.Type
-        }
-
-        if ($failureSummary) {
-            throw "groq-agent.ts finalizou com código $($process.ExitCode): $failureSummary"
-        }
-
-        throw "groq-agent.ts finalizou com código $($process.ExitCode)."
-    }
-
-    $script:LastAgentFailure = $null
-
-    $agentJsonOutput = $null
-    try {
-        $stdoutLines = @($stdoutTranscript | Where-Object { $_.stream -eq 'stdout' } | ForEach-Object { $_.line })
-        $jsonStart = -1
-        for ($i = $stdoutLines.Count - 1; $i -ge 0; $i--) {
-            if ($stdoutLines[$i] -match '^\{\s*$') {
-                $jsonStart = $i
-                break
-            }
-        }
-        if ($jsonStart -ge 0) {
-            $candidateJson = ($stdoutLines[$jsonStart..($stdoutLines.Count - 1)]) -join "`n"
-            $parsed = $candidateJson | ConvertFrom-Json
-            if ($parsed.ok -eq $true) {
-                $agentJsonOutput = $parsed
-            }
-        }
-    } catch {}
-
-    $resultMetaPathFromDisk = $null
-    if ($agentJsonOutput -and $agentJsonOutput.resultMetaPath -and (Test-Path $agentJsonOutput.resultMetaPath -PathType Leaf)) {
-        $resultMetaPathFromDisk = $agentJsonOutput.resultMetaPath
-    }
-    elseif (Test-Path $resultMetaPath -PathType Leaf) {
-        $resultMetaPathFromDisk = $resultMetaPath
-    }
-
-    if ($resultMetaPathFromDisk) {
-        try {
-            $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
-            if ($null -eq $meta) { $meta = @{} }
-
-            $processAudit = @{}
-            if ($meta.ContainsKey('processAudit') -and $meta.processAudit -is [System.Collections.IDictionary]) {
-                $processAudit = @{} + $meta.processAudit
-            }
-
-            $processAudit.launcher = @{
-                host             = 'cmd.exe /c'
-                entrypoint       = $entrypointDisplay
-                commandLine      = ('cmd.exe {0}' -f $commandLine)
-                workingDirectory = $ToolkitDir
-                bundlePath       = $BundlePath
-                startedAt        = if ($processStartedAtUtc) { $processStartedAtUtc.ToString('o') } else { $null }
-                finishedAt       = if ($processFinishedAtUtc) { $processFinishedAtUtc.ToString('o') } else { $null }
-                durationMs       = $processDurationMs
-                exitCode         = $process.ExitCode
-                processId        = $processId
-            }
-
-            $processAudit.streamTranscript = @{
-                stdout   = @($stdoutTranscript.ToArray())
-                stderr   = @($stderrTranscript.ToArray())
-                combined = @($combinedTranscript.ToArray())
-            }
-
-            $processAudit.auxiliaryScripts = @{
-                patchAgent = @{
-                    path     = (Join-Path $ToolkitDir 'patch_agent.js')
-                    invoked  = $false
-                    evidence = 'Nenhuma execução automática de patch_agent.js foi registrada nesta chamada do orquestrador.'
-                }
-            }
-
-            $meta.processAudit = $processAudit
-            $meta.resultMetaPath = $resultMetaPathFromDisk
-            $meta.winnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
-            $meta.winnerModel = if ($winner.Model) { $winner.Model } else { $meta.model }
-
-            $finalOutputPath = $meta.outputPath
-            if ($agentJsonOutput -and $agentJsonOutput.outputPath) {
-                $finalOutputPath = $agentJsonOutput.outputPath
-            }
-
-            $metaJson = $meta | ConvertTo-Json -Depth 20
-            Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson
-
-            return [pscustomobject]@{
-                OutputPath     = $finalOutputPath
-                ResultMetaPath = $resultMetaPathFromDisk
-                WinnerProvider = if ($winner.Provider) { $winner.Provider } else { $meta.provider }
-                WinnerModel    = if ($winner.Model) { $winner.Model } else { $meta.model }
-            }
-        }
-        catch {
-            return [pscustomobject]@{
-                OutputPath     = if ($agentJsonOutput) { $agentJsonOutput.outputPath } else { $null }
-                ResultMetaPath = $resultMetaPathFromDisk
-                WinnerProvider = $winner.Provider
-                WinnerModel    = $winner.Model
-            }
+    if ($ExtraData) {
+        foreach ($key in $ExtraData.Keys) {
+            $meta[$key] = $ExtraData[$key]
         }
     }
+
+    $metaJson = $meta | ConvertTo-Json -Depth 12
+    Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
 
     return [pscustomobject]@{
-        OutputPath     = if ($agentJsonOutput) { $agentJsonOutput.outputPath } else { $null }
-        ResultMetaPath = if ($agentJsonOutput) { $agentJsonOutput.resultMetaPath } else { $null }
-        WinnerProvider = $winner.Provider
-        WinnerModel    = $winner.Model
+        Meta = [pscustomobject]$meta
+        ResultMetaPath = $resolvedResultMetaPath
     }
 }
 
@@ -1075,7 +996,7 @@ function Convert-SourceFileToTxtExportName {
     $projectRootResolved = [System.IO.Path]::GetFullPath($ProjectRootPath)
     $relativePath = $null
 
-    $getRelativePathMethod = [System.IO.Path].GetMethod("GetRelativePath", [type[]]@([string], [string]))
+    $getRelativePathMethod = [System.IO.Path].GetMethod('GetRelativePath', [type[]]@([string], [string]))
     if ($null -ne $getRelativePathMethod) {
         $relativePath = [System.IO.Path]::GetRelativePath($projectRootResolved, $fullPathResolved)
     }
@@ -1097,20 +1018,20 @@ function Convert-SourceFileToTxtExportName {
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace($relativePath) -or $relativePath -eq ".") {
+    if ([string]::IsNullOrWhiteSpace($relativePath) -or $relativePath -eq '.') {
         $relativePath = [System.IO.Path]::GetFileName($fullPathResolved)
     }
 
-    $normalizedRelativePath = $relativePath -replace '[\/]+', [string][System.IO.Path]::DirectorySeparatorChar
+    $normalizedRelativePath = $relativePath -replace '[\\/]+', [string][System.IO.Path]::DirectorySeparatorChar
     $normalizedRelativePath = $normalizedRelativePath.TrimStart([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar, '.'))
 
-    if ([string]::IsNullOrWhiteSpace($normalizedRelativePath) -or $normalizedRelativePath -eq ".") {
+    if ([string]::IsNullOrWhiteSpace($normalizedRelativePath) -or $normalizedRelativePath -eq '.') {
         $normalizedRelativePath = [System.IO.Path]::GetFileName($fullPathResolved)
     }
 
     $segments = @(
-        $normalizedRelativePath -split '[\/]+' |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "." }
+        $normalizedRelativePath -split '[\\/]+' |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne '.' }
     )
 
     if ($segments.Count -eq 0) {
@@ -1118,19 +1039,16 @@ function Convert-SourceFileToTxtExportName {
     }
 
     $safeSegments = New-Object System.Collections.Generic.List[string]
-
     foreach ($segment in $segments) {
         $safeSegment = $segment -replace '[:*?"<>|]', '_'
-
         if ([string]::IsNullOrWhiteSpace($safeSegment) -or $safeSegment -match '^\.+$') {
             $safeSegment = '_'
         }
-
         $safeSegments.Add($safeSegment) | Out-Null
     }
 
     $lastIndex = $safeSegments.Count - 1
-    $safeSegments[$lastIndex] = "{0}.txt" -f $safeSegments[$lastIndex]
+    $safeSegments[$lastIndex] = '{0}.txt' -f $safeSegments[$lastIndex]
 
     $targetRelativePath = $safeSegments[0]
     for ($i = 1; $i -lt $safeSegments.Count; $i++) {
@@ -1215,16 +1133,7 @@ function Test-IsLikelyBinaryFile {
 function Read-TextContentForTxtExport {
     param([string]$FilePath)
 
-    $reader = $null
-    try {
-        return (Read-LocalTextArtifact -Path $FilePath)
-        # retorno acima centraliza a política de encoding
-    }
-    finally {
-        if ($null -ne $reader) {
-            $reader.Dispose()
-        }
-    }
+    return (Read-LocalTextArtifact -Path $FilePath)
 }
 
 function Export-OperationFilesToTxtDirectory {
@@ -1281,16 +1190,10 @@ function Export-OperationFilesToTxtDirectory {
 
     return [pscustomobject]@{
         OutputDirectory = $outputDirectory
-        ZipFilePath     = $zipFilePath
-        ExportedFiles   = $exportedFiles
-        SkippedFiles    = $skippedFiles
+        ZipFilePath = $zipFilePath
+        ExportedFiles = $exportedFiles
+        SkippedFiles = $skippedFiles
     }
-}
-
-function Resolve-DocumentModeFromExtractionMode {
-    param([string]$ExtractionMode)
-    if ($ExtractionMode -eq 'sniper') { return 'manual' }
-    return 'full'
 }
 
 function Resolve-BundleMode {
@@ -1299,33 +1202,38 @@ function Resolve-BundleMode {
         [switch]$NonInteractive
     )
 
-    if ($BundleMode -in @('full', 'blueprint', 'sniper', 'txtExport')) { return $BundleMode }
-
-    if ($NonInteractive) {
-        throw "Modo de extração obrigatório em execução não interativa. Use -BundleMode full, blueprint, sniper ou txtExport."
+    if ($BundleMode -in @('full', 'blueprint', 'sniper', 'txtExport', 'txt_export')) {
+        if ($BundleMode -eq 'txt_export') {
+            return 'txtExport'
+        }
+        return $BundleMode
     }
 
-    Write-Host ""
-    Write-Host "  1. Modo de Extracao:" -ForegroundColor Cyan
-    Write-Host "    [1] Full / Tudo  -  enviar tudo (analise completa)"
-    Write-Host "    [2] Architect    -  blueprint / estrutura (economiza tokens)"
-    Write-Host "    [3] Sniper       -  selecao manual (recorte com foco cirurgico)"
-    Write-Host "    [4] TXT Export   -  pasta com arquivos separados"
-    Write-Host ""
+    if ($NonInteractive) {
+        throw 'Modo de extração obrigatório em execução não interativa. Use -BundleMode full, blueprint, sniper ou txtExport.'
+    }
+
+    Write-Host ''
+    Write-Host '  1. Modo de Extração:' -ForegroundColor Cyan
+    Write-Host '    [1] Full / Tudo  -  enviar tudo (análise completa)'
+    Write-Host '    [2] Architect    -  blueprint / estrutura'
+    Write-Host '    [3] Sniper       -  seleção manual (recorte com foco cirúrgico)'
+    Write-Host '    [4] TXT Export   -  pasta com arquivos separados'
+    Write-Host ''
 
     $resolved = $null
     while ($null -eq $resolved) {
-        $inp = (Read-Host "  Digite 1, 2, 3 ou 4").Trim()
+        $inp = (Read-Host '  Digite 1, 2, 3 ou 4').Trim()
         switch ($inp) {
             '1' { $resolved = 'full' }
             '2' { $resolved = 'blueprint' }
             '3' { $resolved = 'sniper' }
             '4' { $resolved = 'txtExport' }
-            default { Write-Host "  Entrada invalida. Digite 1, 2, 3 ou 4." -ForegroundColor Yellow }
+            default { Write-Host '  Entrada inválida. Digite 1, 2, 3 ou 4.' -ForegroundColor Yellow }
         }
     }
 
-    Write-Host ""
+    Write-Host ''
     return $resolved
 }
 
@@ -1335,615 +1243,167 @@ function Resolve-RouteMode {
         [switch]$NonInteractive
     )
 
-    if ($RouteMode -eq 'director' -or $RouteMode -eq 'executor') { return $RouteMode }
-
-    if ($NonInteractive) {
-        throw "Rota obrigatória em execução não interativa. Use -RouteMode director ou executor."
+    if ($RouteMode -eq 'director' -or $RouteMode -eq 'executor') {
+        return $RouteMode
     }
 
-    Write-Host "  Fluxo de Saida:" -ForegroundColor Cyan
-    Write-Host "    [1] Via Diretor          (mantem camada analitica)"
-    Write-Host "    [2] Direto para Executor (contexto final sem intermediacao)"
-    Write-Host ""
+    if ($NonInteractive) {
+        throw 'Rota obrigatória em execução não interativa. Use -RouteMode director ou executor.'
+    }
+
+    Write-Host '  Fluxo de Saída:' -ForegroundColor Cyan
+    Write-Host '    [1] Via Diretor          (gera meta-prompt local)'
+    Write-Host '    [2] Direto para Executor (gera contexto final)'
+    Write-Host ''
 
     $resolved = $null
     while ($null -eq $resolved) {
-        $inp = (Read-Host "  Digite 1 ou 2").Trim()
+        $inp = (Read-Host '  Digite 1 ou 2').Trim()
         switch ($inp) {
             '1' { $resolved = 'director' }
             '2' { $resolved = 'executor' }
-            default { Write-Host "  Entrada invalida. Digite 1 ou 2." -ForegroundColor Yellow }
+            default { Write-Host '  Entrada inválida. Digite 1 ou 2.' -ForegroundColor Yellow }
         }
     }
 
-    Write-Host ""
+    Write-Host ''
     return $resolved
 }
 
-function Resolve-IAOptions {
+function Resolve-ProjectSource {
     param(
-        [bool]$SendToAI,
-        [bool]$DeterministicDirector,
+        [string]$DefaultPath,
         [switch]$NonInteractive
     )
-
-    # Se qualquer flag de IA foi ativada explicitamente via CLI, respeitar sem perguntar
-    if ($SendToAI -or $DeterministicDirector -or $NonInteractive) {
-        return [pscustomobject]@{ SendToAI = $SendToAI; DeterministicDirector = $DeterministicDirector }
-    }
-
-    Write-Host "  Opcoes de IA:" -ForegroundColor Cyan
-    Write-Host ""
-
-    $aiInput = (Read-Host "  Gerar o prompt final com IA ao concluir? (s/N)").Trim().ToLower()
-    $resolvedSendToAI = ($aiInput -eq 's' -or $aiInput -eq 'sim')
-
-    $detInput = (Read-Host "  Gerar meta-prompt deterministico local (sem IA / sem provider remoto)? (s/N)").Trim().ToLower()
-    $resolvedDeterministic = ($detInput -eq 's' -or $detInput -eq 'sim')
-
-    Write-Host ""
-    return [pscustomobject]@{ SendToAI = $resolvedSendToAI; DeterministicDirector = $resolvedDeterministic }
-}
-
-function Resolve-Provider {
-    param(
-        [string]$Provider,
-        [bool]$SendToAI,
-        [switch]$NonInteractive
-    )
-
-    # Sem IA ativa, provider nao e relevante — retornar groq como fallback silencioso
-    if (-not $SendToAI) {
-        if ([string]::IsNullOrWhiteSpace($Provider)) {
-            return 'groq'
-        }
-
-        return $Provider
-    }
-
-    if ($Provider -in @('groq', 'gemini', 'openai', 'anthropic')) { return $Provider }
 
     if ($NonInteractive) {
-        if ([string]::IsNullOrWhiteSpace($Provider)) {
-            return 'groq'
-        }
-
-        throw "Provider inválido em execução não interativa: $Provider"
-    }
-
-    Write-Host "  2. IA Orquestradora:" -ForegroundColor Cyan
-    Write-Host "    [1] Groq"
-    Write-Host "    [2] Gemini"
-    Write-Host "    [3] OpenAI"
-    Write-Host "    [4] Anthropic"
-    Write-Host ""
-
-    $resolved = $null
-    while ($null -eq $resolved) {
-        $inp = (Read-Host "  Digite 1, 2, 3 ou 4").Trim()
-        switch ($inp) {
-            '1' { $resolved = 'groq' }
-            '2' { $resolved = 'gemini' }
-            '3' { $resolved = 'openai' }
-            '4' { $resolved = 'anthropic' }
-            default { Write-Host "  Entrada invalida. Digite 1, 2, 3 ou 4." -ForegroundColor Yellow }
+        return [pscustomobject]@{
+            ResolvedPath = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
+            SourceMode = 'local'
+            OriginalInput = $DefaultPath
+            CloneCleanupInfo = $null
         }
     }
 
-    Write-Host ""
-    return $resolved
-}
+    Write-Host ''
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host '   ORIGEM DO PROJETO' -ForegroundColor Cyan
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host ''
+    Write-Host '  Selecione a origem do projeto:' -ForegroundColor Cyan
+    Write-Host '    [1] Usar path atual'
+    Write-Host '    [2] Clonar repositório GitHub'
+    Write-Host ''
 
-function Resolve-AIPromptMode {
-    param(
-        [string]$AIPromptMode,
-        [bool]$SendToAI,
-        [switch]$NonInteractive
-    )
-
-    # Sem IA ativa, modo de customizacao nao e relevante
-    if (-not $SendToAI) {
-        if ([string]::IsNullOrWhiteSpace($AIPromptMode)) {
-            return 'default'
-        }
-
-        return $AIPromptMode
-    }
-
-    if ($AIPromptMode -in @('default', 'template', 'expert')) { return $AIPromptMode }
-
-    if ($NonInteractive) {
-        if ([string]::IsNullOrWhiteSpace($AIPromptMode)) {
-            return 'default'
-        }
-
-        throw "Modo de customização inválido em execução não interativa: $AIPromptMode"
-    }
-
-    Write-Host "  Modo de Customizacao:" -ForegroundColor Cyan
-    Write-Host "    [1] Default"
-    Write-Host "    [2] Template"
-    Write-Host "    [3] Expert Override"
-    Write-Host ""
-
-    $resolved = $null
-    while ($null -eq $resolved) {
-        $inp = (Read-Host "  Digite 1, 2 ou 3").Trim()
-        switch ($inp) {
-            '1' { $resolved = 'default' }
-            '2' { $resolved = 'template' }
-            '3' { $resolved = 'expert' }
-            default { Write-Host "  Entrada invalida. Digite 1, 2 ou 3." -ForegroundColor Yellow }
+    $choice = $null
+    while ($choice -notin @('1', '2')) {
+        $choice = (Read-Host '  Digite 1 ou 2').Trim()
+        if ($choice -notin @('1', '2')) {
+            Write-Host '  Entrada inválida. Digite 1 ou 2.' -ForegroundColor Yellow
         }
     }
 
-    Write-Host ""
-    return $resolved
-}
-
-function Get-VibeArtifactRouteLabel {
-    param([string]$RouteMode)
-    if ($RouteMode -match "(?i)executor") { return "executor" }
-    return "diretor"
-}
-
-function Get-VibeArtifactModeLabel {
-    param([string]$ExtractionMode)
-    switch -Regex ($ExtractionMode) {
-        "(?i)sniper|manual|^3$" { return "manual" }
-        "(?i)blueprint|architect|^2$" { return "blueprint" }
-        default { return "bundle" }
-    }
-}
-
-function Get-VibeArtifactFileName {
-    param(
-        [string]$ProjectNameValue,
-        [string]$ExtractionMode,
-        [string]$RouteMode,
-        [string]$Prefix = "",
-        [string]$Provider = "",
-        [string]$Extension = ".md"
-    )
-    $mode = Get-VibeArtifactModeLabel -ExtractionMode $ExtractionMode
-    $route = Get-VibeArtifactRouteLabel -RouteMode $RouteMode
-    $prov = if ([string]::IsNullOrWhiteSpace($Provider)) { "" } else { "_$Provider" }
-    $pfx = if ([string]::IsNullOrWhiteSpace($Prefix)) { "_" } else { "_${Prefix}_" }
-    
-    return "${pfx}${mode}_${route}${prov}__${ProjectNameValue}${Extension}"
-}
-
-function Get-AIContextOutputFileName {
-    param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
-    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Prefix "AI_CONTEXT"
-}
-
-function Get-AIResultOutputFileName {
-    param([string]$ProjectNameValue, [string]$RouteMode, [string]$ExtractionMode)
-    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ExtractionMode -RouteMode $RouteMode -Extension ".json"
-}
-
-function New-LocalExecutionMeta {
-    param(
-        [string]$ProjectNameValue,
-        [string]$RouteMode,
-        [string]$ExtractionMode,
-        [string]$DocumentMode,
-        [string]$PromptMode = 'local',
-        [AllowNull()][string]$TemplateId = $null,
-        [string]$Provider = 'local',
-        [string]$Model = 'local',
-        [AllowNull()][string]$BundlePath = $null,
-        [AllowNull()][string]$OutputPath = $null,
-        [AllowNull()][string]$ResultMetaPath = $null,
-        [hashtable]$ExtraData
-    )
-
-    $meta = [ordered]@{
-        ok                       = $true
-        provider                 = $Provider
-        model                    = $Model
-        routeMode                = $RouteMode
-        extractionMode           = $ExtractionMode
-        documentMode             = $DocumentMode
-        promptMode               = $PromptMode
-        templateId               = $TemplateId
-        outputPath               = $OutputPath
-        resultMetaPath           = $ResultMetaPath
-        bundlePath               = $BundlePath
-        generatedAt              = [DateTime]::UtcNow.ToString('o')
-        generatedWithoutProvider = $true
-    }
-
-    if ($ExtraData) {
-        foreach ($key in $ExtraData.Keys) {
-            $meta[$key] = $ExtraData[$key]
+    if ($choice -eq '1') {
+        Write-Host ''
+        $resolved = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
+        Write-UILog -Message ("Origem: path local -> {0}" -f $resolved) -Color $ThemeSuccess
+        return [pscustomobject]@{
+            ResolvedPath = $resolved
+            SourceMode = 'local'
+            OriginalInput = $DefaultPath
+            CloneCleanupInfo = $null
         }
     }
 
-    return [pscustomobject]$meta
-}
+    Write-Host ''
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host '   CLONAGEM DE REPOSITÓRIO GITHUB' -ForegroundColor Cyan
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host ''
 
-function Write-LocalExecutionMeta {
-    param(
-        [string]$ProjectNameValue,
-        [string]$RouteMode,
-        [string]$ExtractionMode,
-        [string]$DocumentMode,
-        [string]$PromptMode = 'local',
-        [AllowNull()][string]$TemplateId = $null,
-        [string]$Provider = 'local',
-        [string]$Model = 'local',
-        [AllowNull()][string]$BundlePath = $null,
-        [AllowNull()][string]$OutputPath = $null,
-        [AllowNull()][string]$ResultMetaPath = $null,
-        [hashtable]$ExtraData,
-        [string]$OutputDirectory = $null   # CORREÇÃO: novo parâmetro opcional para diretório de saída
-    )
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        throw 'Git não está instalado ou não está disponível no PATH. A clonagem de repositórios GitHub requer o Git.'
+    }
 
-    $resolvedResultMetaPath = if ([string]::IsNullOrWhiteSpace($ResultMetaPath)) {
-        # CORREÇÃO: usa $OutputDirectory se fornecido; caso contrário, mantém (Get-Location).Path
-        $baseDir = if ($OutputDirectory) { $OutputDirectory } else { (Get-Location).Path }
-        Join-Path $baseDir (Get-AIResultOutputFileName -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode -ExtractionMode $ExtractionMode)
+    $repoUrl = $null
+    while ([string]::IsNullOrWhiteSpace($repoUrl)) {
+        $repoUrl = (Read-Host '  URL do repositório GitHub (ex: https://github.com/user/repo.git)').Trim()
+        if ([string]::IsNullOrWhiteSpace($repoUrl)) {
+            Write-Host '  URL não pode ser vazia.' -ForegroundColor Yellow
+        }
+    }
+
+    if ($repoUrl -notmatch '^https?://(www\.)?github\.com/') {
+        Write-UILog -Message 'Aviso: a URL fornecida não parece ser do GitHub. A clonagem será tentada mesmo assim.' -Color $ThemeWarn
+    }
+
+    Write-Host ''
+    $useTempInput = (Read-Host '  Usar diretório temporário automático? (S/n)').Trim().ToLower()
+    $useTempDir = -not ($useTempInput -eq 'n' -or $useTempInput -eq 'nao')
+
+    $targetDir = $null
+    $cloneMode = $null
+
+    if ($useTempDir) {
+        $cloneMode = 'temporary'
+        $baseTemp = Join-Path ([System.IO.Path]::GetTempPath()) 'VibeToolkit\clones'
+        if (-not (Test-Path $baseTemp)) {
+            New-Item -ItemType Directory -Path $baseTemp -Force | Out-Null
+        }
+        $uniqueName = [System.Guid]::NewGuid().ToString('N')
+        $targetDir = Join-Path $baseTemp $uniqueName
+        Write-UILog -Message ("Diretório temporário automático: {0}" -f $targetDir) -Color $ThemeCyan
     }
     else {
-        $ResultMetaPath
-    }
-
-    $metadataSourcePath = if (-not [string]::IsNullOrWhiteSpace($BundlePath)) {
-        $BundlePath
-    }
-    elseif (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
-        $OutputPath
-    }
-    else {
-        $null
-    }
-
-    $agentScriptPath = if ($script:ToolkitDir) {
-        Join-Path $script:ToolkitDir 'groq-agent.ts'
-    }
-    else {
-        Join-Path (Get-Location).Path 'groq-agent.ts'
-    }
-
-    $governanceAgentAttempted = $false
-    $governanceAgentUsed = $false
-    $governanceAgentFailureMessage = $null
-
-    if ($Provider -eq 'local' -and -not [string]::IsNullOrWhiteSpace($metadataSourcePath) -and (Test-Path $metadataSourcePath -PathType Leaf) -and (Test-Path $agentScriptPath -PathType Leaf)) {
-        $governanceAgentAttempted = $true
-
-        try {
-            $skipReasonValue = $null
-            if ($ExtraData -and $ExtraData.ContainsKey('skippedReason') -and -not [string]::IsNullOrWhiteSpace([string]$ExtraData['skippedReason'])) {
-                $skipReasonValue = [string]$ExtraData['skippedReason']
+        $cloneMode = 'manual'
+        $manualPath = $null
+        while ([string]::IsNullOrWhiteSpace($manualPath)) {
+            $manualPath = (Read-Host '  Informe o caminho completo do diretório de destino').Trim()
+            if ([string]::IsNullOrWhiteSpace($manualPath)) {
+                Write-Host '  Caminho não pode ser vazio.' -ForegroundColor Yellow
+                continue
             }
-
-            $agentResult = Invoke-OrchestratorAgent `
-                -AgentScriptPath $agentScriptPath `
-                -BundlePath $metadataSourcePath `
-                -ProjectNameValue $ProjectNameValue `
-                -ExecutorTargetValue 'Local Governance' `
-                -BundleModeValue $ExtractionMode `
-                -PrimaryProviderValue 'local' `
-                -OutputRouteModeValue $RouteMode `
-                -DocumentModeValue $DocumentMode `
-                -PromptModeValue $PromptMode `
-                -TemplateIdValue $TemplateId `
-                -ExplicitOutputPath $(if ([string]::IsNullOrWhiteSpace($OutputPath)) { $metadataSourcePath } else { $OutputPath }) `
-                -ExplicitResultMetaPath $resolvedResultMetaPath `
-                -SkipReasonValue $skipReasonValue `
-                -LocalModelValue $Model
-
-            $resultMetaPathFromDisk = if ($agentResult -and $agentResult.ResultMetaPath -and (Test-Path $agentResult.ResultMetaPath -PathType Leaf)) {
-                $agentResult.ResultMetaPath
+            try {
+                $resolvedManual = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($manualPath))
             }
-            elseif (Test-Path $resolvedResultMetaPath -PathType Leaf) {
-                $resolvedResultMetaPath
+            catch {
+                Write-Host '  Caminho inválido. Tente novamente.' -ForegroundColor Yellow
+                $manualPath = $null
+                continue
             }
-            else {
-                $null
-            }
-
-            if ($resultMetaPathFromDisk) {
-                $meta = (Read-LocalTextArtifact -Path $resultMetaPathFromDisk) | ConvertFrom-Json -AsHashtable
-                if ($null -eq $meta) { $meta = @{} }
-
-                if ($ExtraData) {
-                    foreach ($key in $ExtraData.Keys) {
-                        $meta[$key] = $ExtraData[$key]
-                    }
-                }
-
-                $meta.resultMetaPath = $resultMetaPathFromDisk
-                $metaJson = $meta | ConvertTo-Json -Depth 20
-                Write-LocalTextArtifact -Path $resultMetaPathFromDisk -Content $metaJson -UseBom
-
-                return [pscustomobject]@{
-                    Meta                      = [pscustomobject]$meta
-                    ResultMetaPath            = $resultMetaPathFromDisk
-                    GovernanceAgentAttempted  = $governanceAgentAttempted
-                    GovernanceAgentUsed       = $true
-                    GovernanceAgentFailed     = $false
-                    GovernanceAgentFailureMessage = $null
-                }
-            }
+            $manualPath = $resolvedManual
         }
-        catch {
-            $governanceAgentFailureMessage = $_.Exception.Message
-            if ($script:LastAgentFailure -and -not [string]::IsNullOrWhiteSpace([string]$script:LastAgentFailure.Message)) {
-                $governanceAgentFailureMessage = [string]$script:LastAgentFailure.Message
-            }
-        }
+        $targetDir = $manualPath
     }
 
-    $meta = New-LocalExecutionMeta `
-        -ProjectNameValue $ProjectNameValue `
-        -RouteMode $RouteMode `
-        -ExtractionMode $ExtractionMode `
-        -DocumentMode $DocumentMode `
-        -PromptMode $PromptMode `
-        -TemplateId $TemplateId `
-        -Provider $Provider `
-        -Model $Model `
-        -BundlePath $BundlePath `
-        -OutputPath $OutputPath `
-        -ResultMetaPath $resolvedResultMetaPath `
-        -ExtraData $ExtraData
+    Write-Host ''
+    $keepCloneInput = (Read-Host '  Manter o clone após a execução? (s/N)').Trim().ToLower()
+    $keepClone = ($keepCloneInput -eq 's' -or $keepCloneInput -eq 'sim')
 
-    $metaJson = $meta | ConvertTo-Json -Depth 12
-    Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
+    Write-UILog -Message ("Iniciando clone de {0} para {1} ..." -f $repoUrl, $targetDir) -Color $ThemeCyan
 
-    return [pscustomobject]@{
-        Meta                      = $meta
-        ResultMetaPath            = $resolvedResultMetaPath
-        GovernanceAgentAttempted  = $governanceAgentAttempted
-        GovernanceAgentUsed       = $governanceAgentUsed
-        GovernanceAgentFailed     = [bool]($governanceAgentAttempted -and -not $governanceAgentUsed)
-        GovernanceAgentFailureMessage = $governanceAgentFailureMessage
-    }
-}
-
-function Get-DeterministicMetaPromptOutputFileName {
-    param(
-        [string]$ProjectNameValue,
-        [string]$ChoiceValue,
-        [string]$RouteMode
-    )
-    return Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode $ChoiceValue -RouteMode $RouteMode -Prefix "meta-prompt"
-}
-
-function Get-DeterministicRelevantFiles {
-    param([System.IO.FileInfo[]]$Files)
-
-    $priorityPatterns = @(
-        '.\project-bundler.ps1',
-        '.\groq-agent.ts',
-        '.\modules\VibeDirectorProtocol.psm1',
-        '.\modules\VibeBundleWriter.psm1',
-        '.\modules\VibeFileDiscovery.psm1',
-        '.\modules\VibeSignatureExtractor.psm1',
-        '.\DOCUMENTACAO_TECNICA.md',
-        '.\README.md',
-        '.\package.json'
-    )
-
-    $relativeMap = @{}
-    foreach ($file in @($Files)) {
-        try {
-            $relativePath = Resolve-Path -Path $file.FullName -Relative
-            $relativeMap[$relativePath] = $true
-        }
-        catch {
-        }
+    $cloneArgs = @('clone', '--', $repoUrl, $targetDir)
+    $cloneProcess = Start-Process -FilePath 'git' -ArgumentList $cloneArgs -NoNewWindow -Wait -PassThru
+    if ($cloneProcess.ExitCode -ne 0) {
+        throw "Falha ao clonar repositório (código de saída: $($cloneProcess.ExitCode)). Verifique a URL e sua conexão."
     }
 
-    $result = New-Object System.Collections.Generic.List[string]
-    foreach ($pattern in $priorityPatterns) {
-        if ($relativeMap.ContainsKey($pattern)) {
-            $result.Add($pattern)
-        }
-    }
+    Write-UILog -Message 'Clone concluído com sucesso.' -Color $ThemeSuccess
 
-    if ($result.Count -eq 0) {
-        foreach ($key in ($relativeMap.Keys | Select-Object -First 8)) {
-            $result.Add([string]$key)
-        }
-    }
-
-    return @($result)
-}
-
-function Get-DeterministicMomentumSourceLabel {
-    param($MomentumContext)
-
-    if ($null -eq $MomentumContext) { return "não identificado" }
-    if ($MomentumContext.Status -ne 'found' -or [string]::IsNullOrWhiteSpace($MomentumContext.FilePath)) { return "não identificado" }
-
-    try {
-        return (Resolve-Path -Path $MomentumContext.FilePath -Relative)
-    }
-    catch {
-        return [System.IO.Path]::GetFileName($MomentumContext.FilePath)
-    }
-}
-
-function New-DeterministicMetaPromptArtifact {
-    param(
-        [string]$ProjectNameValue,
-        [string]$ExecutorTargetValue,
-        [string]$RouteMode,
-        [string]$ExtractionMode,
-        [string]$DocumentMode,
-        [string]$SourceArtifactFileName,
-        [string]$OutputArtifactFileName,
-        [AllowEmptyString()][string]$BundleContent,
-        [System.IO.FileInfo[]]$Files,
-        $MomentumContext
-    )
-
-    $generatedAt = [DateTime]::UtcNow.ToString("o")
-    $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
-    $momentumState = if ($MomentumContext -and $MomentumContext.Status -eq 'found') { 'carregado' } else { 'vazio' }
-    $momentumSource = Get-DeterministicMomentumSourceLabel -MomentumContext $MomentumContext
-    $normalizedRouteMode = if ($RouteMode -eq 'executor') { 'executor' } else { 'director' }
-    $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
-    $momentumMemoryLabel = if ($momentumState -eq 'carregado') { $momentumSource } else { 'estado vazio / não identificado' }
-
-    $lines = New-Object System.Collections.Generic.List[string]
-
-    if ($normalizedRouteMode -eq 'executor') {
-        $lines.Add("### <metadata>")
-        $lines.Add("")
-        $lines.Add(('* **Projeto:** `{0}`' -f $ProjectNameValue))
-        $lines.Add('* **Protocolo:** `ELITE v4.1 (Sniper Mode)`')
-        $lines.Add(('* **Route Mode:** `{0}`' -f $normalizedRouteMode))
-        $lines.Add(('* **Extração:** `{0}`' -f (Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)))
-        $lines.Add(('* **Document Mode:** `{0}`' -f $DocumentMode))
-        $lines.Add(('* **Artefato Fonte:** `{0}`' -f $SourceArtifactFileName))
-        $lines.Add(('* **Artefato Final:** `{0}`' -f $OutputArtifactFileName))
-        $lines.Add(('* **Contexto Momentum:** `{0}`' -f $momentumState))
-        $lines.Add(('* **Executor Alvo:** `{0}`' -f $ExecutorTargetValue))
-        $lines.Add(('* **Gerado em:** `{0}`' -f $generatedAt))
-        $lines.Add("")
-        $lines.Add("</metadata>")
-        $lines.Add("")
-        $lines.Add("### <identity_and_mandate>")
-        $lines.Add("")
-        $lines.Add("Você é o **Senior Implementation Agent (Sniper)**. Sua função é a materialização técnica de especificações de ""espaço zero"" (zero-gap) em código de produção.")
-        $lines.Add("* **Missão:** Converter o blueprint técnico em código funcional, respeitando invariantes e contratos existentes.")
-        $lines.Add("* **Filosofia:** O código é um **passivo técnico (liability)** até ser verificado por um humano.")
-        $lines.Add("* **Proibição de Alquimia:** Não tome decisões arquiteturais criativas. Se houver ambiguidade, declare a lacuna antes de prosseguir.")
-        $lines.Add("")
-        $lines.Add("</identity_and_mandate>")
-        $lines.Add("")
-        $lines.Add("### <execution_rules>")
-        $lines.Add("")
-        $lines.Add("1. **Lei da Subtração:** Antes de adicionar código, verifique se a funcionalidade pode ser resolvida reutilizando abstrações presentes ou removendo redundâncias.")
-        $lines.Add("2. **DNA do Output (Zero-Yap):** A entrega deve ser técnica e pronta para aplicação.")
-        $lines.Add("3. **Preservação de Contexto:** Mantenha estilos de nomenclatura e estruturas de arquivos compatíveis com o projeto **$ProjectNameValue**.")
-        $lines.Add("")
-        $lines.Add("</execution_rules>")
-        $lines.Add("")
-        $lines.Add("### <technical_blueprint>")
-        $lines.Add("")
-        $lines.Add(('* **Objetivo:** Materializar ajustes no pipeline estruturado de `{0}` para gerar contexto executor determinístico local, sem provider remoto.' -f $ProjectNameValue))
-        $lines.Add(('* **Arquivos-Alvo:** `{0}`' -f $relevantFilesValue))
-        $lines.Add(('* **Injeção de Momentum:** Utilize o estado de `{0}` como memória de trabalho para evitar regressões sistêmicas.' -f $momentumMemoryLabel))
-        $lines.Add("")
-        $lines.Add("</technical_blueprint>")
-        $lines.Add("")
-        $lines.Add("### <verification_protocol>")
-        $lines.Add("")
-        $lines.Add("Toda implementação deve incluir:")
-        $lines.Add("")
-        $lines.Add("1. **Relatório de Impacto:** Lista de arquivos e dependências verificadas.")
-        $lines.Add("2. **Property-based Testing/Fuzzing:** Instruções para bombardear o sistema com inputs aleatórios e descobrir falhas de borda.")
-        $lines.Add("3. **Checklist de Segurança:** Verificação obrigatória contra exposição de segredos, validação insuficiente de entrada e violações de contrato.")
-        $lines.Add("")
-        $lines.Add("</verification_protocol>")
-        $lines.Add("")
-        $lines.Add("### <response_template>")
-        $lines.Add("")
-        $lines.Add("1. **ANÁLISE DE EXECUÇÃO**")
-        $lines.Add("2. **DIFF VISUAL / IMPLEMENTAÇÃO**")
-        $lines.Add("3. **PROTOCOLO DE VALIDAÇÃO**")
-        $lines.Add("4. **ASSINATURA TÉCNICA**")
-        $lines.Add("")
-        $lines.Add("</response_template>")
-        $lines.Add("")
-        $lines.Add("## BUNDLE VISÍVEL CONSOLIDADO")
-        $lines.Add("- Projeto: $ProjectNameValue")
-        $lines.Add("- Modo operacional: $normalizedRouteMode")
-        $lines.Add("- Extração: $ExtractionMode")
-        $lines.Add("- Artefato fonte: $SourceArtifactFileName")
-        $lines.Add("- Arquivos relevantes: $relevantFilesValue")
-        $lines.Add("")
-        $lines.Add($BundleContent)
-
-        return ($lines -join "`n")
-    }
-
-    $lines.Add((Get-DirectorHighFidelityMetadataSection `
-                -ProjectNameValue $ProjectNameValue `
-                -ExtractionMode $ExtractionMode `
-                -DocumentMode $DocumentMode `
-                -GeneratedAt $generatedAt `
-                -SourceArtifactFileName $SourceArtifactFileName `
-                -OutputArtifactFileName $OutputArtifactFileName `
-                -ExecutorTargetValue $ExecutorTargetValue))
-    $lines.Add("")
-    $lines.Add((Get-DirectorHighFidelitySystemGovernanceSection))
-    $lines.Add("")
-    $lines.Add((Get-DirectorHighFidelityMetaPromptEngineeringLayersSection -TargetFiles $relevantFiles))
-    $lines.Add("")
-    $lines.Add((Get-DirectorHighFidelityResponseTemplateSection))
-    $lines.Add("")
-    $lines.Add((Get-DirectorHighFidelityContextMomentumSection -MomentumState $momentumState -MomentumSource $momentumSource))
-    $lines.Add("")
-    $lines.Add("## BUNDLE VISÍVEL CONSOLIDADO")
-    $lines.Add("- Projeto: $ProjectNameValue")
-    $lines.Add("- Modo operacional: $normalizedRouteMode")
-    $lines.Add("- Extração: $ExtractionMode")
-    $lines.Add("- Artefato fonte: $SourceArtifactFileName")
-    $lines.Add("- Arquivos relevantes: $relevantFilesValue")
-    $lines.Add("")
-    $lines.Add($BundleContent)
-
-    return ($lines -join "`n")
-}
-
-function Format-BundleContentForDiff {
-    param([AllowEmptyString()][string]$Content)
-    if ($null -eq $Content) { return "" }
-    return (($Content -replace "`0", "") -replace "`r`n", "`n").TrimEnd()
-}
-
-function Get-BundleContentHash {
-    param([AllowEmptyString()][string]$Content)
-    $normalized = Format-BundleContentForDiff -Content $Content
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalized)
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "").ToLowerInvariant()
-    }
-    finally {
-        $sha256.Dispose()
-    }
-}
-
-function Read-NormalizedBundleFile {
-    param([string]$Path)
-    if (-not (Test-Path $Path)) { return $null }
-    $raw = Read-LocalTextArtifact -Path $Path
-    return (Format-BundleContentForDiff -Content $raw)
-}
-
-function Resolve-BundlePreflightGate {
-    param(
-        [string]$OfficialBundlePath,
-        [AllowEmptyString()][string]$NewBundleContent
-    )
-    $normalizedNew = Format-BundleContentForDiff -Content $NewBundleContent
-    $newHash = Get-BundleContentHash -Content $normalizedNew
-
-    $officialExists = Test-Path $OfficialBundlePath
-    $officialNormalized = $null
-    $officialHash = $null
-    $isIdentical = $false
-
-    if ($officialExists) {
-        $officialNormalized = Read-NormalizedBundleFile -Path $OfficialBundlePath
-        $officialHash = Get-BundleContentHash -Content $officialNormalized
-        $isIdentical = ($officialHash -eq $newHash)
+    $cleanupInfo = @{
+        Path = $targetDir
+        CloneMode = $cloneMode
+        KeepClone = $keepClone
+        CreatedByUs = $true
+        cleanupPerformed = $false
     }
 
     return [pscustomobject]@{
-        OfficialExists = $officialExists
-        IsIdentical    = $isIdentical
-        NewHash        = $newHash
-        OfficialHash   = $officialHash
+        ResolvedPath = $targetDir
+        SourceMode = 'github'
+        OriginalInput = $repoUrl
+        CloneCleanupInfo = $cleanupInfo
     }
 }
 
@@ -1984,177 +1444,16 @@ $script:IgnoredFiles = @(
     'poetry.lock', 'Pipfile.lock', 'Cargo.lock', 'go.sum', 'composer.lock'
 )
 
-# -----------------------------------------------------------------------------
-# NOVA FUNCIONALIDADE: Seleção de origem (Path local vs Clone GitHub)
-# -----------------------------------------------------------------------------
-function Resolve-ProjectSource {
-    param(
-        [string]$DefaultPath,
-        [switch]$NonInteractive
-    )
-
-    # Modo não interativo: mantém comportamento original (usa $DefaultPath)
-    if ($NonInteractive) {
-        return [pscustomobject]@{
-            ResolvedPath      = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
-            SourceMode        = 'local'
-            OriginalInput     = $DefaultPath
-            CloneCleanupInfo  = $null
-        }
-    }
-
-    Write-Host ""
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "   ORIGEM DO PROJETO" -ForegroundColor Cyan
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host ""
-    Write-Host "  Selecione a origem do projeto:" -ForegroundColor Cyan
-    Write-Host "    [1] Usar path atual"
-    Write-Host "    [2] Clonar repositório GitHub"
-    Write-Host ""
-
-    $choice = $null
-    while ($choice -notin @('1','2')) {
-        $choice = (Read-Host "  Digite 1 ou 2").Trim()
-        if ($choice -notin @('1','2')) {
-            Write-Host "  Entrada inválida. Digite 1 ou 2." -ForegroundColor Yellow
-        }
-    }
-
-    if ($choice -eq '1') {
-        Write-Host ""
-        $resolved = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
-        Write-UILog -Message ("Origem: path local -> {0}" -f $resolved) -Color $ThemeSuccess
-        return [pscustomobject]@{
-            ResolvedPath      = $resolved
-            SourceMode        = 'local'
-            OriginalInput     = $DefaultPath
-            CloneCleanupInfo  = $null
-        }
-    }
-
-    # Modo GitHub
-    Write-Host ""
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "   CLONAGEM DE REPOSITÓRIO GITHUB" -ForegroundColor Cyan
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host ""
-
-    # Verificar disponibilidade do git
-    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-    if (-not $gitCmd) {
-        throw "Git não está instalado ou não está disponível no PATH. A clonagem de repositórios GitHub requer o Git."
-    }
-
-    # URL do repositório
-    $repoUrl = $null
-    while ([string]::IsNullOrWhiteSpace($repoUrl)) {
-        $repoUrl = (Read-Host "  URL do repositório GitHub (ex: https://github.com/user/repo.git)").Trim()
-        if ([string]::IsNullOrWhiteSpace($repoUrl)) {
-            Write-Host "  URL não pode ser vazia." -ForegroundColor Yellow
-        }
-    }
-
-    # Validação básica da URL
-    if ($repoUrl -notmatch '^https?://(www\.)?github\.com/') {
-        Write-UILog -Message "Aviso: A URL fornecida não parece ser do GitHub. A clonagem será tentada mesmo assim." -Color $ThemeWarn
-    }
-
-    # Diretório temporário automático?
-    Write-Host ""
-    $useTempInput = (Read-Host "  Usar diretório temporário automático? (S/n)").Trim().ToLower()
-    $useTempDir = -not ($useTempInput -eq 'n' -or $useTempInput -eq 'nao')
-
-    $targetDir = $null
-    $cloneMode = $null
-
-    if ($useTempDir) {
-        $cloneMode = 'temporary'
-        # Criar diretório base seguro em %TEMP%\VibeToolkit\clones
-        $baseTemp = Join-Path ([System.IO.Path]::GetTempPath()) 'VibeToolkit\clones'
-        if (-not (Test-Path $baseTemp)) {
-            New-Item -ItemType Directory -Path $baseTemp -Force | Out-Null
-        }
-        $uniqueName = [System.Guid]::NewGuid().ToString('N')
-        $targetDir = Join-Path $baseTemp $uniqueName
-        Write-UILog -Message "Diretório temporário automático: $targetDir" -Color $ThemeCyan
-    }
-    else {
-        $cloneMode = 'manual'
-        $manualPath = $null
-        while ([string]::IsNullOrWhiteSpace($manualPath)) {
-            $manualPath = (Read-Host "  Informe o caminho completo do diretório de destino").Trim()
-            if ([string]::IsNullOrWhiteSpace($manualPath)) {
-                Write-Host "  Caminho não pode ser vazio." -ForegroundColor Yellow
-                continue
-            }
-            try {
-                $resolvedManual = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($manualPath))
-            }
-            catch {
-                Write-Host "  Caminho inválido. Tente novamente." -ForegroundColor Yellow
-                $manualPath = $null
-                continue
-            }
-            $manualPath = $resolvedManual
-        }
-        $targetDir = $manualPath
-    }
-
-    # Manter clone após execução?
-    Write-Host ""
-    $keepCloneInput = (Read-Host "  Manter o clone após a execução? (s/N)").Trim().ToLower()
-    $keepClone = ($keepCloneInput -eq 's' -or $keepCloneInput -eq 'sim')
-
-    Write-UILog -Message "Iniciando clone de $repoUrl para $targetDir ..." -Color $ThemeCyan
-
-    # Executar git clone
-    $cloneArgs = @('clone', '--', $repoUrl, $targetDir)
-    $cloneProcess = Start-Process -FilePath 'git' -ArgumentList $cloneArgs -NoNewWindow -Wait -PassThru
-    if ($cloneProcess.ExitCode -ne 0) {
-        throw "Falha ao clonar repositório (código de saída: $($cloneProcess.ExitCode)). Verifique a URL e sua conexão."
-    }
-
-    Write-UILog -Message "Clone concluído com sucesso." -Color $ThemeSuccess
-
-    $cleanupInfo = @{
-        Path      = $targetDir
-        CloneMode = $cloneMode
-        KeepClone = $keepClone
-        CreatedByUs = $true
-    }
-
-    return [pscustomobject]@{
-        ResolvedPath      = $targetDir
-        SourceMode        = 'github'
-        OriginalInput     = $repoUrl
-        CloneCleanupInfo  = $cleanupInfo
-    }
-}
-
-# -----------------------------------------------------------------------------
-# FIM DA NOVA FUNCIONALIDADE
-# -----------------------------------------------------------------------------
-
-# CORREÇÃO: captura o diretório de trabalho original antes de qualquer Set-Location
-$script:OriginalWorkingDirectory = Get-Location
-
-$script:CloneCleanupInfo = $null
-
 try {
-    # Resolver a origem do projeto (interativo ou via -Path/-NonInteractive)
     $sourceResult = Resolve-ProjectSource -DefaultPath $Path -NonInteractive:$NonInteractive
     $resolvedTargetPath = $sourceResult.ResolvedPath
     $sourceMode = $sourceResult.SourceMode
     $originalInput = $sourceResult.OriginalInput
     $script:CloneCleanupInfo = $sourceResult.CloneCleanupInfo
 
-    # CORREÇÃO: define o diretório de saída efetivo
-    # Se for clone temporário que será removido, usa o diretório original; senão, usa o próprio diretório resolvido.
     $script:EffectiveOutputDirectory = $resolvedTargetPath
     if ($sourceMode -eq 'github' -and $script:CloneCleanupInfo.CloneMode -eq 'temporary' -and -not $script:CloneCleanupInfo.KeepClone) {
         $script:EffectiveOutputDirectory = $script:OriginalWorkingDirectory.Path
-        Write-UILog -Message "Clone temporário será removido ao final. Artefatos serão salvos em: $($script:EffectiveOutputDirectory)" -Color $ThemeCyan
     }
 
     $SentinelUiPath = Join-Path $script:ToolkitDir 'lib\SentinelUI.ps1'
@@ -2168,13 +1467,11 @@ try {
     }
     catch {
         $sentinelBootstrapFailure = $_
-
         if (Test-IsSentinelUiPolicyBlockedError -ErrorRecord $sentinelBootstrapFailure) {
             Register-SentinelCliFallback
             $sentinelUiFallbackActive = $true
-
             $sentinelFailureSummary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $sentinelBootstrapFailure
-            Write-Host "[!] SentinelUI bloqueado por assinatura/execution policy. Ativando fallback textual para o modo headless."
+            Write-Host '[!] SentinelUI bloqueado por assinatura/execution policy. Ativando fallback textual para o modo headless.'
             Write-Host ("    {0}" -f $sentinelFailureSummary)
         }
         else {
@@ -2185,7 +1482,7 @@ try {
 
     Assert-SentinelUiBootstrapContract -SentinelUiPath $SentinelUiPath -FallbackActive:$sentinelUiFallbackActive
 
-    Write-SentinelHeader -Title 'SENTINEL HEADLESS' -Version 'v1.0.0'
+    Write-SentinelHeader -Title 'SENTINEL HEADLESS' -Version 'v2.0.0'
     if ($sentinelUiFallbackActive) {
         Write-UILog -Message 'Bootstrap headless carregado com fallback textual de console.' -Color $ThemeWarn
     }
@@ -2200,11 +1497,13 @@ try {
         (Join-Path $modulesDir 'VibeSignatureExtractor.psm1'),
         (Join-Path $modulesDir 'VibeFileDiscovery.psm1')
     )
+
     foreach ($modulePath in $requiredModulePaths) {
         if (-not (Test-Path $modulePath -PathType Leaf)) {
             throw "Módulo obrigatório não encontrado: $modulePath"
         }
     }
+
     foreach ($modulePath in $requiredModulePaths) {
         $moduleContent = [System.IO.File]::ReadAllText($modulePath, [System.Text.Encoding]::UTF8)
         $scriptBlock = [scriptblock]::Create($moduleContent)
@@ -2213,155 +1512,26 @@ try {
         Import-Module -ModuleInfo $dynamicModule -Force -DisableNameChecking -ErrorAction Stop
     }
 
-    if (-not (Get-Command -Name Get-VibeExtractionModeLabel -ErrorAction SilentlyContinue)) {
-        function Get-VibeExtractionModeLabel {
-            param([string]$ExtractionMode)
-
-            $normalizedExtractionMode = if ($null -eq $ExtractionMode) { '' } else { [string]$ExtractionMode }
-            switch ($normalizedExtractionMode.ToLowerInvariant()) {
-                'full'      { return 'full / tudo' }
-                'architect' { return 'architect / blueprint' }
-                'sniper'    { return 'sniper / recorte cirúrgico' }
-                'txt'       { return 'txt export' }
-                default {
-                    if ([string]::IsNullOrWhiteSpace($ExtractionMode)) {
-                        return 'não informado'
-                    }
-
-                    return $ExtractionMode
-                }
-            }
-        }
-    }
-
-    if (-not (Get-Command -Name Get-DirectorHighFidelityMetadataSection -ErrorAction SilentlyContinue)) {
-        function Get-DirectorHighFidelityMetadataSection {
-            param(
-                [string]$ProjectNameValue,
-                [string]$ExtractionMode,
-                [string]$DocumentMode,
-                [string]$GeneratedAt,
-                [string]$SourceArtifactFileName,
-                [string]$OutputArtifactFileName,
-                [string]$ExecutorTargetValue
-            )
-
-            $lines = New-Object System.Collections.Generic.List[string]
-            $lines.Add('## METADADOS DE OPERAÇÃO')
-            $lines.Add(('- Projeto: {0}' -f $ProjectNameValue))
-            $lines.Add('- Protocolo: ELITE v4.1 (Director Mode)')
-            $lines.Add(('- Extração: {0}' -f (Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode)))
-            $lines.Add(('- Document Mode: {0}' -f $DocumentMode))
-            $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName))
-            $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName))
-            $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue))
-            $lines.Add(('- Gerado em: {0}' -f $GeneratedAt))
-
-            return ($lines -join "`n")
-        }
-    }
-
-    if (-not (Get-Command -Name Get-DirectorHighFidelitySystemGovernanceSection -ErrorAction SilentlyContinue)) {
-        function Get-DirectorHighFidelitySystemGovernanceSection {
-            $lines = New-Object System.Collections.Generic.List[string]
-            $lines.Add('## GOVERNANÇA DO SISTEMA')
-            $lines.Add('1. O bundle visível é a única fonte de verdade operacional.')
-            $lines.Add('2. Aplique a Lei da Subtração antes de adicionar novos blocos.')
-            $lines.Add('3. Preserve contratos, assinaturas, nomes públicos e fluxo já existente.')
-            $lines.Add('4. Não faça alquimia arquitetural: declare lacunas em vez de inventar comportamento.')
-            $lines.Add('5. Trate todo código como passivo até validação humana e teste real.')
-            $lines.Add('6. Nunca exponha segredos, tokens, caminhos locais sensíveis ou conteúdo bruto desnecessário.')
-
-            return ($lines -join "`n")
-        }
-    }
-
-    if (-not (Get-Command -Name Get-DirectorHighFidelityMetaPromptEngineeringLayersSection -ErrorAction SilentlyContinue)) {
-        function Get-DirectorHighFidelityMetaPromptEngineeringLayersSection {
-            param([string[]]$TargetFiles)
-
-            $targetFilesValue = if ($TargetFiles -and $TargetFiles.Count -gt 0) {
-                ($TargetFiles | ForEach-Object { '`{0}`' -f $_ }) -join ', '
-            }
-            else {
-                'não identificados objetivamente'
-            }
-
-            $lines = New-Object System.Collections.Generic.List[string]
-            $lines.Add('## CAMADAS DE ENGENHARIA DO META-PROMPT')
-            $lines.Add('1. Recon: mapear arquivos impactados, contratos e riscos de regressão.')
-            $lines.Add('2. Subtração: preferir reutilização e remoção de redundância ao acréscimo arbitrário.')
-            $lines.Add('3. Materialização: propor alterações atômicas, compatíveis com a stack existente.')
-            $lines.Add('4. Validação: definir testes objetivos, negativos e de borda antes de considerar concluído.')
-            $lines.Add('5. Segurança: revisar exposição de segredos, entrada não validada e quebra de isolamento.')
-            $lines.Add(('- Arquivos prioritários desta rodada: {0}' -f $targetFilesValue))
-
-            return ($lines -join "`n")
-        }
-    }
-
-    if (-not (Get-Command -Name Get-DirectorHighFidelityResponseTemplateSection -ErrorAction SilentlyContinue)) {
-        function Get-DirectorHighFidelityResponseTemplateSection {
-            $lines = New-Object System.Collections.Generic.List[string]
-            $lines.Add('## TEMPLATE DE RESPOSTA OBRIGATÓRIO')
-            $lines.Add('1. ANÁLISE DE EXECUÇÃO')
-            $lines.Add('2. RELATÓRIO DE IMPACTO')
-            $lines.Add('3. IMPLEMENTAÇÃO (CÓDIGO)')
-            $lines.Add('4. PROTOCOLO DE VALIDAÇÃO')
-            $lines.Add('5. VERIFICAÇÃO DE SEGURANÇA')
-
-            return ($lines -join "`n")
-        }
-    }
-
-    if (-not (Get-Command -Name Get-DirectorHighFidelityContextMomentumSection -ErrorAction SilentlyContinue)) {
-        function Get-DirectorHighFidelityContextMomentumSection {
-            param(
-                [string]$MomentumState,
-                [string]$MomentumSource
-            )
-
-            $lines = New-Object System.Collections.Generic.List[string]
-            $lines.Add('## CONTEXTO MOMENTUM')
-            $lines.Add(('- Estado: {0}' -f $MomentumState))
-            $lines.Add(('- Fonte: {0}' -f $MomentumSource))
-            $lines.Add('Use o contexto momentum apenas para reduzir regressões e contradições com artefatos anteriores.')
-            $lines.Add('Se o estado estiver vazio, não invente memória histórica; sinalize explicitamente a ausência de contexto.')
-
-            return ($lines -join "`n")
-        }
-    }
-
     Set-Location $resolvedTargetPath
-
     $projectName = (Get-Item .).Name
 
-    # ── Wizard interativo ────────────────────────────────────────────────────────
-    # Cada resolver pergunta apenas se o parametro nao veio explicitamente via CLI.
-    Write-Host ""
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "   SENTINEL HEADLESS — Configuracao" -ForegroundColor Cyan
-    Write-Host "  ═══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host ""
+    Write-Host ''
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host '   SENTINEL HEADLESS — Configuração' -ForegroundColor Cyan
+    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
+    Write-Host ''
 
-    $ResolvedBundleMode = Resolve-BundleMode     -BundleMode $BundleMode -NonInteractive:$NonInteractive
-    $ResolvedRouteMode = Resolve-RouteMode      -RouteMode  $RouteMode -NonInteractive:$NonInteractive
-    $iaOptions = Resolve-IAOptions      -SendToAI $SendToAI.IsPresent -DeterministicDirector $DeterministicDirector.IsPresent -NonInteractive:$NonInteractive
-    $ResolvedSendToAI = $iaOptions.SendToAI
-    $ResolvedDeterministicDirector = $iaOptions.DeterministicDirector
-    $ResolvedProvider = Resolve-Provider       -Provider $Provider     -SendToAI $ResolvedSendToAI -NonInteractive:$NonInteractive
-    $ResolvedAIPromptMode = Resolve-AIPromptMode   -AIPromptMode $AIPromptMode -SendToAI $ResolvedSendToAI -NonInteractive:$NonInteractive
-    # ────────────────────────────────────────────────────────────────────────────
-
-    $choice = Resolve-ChoiceFromBundleMode      -ModeValue $ResolvedBundleMode
-    $currentExtractionMode = Resolve-ExtractionModeFromBundleMode -ModeValue $ResolvedBundleMode
+    $executionStartedAt = Get-Date
+    $resolvedBundleMode = Resolve-BundleMode -BundleMode $BundleMode -NonInteractive:$NonInteractive
+    $resolvedRouteMode = Resolve-RouteMode -RouteMode $RouteMode -NonInteractive:$NonInteractive
+    $choice = Resolve-ChoiceFromBundleMode -ModeValue $resolvedBundleMode
+    $currentExtractionMode = Resolve-ExtractionModeFromBundleMode -ModeValue $resolvedBundleMode
     $currentDocumentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $currentExtractionMode
     $isTxtExportMode = ($choice -eq '4')
-    $promptConfigTemp = $null
 
     Write-UILog -Message ("Projeto: {0}" -f $projectName)
-    Write-UILog -Message ("Modo headless: {0}" -f $ResolvedBundleMode)
-    Write-UILog -Message ("Rota: {0}" -f $(if ($ResolvedRouteMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }))
+    Write-UILog -Message ("Modo headless: {0}" -f $resolvedBundleMode)
+    Write-UILog -Message ("Rota: {0}" -f $(if ($resolvedRouteMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }))
     Write-UILog -Message ("Executor alvo: {0}" -f $ExecutorTarget)
 
     $foundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path | Sort-Object FullName)
@@ -2392,498 +1562,187 @@ try {
 
     Write-UILog -Message ("Arquivos na operação: {0}" -f $filesToProcess.Count)
 
-    if ($choice -eq '3') {
-        Write-UILog -Message ("Sniper: {0} arquivo(s) selecionado(s)." -f $filesToProcess.Count) -Color $ThemeCyan
-        if ($unselectedFiles.Count -gt 0) {
-            Write-UILog -Message ("Sniper: {0} arquivo(s) não selecionado(s) serão anexados em modo Bundler." -f $unselectedFiles.Count) -Color $ThemeCyan
-        }
+    $baseExtraData = @{
+        sourceMode = $sourceMode
+        originalInput = $originalInput
+        resolvedWorkingPath = $resolvedTargetPath
+        effectiveOutputDirectory = $script:EffectiveOutputDirectory
     }
 
-    # Base do ExtraData para metadados (será enriquecido em cada ramo)
-    $baseExtraData = @{
-        sourceMode            = $sourceMode
-        originalInput         = $originalInput
-        resolvedWorkingPath   = $resolvedTargetPath
-        effectiveOutputDirectory = $script:EffectiveOutputDirectory   # CORREÇÃO: registra o diretório real de saída
-    }
     if ($script:CloneCleanupInfo) {
         $baseExtraData.cloneMode = $script:CloneCleanupInfo.CloneMode
         $baseExtraData.keepClone = $script:CloneCleanupInfo.KeepClone
-        $baseExtraData.cleanupPerformed = $false  # será atualizado no finally
+        $baseExtraData.cleanupPerformed = $false
     }
 
-    try {
-        if ($isTxtExportMode) {
-            if ($ResolvedSendToAI) {
-                Write-UILog -Message 'Modo TXT Export ignora chamada de IA por desenho.' -Color $ThemeWarn
-            }
+    if ($isTxtExportMode) {
+        $txtExportResult = Export-OperationFilesToTxtDirectory -Files $filesToProcess -ProjectRootPath (Get-Location).Path -BaseOutputDirectory $script:EffectiveOutputDirectory -ProjectNameValue $projectName
 
-            # CORREÇÃO: usa EffectiveOutputDirectory como BaseOutputDirectory
-            $txtExportResult = Export-OperationFilesToTxtDirectory `
-                -Files $filesToProcess `
-                -ProjectRootPath (Get-Location).Path `
-                -BaseOutputDirectory $script:EffectiveOutputDirectory `
-                -ProjectNameValue $projectName
+        Write-UILog -Message ("Pasta de saída: {0}" -f $txtExportResult.OutputDirectory) -Color $ThemeSuccess
+        Write-UILog -Message ("Arquivo ZIP: {0}" -f $txtExportResult.ZipFilePath) -Color $ThemeSuccess
+        Write-UILog -Message ("Arquivos exportados: {0}" -f $txtExportResult.ExportedFiles.Count) -Color $ThemeSuccess
 
-            Write-UILog -Message ("Pasta de saída: {0}" -f $txtExportResult.OutputDirectory) -Color $ThemeSuccess
-            Write-UILog -Message ("Arquivo ZIP: {0}" -f $txtExportResult.ZipFilePath) -Color $ThemeSuccess
-            Write-UILog -Message ("Arquivos exportados: {0}" -f $txtExportResult.ExportedFiles.Count) -Color $ThemeSuccess
-
-            if ($txtExportResult.SkippedFiles.Count -gt 0) {
-                Write-UILog -Message ("Arquivos ignorados por incompatibilidade/erro: {0}" -f $txtExportResult.SkippedFiles.Count) -Color $ThemeWarn
-            }
-
-            $extraData = $baseExtraData.Clone()
-            $extraData.outputDirectory   = $txtExportResult.OutputDirectory
-            $extraData.zipFilePath       = $txtExportResult.ZipFilePath
-            $extraData.exportedFiles     = @($txtExportResult.ExportedFiles)
-            $extraData.skippedFiles      = @($txtExportResult.SkippedFiles)
-            $extraData.exportedFileCount = $txtExportResult.ExportedFiles.Count
-            $extraData.skippedFileCount  = $txtExportResult.SkippedFiles.Count
-
-            # CORREÇÃO: passa OutputDirectory para Write-LocalExecutionMeta
-            $txtExportMetaResult = Write-LocalExecutionMeta `
-                -ProjectNameValue $projectName `
-                -RouteMode $ResolvedRouteMode `
-                -ExtractionMode $currentExtractionMode `
-                -DocumentMode 'txt_export' `
-                -PromptMode 'local' `
-                -Provider 'local' `
-                -Model 'txt-export' `
-                -OutputPath $txtExportResult.ZipFilePath `
-                -ExtraData $extraData `
-                -OutputDirectory $script:EffectiveOutputDirectory
-
-            Write-UILog -Message ("Metadados locais salvos em: {0}" -f $txtExportMetaResult.ResultMetaPath) -Color $ThemeSuccess
-            if ($txtExportMetaResult.GovernanceAgentFailed) {
-                Write-UILog -Message ("Agente de governança local indisponível para metadados TXT export. Fallback local aplicado: {0}" -f $txtExportMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
-            }
-            return
+        if ($txtExportResult.SkippedFiles.Count -gt 0) {
+            Write-UILog -Message ("Arquivos ignorados por incompatibilidade/erro: {0}" -f $txtExportResult.SkippedFiles.Count) -Color $ThemeWarn
         }
 
-        $headerContent = Get-VibeProtocolHeaderContent `
-            -RouteMode $ResolvedRouteMode `
-            -ExtractionMode $currentExtractionMode `
-            -ExecutorTargetValue $ExecutorTarget
+        $extraData = $baseExtraData.Clone()
+        $extraData.outputDirectory = $txtExportResult.OutputDirectory
+        $extraData.zipFilePath = $txtExportResult.ZipFilePath
+        $extraData.exportedFiles = @($txtExportResult.ExportedFiles)
+        $extraData.skippedFiles = @($txtExportResult.SkippedFiles)
+        $extraData.exportedFileCount = $txtExportResult.ExportedFiles.Count
+        $extraData.skippedFileCount = $txtExportResult.SkippedFiles.Count
 
-        $finalContent = $headerContent + "`n`n"
-        $momentumContext = $null
-        $shouldLoadMomentumContext = ($ResolvedRouteMode -eq 'director') -or $ResolvedDeterministicDirector
+        $durationMs = [int][Math]::Round(((Get-Date) - $executionStartedAt).TotalMilliseconds)
+        $txtExportMetaResult = Write-LocalExecutionMeta -ProjectNameValue $projectName -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -DocumentMode 'txt_export' -ExecutorTargetValue $ExecutorTarget -SourceArtifactPath $txtExportResult.ZipFilePath -OutputPath $txtExportResult.ZipFilePath -DurationMs $durationMs -ExtraData $extraData
 
-        if ($shouldLoadMomentumContext) {
-            $momentumContext = Resolve-LatestMomentumContext -SearchRoot (Get-Location).Path
+        Write-UILog -Message ("Metadados locais salvos em: {0}" -f $txtExportMetaResult.ResultMetaPath) -Color $ThemeSuccess
+        return
+    }
 
-            foreach ($momentumWarning in @($momentumContext.Warnings)) {
-                Write-UILog -Message $momentumWarning -Color $ThemeWarn
-            }
+    $headerContent = Get-VibeProtocolHeaderContent -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -ExecutorTargetValue $ExecutorTarget
+    $finalContent = $headerContent + "`n`n"
+    $blueprintIssues = @()
 
-            if ($momentumContext.Status -eq 'found') {
-                Write-UILog -Message ("Contexto Momentum carregado: {0}" -f [System.IO.Path]::GetFileName($momentumContext.FilePath)) -Color $ThemeCyan
-            }
-            else {
-                Write-UILog -Message $momentumContext.Message -Color $ThemeWarn
-            }
-        }
-
-        if ($ResolvedRouteMode -eq 'director') {
-            $finalContent += (Get-MomentumSectionContent -MomentumContext $momentumContext) + "`n`n"
-        }
-
-        $blueprintIssues = @()
-
-        if ($choice -eq '1' -or $choice -eq '3') {
-            if ($choice -eq '1') {
-                $outputFile = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $choice -RouteMode $ResolvedRouteMode
-                $headerTitle = 'MODO COPIAR TUDO'
-                Write-UILog -Message 'Iniciando Modo Copiar Tudo...' -Color $ThemeCyan
-            }
-            else {
-                $outputFile = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $choice -RouteMode $ResolvedRouteMode
-                $headerTitle = 'MODO MANUAL'
-                Write-UILog -Message 'Iniciando Modo Sniper / Manual...' -Color $ThemePink
-            }
-
-            $finalContent += "## ${headerTitle}: $projectName`n`n"
-
-            if ($choice -eq '3') {
-                $finalContent += "### 0. ANALYSIS SCOPE`n" + '```text' + "`n"
-                $finalContent += "ESCOPO: FECHADO / PARCIAL`n"
-                $finalContent += "Este bundle contém os arquivos selecionados manualmente pelo usuário.`n"
-                if ($unselectedFiles.Count -gt 0) {
-                    $finalContent += "Os arquivos não selecionados foram anexados ao final em modo Bundler como contexto complementar.`n"
-                }
-                $finalContent += "Qualquer análise deve considerar exclusivamente o visível neste artefato.`n"
-                $finalContent += "É proibido inferir módulos, dependências ou comportamento não visíveis.`n"
-                $finalContent += "Quando faltar contexto, declarar: 'não visível no recorte enviado'.`n"
-                $finalContent += '```' + "`n`n"
-            }
-
-            Write-UILog -Message 'Montando estrutura do projeto...'
-            $finalContent += "### 1. PROJECT STRUCTURE`n" + '```text' + "`n"
-            foreach ($file in $filesToProcess) {
-                $finalContent += (Resolve-Path -Path $file.FullName -Relative) + "`n"
-            }
-            $finalContent += '```' + "`n`n"
-
-            Write-UILog -Message 'Lendo arquivos e consolidando conteúdo...'
-            $finalContent += "### 2. SOURCE FILES`n`n"
-
-            foreach ($file in $filesToProcess) {
-                $relPath = Resolve-Path -Path $file.FullName -Relative
-                Write-UILog -Message ("Lendo {0}" -f $relPath)
-                $content = Read-LocalTextArtifact -Path $file.FullName
-                if ($null -ne $content) {
-                    $content = $content -replace "(`r?`n){3,}", "`r`n`r`n"
-                    $finalContent += "#### File: $relPath`n"
-                    $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content $content.TrimEnd() -Language 'text') + "`n`n"
-                }
-            }
-
-            if ($choice -eq '3' -and $unselectedFiles.Count -gt 0) {
-                Write-UILog -Message 'Anexando arquivos não selecionados (modo Bundler)...' -Color $ThemeCyan
-                $finalContent += "## ARQUIVOS NÃO SELECIONADOS INSERIDOS EM MODO BUNDLER`n`n"
-                $finalContent += New-BundlerContractsBlock `
-                    -Files $unselectedFiles `
-                    -IssueCollector ([ref]$blueprintIssues) `
-                    -StructureHeading "### PROJECT STRUCTURE (BUNDLER)" `
-                    -ContractsHeading "### CORE DOMAINS & CONTRACTS (BUNDLER)" `
-                    -LogExtraction
-            }
+    if ($choice -eq '1' -or $choice -eq '3') {
+        if ($choice -eq '1') {
+            $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
+            $headerTitle = 'MODO COPIAR TUDO'
+            Write-UILog -Message 'Iniciando Modo Copiar Tudo...' -Color $ThemeCyan
         }
         else {
-            $outputFile = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $choice -RouteMode $ResolvedRouteMode
-            Write-UILog -Message 'Iniciando Modo Architect / Inteligente...' -Color $ThemeCyan
-            $finalContent += "## MODO INTELIGENTE: $projectName`n`n"
-            $finalContent += "### 1. TECH STACK`n"
+            $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
+            $headerTitle = 'MODO MANUAL'
+            Write-UILog -Message 'Iniciando Modo Sniper / Manual...' -Color $ThemePink
+        }
 
-            $packageJsonPath = Join-Path (Get-Location).Path 'package.json'
-            if (Test-Path $packageJsonPath -PathType Leaf) {
+        $finalContent += "## ${headerTitle}: $projectName`n`n"
+
+        if ($choice -eq '3') {
+            $finalContent += "### 0. ANALYSIS SCOPE`n```text`n"
+            $finalContent += "ESCOPO: FECHADO / PARCIAL`n"
+            $finalContent += "Este bundle contém apenas os arquivos selecionados manualmente pelo usuário.`n"
+            if ($unselectedFiles.Count -gt 0) {
+                $finalContent += "Os arquivos não selecionados foram anexados ao final em modo Bundler como contexto complementar.`n"
+            }
+            $finalContent += "Qualquer análise deve considerar exclusivamente o visível neste artefato.`n"
+            $finalContent += "É proibido inferir módulos, dependências ou comportamento não visíveis.`n"
+            $finalContent += "Quando faltar contexto, declarar: 'não visível no recorte enviado'.`n"
+            $finalContent += "```\n\n"
+        }
+
+        Write-UILog -Message 'Montando estrutura do projeto...'
+        $finalContent += "### 1. PROJECT STRUCTURE`n```text`n"
+        foreach ($file in $filesToProcess) {
+            $finalContent += (Resolve-Path -Path $file.FullName -Relative) + "`n"
+        }
+        $finalContent += "```\n\n"
+
+        Write-UILog -Message 'Lendo arquivos e consolidando conteúdo...'
+        $finalContent += "### 2. SOURCE FILES`n`n"
+        foreach ($file in $filesToProcess) {
+            $relPath = Resolve-Path -Path $file.FullName -Relative
+            Write-UILog -Message ("Lendo {0}" -f $relPath)
+            $content = Read-LocalTextArtifact -Path $file.FullName
+            if ($null -ne $content) {
+                $content = $content -replace "(`r?`n){3,}", "`r`n`r`n"
+                $finalContent += "#### File: $relPath`n"
+                $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content $content.TrimEnd() -Language 'text') + "`n`n"
+            }
+        }
+
+        if ($choice -eq '3' -and $unselectedFiles.Count -gt 0) {
+            Write-UILog -Message 'Anexando arquivos não selecionados (modo Bundler)...' -Color $ThemeCyan
+            $finalContent += "## ARQUIVOS NÃO SELECIONADOS INSERIDOS EM MODO BUNDLER`n`n"
+            $finalContent += New-BundlerContractsBlock -Files $unselectedFiles -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### PROJECT STRUCTURE (BUNDLER)' -ContractsHeading '### CORE DOMAINS & CONTRACTS (BUNDLER)' -LogExtraction
+        }
+    }
+    else {
+        $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
+        Write-UILog -Message 'Iniciando Modo Architect / Blueprint...' -Color $ThemeCyan
+        $finalContent += "## MODO INTELIGENTE: $projectName`n`n"
+        $finalContent += "### 1. TECH STACK`n"
+
+        $packageJsonPath = Join-Path (Get-Location).Path 'package.json'
+        if (Test-Path $packageJsonPath -PathType Leaf) {
+            try {
                 Write-UILog -Message 'Lendo package.json para tech stack...'
                 $pkg = (Read-LocalTextArtifact -Path $packageJsonPath) | ConvertFrom-Json
                 if ($pkg.dependencies) { $finalContent += "* **Deps:** $(($pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
                 if ($pkg.devDependencies) { $finalContent += "* **Dev Deps:** $(($pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
             }
-            else {
-                Write-UILog -Message ("package.json não encontrado em {0}; tech stack será omitida." -f $packageJsonPath) -Color $ThemeWarn
-            }
-
-            $finalContent += "`n"
-            $finalContent += New-BundlerContractsBlock `
-                -Files $filesToProcess `
-                -IssueCollector ([ref]$blueprintIssues) `
-                -StructureHeading "### 2. PROJECT STRUCTURE" `
-                -ContractsHeading "### 3. CORE DOMAINS & CONTRACTS" `
-                -LogExtraction
-        }
-
-        # CORREÇÃO: usa EffectiveOutputDirectory para construir caminhos de saída
-        $outputFullPath = Join-Path $script:EffectiveOutputDirectory $outputFile
-
-        if ($ResolvedDeterministicDirector) {
-            $deterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $projectName -ChoiceValue $choice -RouteMode $ResolvedRouteMode
-            $deterministicOutputFullPath = Join-Path $script:EffectiveOutputDirectory $deterministicOutputFile
-
-            Write-UILog -Message 'Fluxo determinístico local ignorará o pre-flight diff gate.' -Color $ThemeCyan
-            Write-UILog -Message ("Compilando meta-prompt determinístico local diretamente no bundler ({0})..." -f $(if ($ResolvedRouteMode -eq 'executor') { 'executor' } else { 'director' })) -Color $ThemeCyan
-
-            $deterministicContent = New-DeterministicMetaPromptArtifact `
-                -ProjectNameValue $projectName `
-                -ExecutorTargetValue $ExecutorTarget `
-                -RouteMode $ResolvedRouteMode `
-                -ExtractionMode $currentExtractionMode `
-                -DocumentMode $currentDocumentMode `
-                -SourceArtifactFileName $outputFile `
-                -OutputArtifactFileName $deterministicOutputFile `
-                -BundleContent $finalContent `
-                -Files $filesToProcess `
-                -MomentumContext $momentumContext
-
-            Write-LocalTextArtifact -Path $deterministicOutputFullPath -Content $deterministicContent -UseBom
-            $deterministicTokenEstimate = [math]::Round($deterministicContent.Length / 4)
-            $copiedDeterministic = Set-ClipboardData -Content $deterministicContent
-
-            if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
-                Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemePink
-                foreach ($issue in ($blueprintIssues | Select-Object -First 10)) {
-                    Write-UILog -Message $issue -Color $ThemePink
-                }
-            }
-            else {
-                Write-UILog -Message 'Meta-prompt determinístico consolidado com sucesso.' -Color $ThemeSuccess
-            }
-
-            Write-UILog -Message ("Arquivo: {0}" -f $deterministicOutputFile)
-            Write-UILog -Message ("Tokens estimados: ~{0}" -f $deterministicTokenEstimate)
-            Write-UILog -Message ("Meta-prompt determinístico salvo em: {0}" -f $deterministicOutputFullPath) -Color $ThemeSuccess
-
-            if ($copiedDeterministic) {
-                Write-UILog -Message 'Meta-prompt final copiado para a área de clipboard.' -Color $ThemeCyan
-            }
-            else {
-                Write-UILog -Message 'Meta-prompt final gerado, mas clipboard indisponível.' -Color $ThemeWarn
-            }
-
-            $extraData = $baseExtraData.Clone()
-            $extraData.sourceArtifactFile = $outputFile
-            $extraData.outputArtifactFile = $deterministicOutputFile
-
-            # CORREÇÃO: passa OutputDirectory
-            $deterministicMetaResult = Write-LocalExecutionMeta `
-                -ProjectNameValue $projectName `
-                -RouteMode $ResolvedRouteMode `
-                -ExtractionMode $currentExtractionMode `
-                -DocumentMode $currentDocumentMode `
-                -PromptMode 'deterministic_local' `
-                -TemplateId $(if ($ResolvedRouteMode -eq 'executor') { 'executor_meta_v1' } else { 'director_meta_v1' }) `
-                -Provider 'local' `
-                -Model $(if ($ResolvedRouteMode -eq 'executor') { 'deterministic-executor_meta_v1' } else { 'deterministic-director_meta_v1' }) `
-                -BundlePath $outputFullPath `
-                -OutputPath $deterministicOutputFullPath `
-                -ExtraData $extraData `
-                -OutputDirectory $script:EffectiveOutputDirectory
-
-            Write-UILog -Message ("Metadados locais salvos em: {0}" -f $deterministicMetaResult.ResultMetaPath) -Color $ThemeSuccess
-            if ($deterministicMetaResult.GovernanceAgentUsed) {
-                Write-UILog -Message 'Execução concluída sem provider remoto; metadados de governança consolidados via groq-agent.ts local.' -Color $ThemeSuccess
-            }
-            elseif ($deterministicMetaResult.GovernanceAgentFailed) {
-                Write-UILog -Message ("Execução concluída sem provider remoto; fallback local assumiu os metadados porque o agente de governança falhou: {0}" -f $deterministicMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
-            }
-            else {
-                Write-UILog -Message 'Execução concluída sem provider remoto; metadados locais consolidados diretamente no bundler.' -Color $ThemeSuccess
-            }
-            return
-        }
-
-        $shouldCallAI = $false
-        $shouldPersistOfficialBundle = $true
-        
-        $aiSourceFullPath = $outputFullPath
-        $aiSourceContent = $finalContent
-
-        if ($ResolvedSendToAI) {
-            if ($currentExtractionMode -eq 'full') {
-                Write-UILog -Message 'Modo full detectado com chamada de IA. Resolvendo blueprint (Architect) como artefato-fonte...' -Color $ThemeCyan
-
-                $blueprintOutputFile = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode 'blueprint' -RouteMode $ResolvedRouteMode
-                $blueprintOutputFullPath = Join-Path $script:EffectiveOutputDirectory $blueprintOutputFile
-                
-                $blueprintHeaderContent = Get-VibeProtocolHeaderContent -RouteMode $ResolvedRouteMode -ExtractionMode 'blueprint' -ExecutorTargetValue $ExecutorTarget
-                $blueprintContent = $blueprintHeaderContent + "`n`n"
-
-                if ($ResolvedRouteMode -eq 'director') {
-                    $blueprintContent += (Get-MomentumSectionContent -MomentumContext $momentumContext) + "`n`n"
-                }
-                
-                $blueprintContent += "## MODO INTELIGENTE: $projectName`n`n### 1. TECH STACK`n"
-                $packageJsonPathCandidate = Join-Path (Get-Location).Path 'package.json'
-                if (Test-Path $packageJsonPathCandidate -PathType Leaf) {
-                    try {
-                        $pkg = (Read-LocalTextArtifact -Path $packageJsonPathCandidate) | ConvertFrom-Json
-                        if ($pkg.dependencies) { $blueprintContent += "* **Deps:** $(($pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
-                        if ($pkg.devDependencies) { $blueprintContent += "* **Dev Deps:** $(($pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
-                    } catch {}
-                }
-                $blueprintContent += "`n"
-                
-                $blueprintContent += New-BundlerContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading "### 2. PROJECT STRUCTURE" -ContractsHeading "### 3. CORE DOMAINS & CONTRACTS" -LogExtraction:($false)
-
-                $aiSourceFullPath = $blueprintOutputFullPath
-                $aiSourceContent = $blueprintContent
-            }
-
-            $preflight = Resolve-BundlePreflightGate -OfficialBundlePath $aiSourceFullPath -NewBundleContent $aiSourceContent
-
-            if (-not $preflight.OfficialExists) {
-                Write-UILog -Message 'Artefato-fonte oficial inexistente. Persistindo nova versão e liberando IA.' -Color $ThemeCyan
-                $shouldCallAI = $true
-            }
-            elseif (-not $preflight.IsIdentical) {
-                Write-UILog -Message 'Diferença detectada no artefato-fonte. Atualizando versão oficial e liberando IA.' -Color $ThemeCyan
-                $shouldCallAI = $true
-            }
-            else {
-                Write-UILog -Message 'Conteúdo idêntico detectado entre o artefato-fonte oficial e o recém-gerado.' -Color $ThemeWarn
-
-                if ($ForceAIAgainstIdenticalBundle) {
-                    Write-UILog -Message 'Flag -ForceAIAgainstIdenticalBundle ativa. IA liberada apesar do conteúdo idêntico.' -Color $ThemeCyan
-                    $shouldCallAI = $true
-                }
-                else {
-                    Write-UILog -Message 'IA bloqueada pelo pre-flight diff gate por conteúdo idêntico.' -Color $ThemeSuccess
-                    $shouldCallAI = $false
-                }
-            }
-            
-            if ($currentExtractionMode -eq 'full') {
-                if (-not $preflight.IsIdentical -or -not $preflight.OfficialExists) {
-                    Write-LocalTextArtifact -Path $aiSourceFullPath -Content $aiSourceContent -UseBom
-                    Write-UILog -Message ("Artefato-fonte (blueprint) persisitido em: {0}" -f $aiSourceFullPath) -Color $ThemeSuccess
-                }
-            } else {
-                if ($preflight.IsIdentical -and -not $ForceAIAgainstIdenticalBundle) {
-                    $shouldPersistOfficialBundle = $false
-                }
-            }
-        }
-
-        if ($shouldPersistOfficialBundle) {
-            Write-LocalTextArtifact -Path $outputFullPath -Content $finalContent -UseBom
-            Write-UILog -Message ("Artefato operacional salvo em: {0}" -f $outputFullPath) -Color $ThemeSuccess
-        }
-        else {
-            Write-UILog -Message 'Artefato operacional preservado sem regravação por não haver diferença de conteúdo.' -Color $ThemeSuccess
-        }
-
-        $tokenEstimate = [math]::Round($finalContent.Length / 4)
-        $copied = Set-ClipboardData -Content $finalContent
-
-        if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
-            Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemePink
-            foreach ($issue in ($blueprintIssues | Select-Object -First 10)) {
-                Write-UILog -Message $issue -Color $ThemePink
+            catch {
+                Write-UILog -Message 'package.json existe, mas não pôde ser lido. Seguindo sem tech stack declarada.' -Color $ThemeWarn
             }
         }
         else {
-            Write-UILog -Message 'Artefato consolidado com sucesso.' -Color $ThemeSuccess
+            Write-UILog -Message 'package.json não encontrado; tech stack externa será omitida.' -Color $ThemeWarn
         }
 
-        Write-UILog -Message ("Artefato operacional: {0}" -f $outputFile)
-        Write-UILog -Message ("Tokens estimados (operacional): ~{0}" -f $tokenEstimate)
+        $finalContent += "`n"
+        $finalContent += New-BundlerContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### 2. PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
+    }
 
-        if ($ResolvedSendToAI) {
-            $aiSourceFileNameForLog = [System.IO.Path]::GetFileName($aiSourceFullPath)
-            Write-UILog -Message ("Artefato-fonte da IA: {0}" -f $aiSourceFileNameForLog)
-        }
+    $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName
+    Write-LocalTextArtifact -Path $sourceArtifactPath -Content $finalContent -UseBom
+    Write-UILog -Message ("Artefato operacional salvo em: {0}" -f $sourceArtifactPath) -Color $ThemeSuccess
 
-        if ($copied) {
-            Write-UILog -Message 'Artefato operacional copiado para a área de clipboard.' -Color $ThemeCyan
-        }
-        else {
-            Write-UILog -Message 'Artefato operacional salvo. Clipboard indisponível.' -Color $ThemeWarn
-        }
+    $artifactForClipboardPath = $sourceArtifactPath
+    $finalOutputPath = $sourceArtifactPath
 
-        if ($ResolvedSendToAI -and $shouldCallAI) {
-            $promptConfig = New-HeadlessPromptConfigFile `
-                -RouteModeValue $ResolvedRouteMode `
-                -ExtractionModeValue $currentExtractionMode `
-                -ExecutorTargetValue $ExecutorTarget `
-                -PromptModeValue $ResolvedAIPromptMode `
-                -ExistingConfigPath $PromptConfigFilePath `
-                -TemplateIdValue $TemplateId `
-                -TemplateObjectiveValue $TemplateObjective `
-                -TemplateDeliveryValue $TemplateDelivery `
-                -TemplateFocusTagsValue $TemplateFocusTags `
-                -TemplateConstraintsValue $TemplateConstraints `
-                -TemplateDepthValue $TemplateDepth `
-                -TemplateAdditionalInstructionsValue $TemplateAdditionalInstructions `
-                -ExpertSystemPromptValue $ExpertSystemPrompt
+    if ($resolvedRouteMode -eq 'director') {
+        $deterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
+        $deterministicOutputPath = Join-Path $script:EffectiveOutputDirectory $deterministicOutputFile
 
-            $promptConfigTemp = $promptConfig
+        Write-UILog -Message 'Compilando meta-prompt determinístico local diretamente no bundler...' -Color $ThemeCyan
+        $deterministicContent = New-DeterministicMetaPromptArtifact -ProjectNameValue $projectName -ExecutorTargetValue $ExecutorTarget -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -SourceArtifactFileName $sourceArtifactFileName -OutputArtifactFileName $deterministicOutputFile -BundleContent $finalContent -Files $filesToProcess
 
-            $agentScript = Join-Path $script:ToolkitDir 'groq-agent.ts'
-            Write-UILog -Message 'Chamando agente de IA...' -Color $ThemeCyan
-            Write-UILog -Message ("Provider primário: {0} | fallback automático ativo." -f $ResolvedProvider) -Color $ThemeCyan
+        Write-LocalTextArtifact -Path $deterministicOutputPath -Content $deterministicContent -UseBom
+        $artifactForClipboardPath = $deterministicOutputPath
+        $finalOutputPath = $deterministicOutputPath
 
-            $aiSourceExtractionMode = if ($currentExtractionMode -eq 'full') { 'blueprint' } else { $currentExtractionMode }
+        Write-UILog -Message ("Meta-prompt determinístico salvo em: {0}" -f $deterministicOutputPath) -Color $ThemeSuccess
+    }
 
-            $agentResult = Invoke-OrchestratorAgent `
-                -AgentScriptPath $agentScript `
-                -BundlePath $aiSourceFullPath `
-                -ProjectNameValue $projectName `
-                -ExecutorTargetValue $ExecutorTarget `
-                -BundleModeValue $aiSourceExtractionMode `
-                -PrimaryProviderValue $ResolvedProvider `
-                -OutputRouteModeValue $ResolvedRouteMode `
-                -CustomPromptConfigPath $promptConfig.Path
-
-            $finalPromptPath = $null
-            if ($agentResult -and $agentResult.OutputPath -and (Test-Path $agentResult.OutputPath -PathType Leaf)) {
-                $finalPromptPath = $agentResult.OutputPath
-            }
-            else {
-                $bundleParent = Split-Path $outputFullPath -Parent
-                $candidateContextPaths = @(
-                    (Join-Path $bundleParent (Get-AIContextOutputFileName -ProjectNameValue $projectName -RouteMode $ResolvedRouteMode -ExtractionMode $aiSourceExtractionMode)),
-                    (Join-Path $bundleParent "_AI_CONTEXT_${projectName}.md")
-                )
-
-                foreach ($cp in $candidateContextPaths) {
-                    if (Test-Path $cp -PathType Leaf) {
-                        $finalPromptPath = $cp
-                        break
-                    }
-                }
-            }
-
-            if ($finalPromptPath) {
-                $finalSummarizedContent = Read-LocalTextArtifact -Path $finalPromptPath
-                if (Set-ClipboardData -Content $finalSummarizedContent) {
-                    Write-UILog -Message 'Prompt final preparado e copiado para o clipboard.' -Color $ThemeSuccess
-                }
-                else {
-                    Write-UILog -Message 'Prompt final gerado, mas clipboard indisponível.' -Color $ThemeWarn
-                }
-
-                Write-UILog -Message ("Arquivo final da IA: {0}" -f $finalPromptPath) -Color $ThemeSuccess
-            }
-            else {
-                Write-UILog -Message 'Arquivo final da IA não foi localizado.' -Color $ThemePink
-            }
-
-            if ($agentResult -and $agentResult.WinnerProvider) {
-                Write-UILog -Message ("Provider efetivo: {0} | Modelo: {1}" -f $agentResult.WinnerProvider, $agentResult.WinnerModel) -Color $ThemeSuccess
-            }
-
-            Write-UILog -Message $(if ($ResolvedRouteMode -eq 'executor') { 'Agora é só colar no seu executor.' } else { 'Agora é só colar no seu orquestrador.' }) -Color $ThemeCyan
-        }
-        else {
-            $extraData = $baseExtraData.Clone()
-            $extraData.promptGenerationSkipped = $true
-            $extraData.skippedReason = $(if ($ResolvedSendToAI) { 'identical_bundle_user_cancelled_ai' } else { 'provider_not_requested' })
-
-            # CORREÇÃO: passa OutputDirectory
-            $localMetaResult = Write-LocalExecutionMeta `
-                -ProjectNameValue $projectName `
-                -RouteMode $ResolvedRouteMode `
-                -ExtractionMode $currentExtractionMode `
-                -DocumentMode $currentDocumentMode `
-                -PromptMode $(if ($ResolvedSendToAI) { 'local_no_provider' } else { 'local' }) `
-                -Provider 'local' `
-                -Model 'bundler-local' `
-                -BundlePath $outputFullPath `
-                -OutputPath $outputFullPath `
-                -ExtraData $extraData `
-                -OutputDirectory $script:EffectiveOutputDirectory
-
-            Write-UILog -Message ("Metadados locais salvos em: {0}" -f $localMetaResult.ResultMetaPath) -Color $ThemeSuccess
-            if ($localMetaResult.GovernanceAgentUsed) {
-                Write-UILog -Message 'Execução concluída sem chamada da IA; governança consolidada via groq-agent.ts local.' -Color $ThemeSuccess
-            }
-            elseif ($localMetaResult.GovernanceAgentFailed) {
-                Write-UILog -Message ("Execução concluída sem chamada da IA; fallback local assumiu os metadados porque o agente de governança falhou: {0}" -f $localMetaResult.GovernanceAgentFailureMessage) -Color $ThemeWarn
-            }
-            else {
-                Write-UILog -Message 'Execução concluída sem chamada da IA; metadados locais consolidados diretamente no bundler.' -Color $ThemeSuccess
-            }
+    if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
+        Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemeWarn
+        foreach ($issue in ($blueprintIssues | Select-Object -First 10)) {
+            Write-UILog -Message $issue -Color $ThemeWarn
         }
     }
-    catch {
-        $errorMessage = $_.Exception.Message
-        $agentFailure = $script:LastAgentFailure
-
-        if ($agentFailure -and $agentFailure.Type) {
-            Write-UILog -Message ("Status final do agente: {0} | Tipo: {1}" -f $agentFailure.Status, $agentFailure.Type) -Color $ThemePink
-            if ($agentFailure.Details) {
-                Write-UILog -Message ("Detalhes técnicos: {0}" -f $agentFailure.Details) -Color $ThemePink
-            }
-        }
-
-        Write-UILog -Message ("Falha na execução: {0}" -f $errorMessage) -Color $ThemePink
-        throw
+    else {
+        Write-UILog -Message 'Artefato consolidado com sucesso.' -Color $ThemeSuccess
     }
-    finally {
-    # Limpeza do clone temporário, se aplicável
+
+    $clipboardContent = Read-LocalTextArtifact -Path $artifactForClipboardPath
+    $copied = Set-ClipboardData -Content $clipboardContent
+    if ($copied) {
+        Write-UILog -Message 'Artefato final copiado para a área de clipboard.' -Color $ThemeCyan
+    }
+    else {
+        Write-UILog -Message 'Artefato final salvo. Clipboard indisponível.' -Color $ThemeWarn
+    }
+
+    $durationMs = [int][Math]::Round(((Get-Date) - $executionStartedAt).TotalMilliseconds)
+    $extraData = $baseExtraData.Clone()
+    $extraData.sourceArtifactFile = $sourceArtifactFileName
+    $extraData.outputArtifactFile = [System.IO.Path]::GetFileName($finalOutputPath)
+    $extraData.fileCount = $filesToProcess.Count
+    $extraData.unselectedFileCount = $unselectedFiles.Count
+    $extraData.generatedFromLocalGovernance = $true
+
+    $resultMetaPath = Join-Path $script:EffectiveOutputDirectory ([System.IO.Path]::GetFileNameWithoutExtension($finalOutputPath) + '.json')
+    $metaResult = Write-LocalExecutionMeta -ProjectNameValue $projectName -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -ExecutorTargetValue $ExecutorTarget -SourceArtifactPath $sourceArtifactPath -OutputPath $finalOutputPath -ResultMetaPath $resultMetaPath -DurationMs $durationMs -ExtraData $extraData
+
+    Write-UILog -Message ("Metadados locais salvos em: {0}" -f $metaResult.ResultMetaPath) -Color $ThemeSuccess
+}
+catch {
+    $errorMessage = $_.Exception.Message
+    Write-UILog -Message ("Falha na execução: {0}" -f $errorMessage) -Color $ThemePink
+    throw
+}
+finally {
     if ($script:CloneCleanupInfo -and $script:CloneCleanupInfo.CreatedByUs -and -not $script:CloneCleanupInfo.KeepClone) {
         $clonePath = $script:CloneCleanupInfo.Path
         if (Test-Path $clonePath -PathType Container) {
@@ -2893,30 +1752,14 @@ try {
 
             try {
                 Remove-Item -Path $clonePath -Recurse -Force -ErrorAction Stop
-                    Write-UILog -Message ("Clone temporário removido: {0}" -f $clonePath) -Color $ThemeSuccess
-                    if ($script:CloneCleanupInfo.ContainsKey('cleanupPerformed')) {
-                        $script:CloneCleanupInfo.cleanupPerformed = $true
-                    }
+                Write-UILog -Message ("Clone temporário removido: {0}" -f $clonePath) -Color $ThemeSuccess
+                if ($script:CloneCleanupInfo.ContainsKey('cleanupPerformed')) {
+                    $script:CloneCleanupInfo.cleanupPerformed = $true
                 }
-                catch {
-                    Write-UILog -Message ("Não foi possível remover o clone temporário: {0}. Erro: {1}" -f $clonePath, $_.Exception.Message) -Color $ThemeWarn
-                }
-            }
-        }
-
-        # Limpeza do arquivo de configuração temporário
-        if ($promptConfigTemp -and $promptConfigTemp.IsTemporary -and $promptConfigTemp.Path -and (Test-Path $promptConfigTemp.Path -PathType Leaf)) {
-            try {
-                Remove-Item -Path $promptConfigTemp.Path -Force -ErrorAction Stop
             }
             catch {
+                Write-UILog -Message ("Não foi possível remover o clone temporário: {0}. Erro: {1}" -f $clonePath, $_.Exception.Message) -Color $ThemeWarn
             }
         }
     }
-}
-catch {
-    # Captura erros que possam ocorrer antes do try principal (ex.: falha na UI)
-    $errorMessage = $_.Exception.Message
-    Write-UILog -Message ("Falha crítica na inicialização: {0}" -f $errorMessage) -Color $ThemePink
-    throw
 }

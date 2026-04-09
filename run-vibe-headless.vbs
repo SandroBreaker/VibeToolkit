@@ -1,74 +1,106 @@
-Dim targetPath, args, WshShell, fso, scriptDir, powerShellExe
+Option Explicit
 
-Set WshShell = CreateObject("WScript.Shell")
+Dim fso
+Dim shell
+Dim scriptDir
+Dim psScript
+Dim targetPath
+Dim powerShellExe
+Dim innerCommand
+Dim command
+
 Set fso = CreateObject("Scripting.FileSystemObject")
-Set args = WScript.Arguments
+Set shell = CreateObject("WScript.Shell")
 
-' Obtem o diretorio onde o VBS esta localizado
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
-powerShellExe = ResolvePowerShellExecutable()
+psScript = fso.BuildPath(scriptDir, "project-bundler-headless.ps1")
 
-' Aceita o caminho passado pelo menu de contexto (registry %V ou %1)
-If args.Count > 0 Then
-    targetPath = args(0)
-Else
-    targetPath = WshShell.CurrentDirectory
+If Not fso.FileExists(psScript) Then
+    MsgBox "Arquivo obrigatório não encontrado: " & psScript, vbCritical, "VibeToolkit"
+    WScript.Quit 1
 End If
 
-' Chama PowerShell com fallback robusto e sem depender de C:\dev\VibeToolkit
-' Argumentos: -NoProfile (evita carregar perfis lentos), -ExecutionPolicy Bypass (evita bloqueios)
-' Modo Terminal (CLI): Abre PowerShell de forma visivel (1)
-WshShell.Run powerShellExe & " -NoProfile -ExecutionPolicy Bypass -File """ & scriptDir & "\project-bundler-headless.ps1"" -Path """ & targetPath & """", 1, False
+targetPath = "."
+If WScript.Arguments.Count > 0 Then
+    targetPath = Trim(CStr(WScript.Arguments(0)))
+    If Len(targetPath) = 0 Then
+        targetPath = "."
+    End If
+End If
 
-Function ResolvePowerShellExecutable()
-    Dim defaultPwsh, legacyPowerShell, resolvedPath
+powerShellExe = ResolvePowerShellExecutable(shell, fso)
+If Len(powerShellExe) = 0 Then
+    MsgBox "PowerShell não encontrado no sistema.", vbCritical, "VibeToolkit"
+    WScript.Quit 1
+End If
 
-    defaultPwsh = WshShell.ExpandEnvironmentStrings("%ProgramFiles%") & "\PowerShell\7\pwsh.exe"
-    If fso.FileExists(defaultPwsh) Then
-        ResolvePowerShellExecutable = Quote(defaultPwsh)
+innerCommand = Quote(powerShellExe) & _
+    " -NoProfile -ExecutionPolicy Bypass -File " & Quote(psScript) & _
+    " -Path " & Quote(targetPath)
+
+command = "cmd.exe /k " & Quote(innerCommand)
+
+shell.Run command, 1, False
+
+Function ResolvePowerShellExecutable(shellObject, fileSystemObject)
+    Dim commandPath
+    Dim candidates
+    Dim i
+
+    commandPath = shellObject.ExpandEnvironmentStrings("%ProgramFiles%\PowerShell\7\pwsh.exe")
+    If fileSystemObject.FileExists(commandPath) Then
+        ResolvePowerShellExecutable = commandPath
         Exit Function
     End If
 
-    resolvedPath = ResolveFirstPathFromWhere("pwsh.exe")
-    If Len(resolvedPath) > 0 Then
-        ResolvePowerShellExecutable = Quote(resolvedPath)
+    commandPath = shellObject.ExpandEnvironmentStrings("%ProgramW6432%\PowerShell\7\pwsh.exe")
+    If fileSystemObject.FileExists(commandPath) Then
+        ResolvePowerShellExecutable = commandPath
         Exit Function
     End If
 
-    legacyPowerShell = WshShell.ExpandEnvironmentStrings("%SystemRoot%") & "\System32\WindowsPowerShell\v1.0\powershell.exe"
-    If fso.FileExists(legacyPowerShell) Then
-        ResolvePowerShellExecutable = Quote(legacyPowerShell)
+    commandPath = shellObject.ExpandEnvironmentStrings("%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe")
+    If fileSystemObject.FileExists(commandPath) Then
+        ResolvePowerShellExecutable = commandPath
         Exit Function
     End If
 
-    ResolvePowerShellExecutable = "pwsh.exe"
+    candidates = Array("pwsh.exe", "powershell.exe")
+    For i = LBound(candidates) To UBound(candidates)
+        commandPath = ResolveCommandPath(shellObject, candidates(i))
+        If Len(commandPath) > 0 Then
+            ResolvePowerShellExecutable = commandPath
+            Exit Function
+        End If
+    Next
+
+    ResolvePowerShellExecutable = ""
 End Function
 
-Function ResolveFirstPathFromWhere(executableName)
-    Dim execObj, outputLines, commandOutput
+Function ResolveCommandPath(shellObject, commandName)
+    Dim execObject
+    Dim resolved
 
     On Error Resume Next
-    Set execObj = WshShell.Exec("cmd.exe /c where " & executableName)
+    Set execObject = shellObject.Exec("cmd.exe /c where " & commandName)
     If Err.Number <> 0 Then
         Err.Clear
-        ResolveFirstPathFromWhere = ""
-        On Error GoTo 0
+        ResolveCommandPath = ""
         Exit Function
     End If
     On Error GoTo 0
 
-    Do While execObj.Status = 0
-        WScript.Sleep 25
-    Loop
-
-    commandOutput = Trim(execObj.StdOut.ReadAll)
-    If Len(commandOutput) = 0 Then
-        ResolveFirstPathFromWhere = ""
+    If execObject.StdOut.AtEndOfStream Then
+        ResolveCommandPath = ""
         Exit Function
     End If
 
-    outputLines = Split(Replace(commandOutput, vbCr, ""), vbLf)
-    ResolveFirstPathFromWhere = Trim(outputLines(0))
+    resolved = Trim(execObject.StdOut.ReadLine)
+    If Len(resolved) = 0 Then
+        ResolveCommandPath = ""
+    Else
+        ResolveCommandPath = resolved
+    End If
 End Function
 
 Function Quote(value)

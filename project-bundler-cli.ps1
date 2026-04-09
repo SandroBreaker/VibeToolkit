@@ -20,15 +20,19 @@ $script:SentinelUtf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $script:SentinelUtf8NoBom
 $OutputEncoding = $script:SentinelUtf8NoBom
 
-$env:NO_COLOR = '1'
-$env:FORCE_COLOR = '0'
-$env:TERM = 'dumb'
 $env:PYTHONUTF8 = '1'
-$env:DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION = '0'
+
+$script:SentinelPlainOutput = $false
+try {
+    $script:SentinelPlainOutput = [Console]::IsOutputRedirected
+}
+catch {
+    $script:SentinelPlainOutput = $false
+}
 
 try {
     if ($PSStyle) {
-        $PSStyle.OutputRendering = 'PlainText'
+        $PSStyle.OutputRendering = if ($script:SentinelPlainOutput) { 'PlainText' } else { 'Host' }
     }
 }
 catch {
@@ -71,10 +75,79 @@ function Write-UILog {
     }
 }
 
+
+function Get-SentinelBundleModeTone {
+    param([string]$BundleModeValue)
+
+    switch ($BundleModeValue) {
+        'full' { return 'Primary' }
+        'blueprint' { return 'Success' }
+        'sniper' { return 'Warning' }
+        'txtExport' { return 'Secondary' }
+        'txt_export' { return 'Secondary' }
+        default { return 'Muted' }
+    }
+}
+
+function Get-SentinelRouteModeTone {
+    param([string]$RouteModeValue)
+
+    switch ($RouteModeValue) {
+        'director' { return 'Primary' }
+        'executor' { return 'Success' }
+        default { return 'Muted' }
+    }
+}
+
+function Get-SentinelModeBadgeLines {
+    param(
+        [string]$BundleModeValue,
+        [string]$RouteModeValue
+    )
+
+    $badges = New-Object System.Collections.Generic.List[string]
+    $normalizedBundleMode = if ($BundleModeValue -eq 'txt_export') { 'TXT_EXPORT' } else { $BundleModeValue.ToUpperInvariant() }
+    $normalizedRouteMode = $RouteModeValue.ToUpperInvariant()
+
+    $badges.Add((Format-SentinelBadge -Label $normalizedBundleMode -Tone (Get-SentinelBundleModeTone -BundleModeValue $BundleModeValue))) | Out-Null
+    $badges.Add((Format-SentinelBadge -Label $normalizedRouteMode -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue))) | Out-Null
+
+    return @($badges)
+}
+
+function Write-SentinelOperationSummary {
+    param(
+        [string]$ProjectNameValue,
+        [string]$BundleModeValue,
+        [string]$RouteModeValue,
+        [string]$ExecutorTargetValue
+    )
+
+    Write-SentinelPanel -Title 'Resumo operacional' -Tone 'Secondary' -Lines @(
+        ('Projeto raiz: {0}' -f $ProjectNameValue),
+        ('Executor alvo: {0}' -f $ExecutorTargetValue)
+    )
+
+    Write-SentinelBadgeLine -Badges (Get-SentinelModeBadgeLines -BundleModeValue $BundleModeValue -RouteModeValue $RouteModeValue)
+    Write-SentinelKeyValue -Key 'Projeto' -Value $ProjectNameValue -Tone 'Primary'
+    Write-SentinelKeyValue -Key 'Extração' -Value $BundleModeValue -Tone (Get-SentinelBundleModeTone -BundleModeValue $BundleModeValue)
+    Write-SentinelKeyValue -Key 'Rota' -Value $(if ($RouteModeValue -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }) -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue)
+    Write-SentinelKeyValue -Key 'Executor' -Value $ExecutorTargetValue -Tone 'Primary'
+    Write-Host ''
+}
+
 function Get-SentinelUiRequiredFunctionNames {
     return @(
         'Write-SentinelHeader',
-        'Write-SentinelStatus'
+        'Write-SentinelStatus',
+        'Write-SentinelDivider',
+        'Write-SentinelSection',
+        'Write-SentinelPanel',
+        'Write-SentinelKeyValue',
+        'Write-SentinelMenuOptions',
+        'Write-SentinelProgress',
+        'Format-SentinelBadge',
+        'Write-SentinelBadgeLine'
     )
 }
 
@@ -139,6 +212,16 @@ function Test-IsSentinelUiPolicyBlockedError {
 }
 
 function Register-SentinelCliFallback {
+    $writeSentinelText = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Text,
+            [string]$Color = ''
+        )
+
+        Write-Host $Text
+    }
+
     $writeSentinelStatus = {
         [CmdletBinding()]
         param(
@@ -159,10 +242,29 @@ function Register-SentinelCliFallback {
         Write-Host ("{0} {1}" -f $prefix, $Message)
     }
 
+    $writeSentinelDivider = {
+        param(
+            [string]$Label,
+            [string]$Tone = 'Secondary',
+            [int]$Width = 39,
+            [string]$Character = '='
+        )
+
+        $line = ($Character * [Math]::Max($Width, 8))
+        if ([string]::IsNullOrWhiteSpace($Label)) {
+            Write-Host ("  {0}" -f $line)
+        }
+        else {
+            Write-Host ("  {0} {1} {0}" -f $line, $Label)
+        }
+    }
+
     $writeSentinelHeader = {
         param(
             [string]$Title = 'SENTINEL',
-            [string]$Version = 'v1.0.0'
+            [string]$Version = 'v1.0.0',
+            [ValidateSet('Hero', 'Compact', 'Minimal')]
+            [string]$Variant = 'Hero'
         )
 
         Write-Host ('=' * 72)
@@ -171,8 +273,110 @@ function Register-SentinelCliFallback {
         Write-Host ''
     }
 
+    $writeSentinelSection = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Title,
+            [string]$Subtitle,
+            [string]$Tone = 'Primary'
+        )
+
+        Write-Host ''
+        Write-Host ('=' * 39)
+        Write-Host ("  {0}" -f $Title)
+        if (-not [string]::IsNullOrWhiteSpace($Subtitle)) {
+            Write-Host ("  {0}" -f $Subtitle)
+        }
+        Write-Host ('=' * 39)
+        Write-Host ''
+    }
+
+    $writeSentinelPanel = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Title,
+            [string[]]$Lines,
+            [string]$Tone = 'Secondary'
+        )
+
+        Write-Host ("  {0}" -f $Title)
+        foreach ($line in @($Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+            Write-Host ("    {0}" -f $line)
+        }
+        Write-Host ''
+    }
+
+    $writeSentinelKeyValue = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Key,
+            [AllowEmptyString()][string]$Value = '',
+            [int]$KeyWidth = 18,
+            [string]$Tone = 'Primary'
+        )
+
+        Write-Host ("  {0} : {1}" -f $Key.PadRight([Math]::Max($KeyWidth, 8)), $Value)
+    }
+
+    $writeSentinelMenuOptions = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string[]]$Options
+        )
+
+        for ($index = 0; $index -lt $Options.Count; $index++) {
+            Write-Host ("    [{0}] {1}" -f ($index + 1), $Options[$index])
+        }
+        Write-Host ''
+    }
+
+    $writeSentinelProgress = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Activity,
+            [int]$Current = 0,
+            [int]$Total = 0,
+            [string]$Tone = 'Primary'
+        )
+
+        if ($Total -le 0) {
+            Write-Host ("  > {0}" -f $Activity)
+            return
+        }
+
+        Write-Host ("  > {0} ({1}/{2})" -f $Activity, $Current, $Total)
+    }
+
+    $formatSentinelBadge = {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Label,
+            [string]$Tone = 'Primary'
+        )
+
+        return ('[{0}]' -f $Label.ToUpperInvariant())
+    }
+
+    $writeSentinelBadgeLine = {
+        param([string[]]$Badges)
+
+        $normalizedBadges = @($Badges | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($normalizedBadges.Count -gt 0) {
+            Write-Host ("  {0}" -f ($normalizedBadges -join ' '))
+        }
+    }
+
+    Set-Item -Path Function:\script:Write-SentinelText -Value $writeSentinelText -Force
     Set-Item -Path Function:\script:Write-SentinelStatus -Value $writeSentinelStatus -Force
+    Set-Item -Path Function:\script:Write-SentinelDivider -Value $writeSentinelDivider -Force
     Set-Item -Path Function:\script:Write-SentinelHeader -Value $writeSentinelHeader -Force
+    Set-Item -Path Function:\script:Write-SentinelSection -Value $writeSentinelSection -Force
+    Set-Item -Path Function:\script:Write-SentinelPanel -Value $writeSentinelPanel -Force
+    Set-Item -Path Function:\script:Write-SentinelKeyValue -Value $writeSentinelKeyValue -Force
+    Set-Item -Path Function:\script:Write-SentinelMenuOptions -Value $writeSentinelMenuOptions -Force
+    Set-Item -Path Function:\script:Write-SentinelProgress -Value $writeSentinelProgress -Force
+    Set-Item -Path Function:\script:Format-SentinelBadge -Value $formatSentinelBadge -Force
+    Set-Item -Path Function:\script:Write-SentinelBadgeLine -Value $writeSentinelBadgeLine -Force
 }
 
 function Assert-SentinelUiBootstrapContract {
@@ -495,7 +699,7 @@ function Invoke-ConsoleMultiSelect {
             'Enter' {
                 if ($selected.Count -eq 0) {
                     Write-Host ''
-                    Write-Host '  Selecione pelo menos um item antes de confirmar.' -ForegroundColor Yellow
+                    Write-SentinelStatus -Message 'Selecione pelo menos um item antes de confirmar.' -Type Warning
                     [void][Console]::ReadKey($true)
                     continue
                 }
@@ -552,20 +756,16 @@ function Resolve-SniperRequestedPaths {
         )
     }
 
-    Write-Host ''
-    Write-Host '  Seleção manual do modo Sniper:' -ForegroundColor Cyan
-    Write-Host "    - Informe um ou mais caminhos relativos ou absolutos separados por ';'"
-    Write-Host '    - Pode ser arquivo ou diretório'
-    Write-Host ''
-    Write-Host '  Arquivos elegíveis detectados (prévia):' -ForegroundColor Cyan
-
+    Write-SentinelSection -Title 'Seleção manual do modo Sniper' -Subtitle 'Informe um ou mais caminhos relativos ou absolutos separados por ;' -Tone 'Warning'
+    $sniperPreviewLines = New-Object System.Collections.Generic.List[string]
+    $sniperPreviewLines.Add('Pode ser arquivo ou diretório.') | Out-Null
     foreach ($previewFile in ($relativeOptions | Select-Object -First 20)) {
-        Write-Host ('    - {0}' -f $previewFile)
+        $sniperPreviewLines.Add('- ' + $previewFile) | Out-Null
     }
-
     if ($relativeOptions.Count -gt 20) {
-        Write-Host ('    ... e mais {0} arquivo(s).' -f ($relativeOptions.Count - 20)) -ForegroundColor DarkGray
+        $sniperPreviewLines.Add('... e mais ' + ($relativeOptions.Count - 20) + ' arquivo(s).') | Out-Null
     }
+    Write-SentinelPanel -Title 'Arquivos elegíveis detectados (prévia)' -Tone 'Secondary' -Lines ($sniperPreviewLines.ToArray())
 
     $inputValue = (Read-Host '  Caminhos do Sniper').Trim()
     if ([string]::IsNullOrWhiteSpace($inputValue)) {
@@ -805,7 +1005,7 @@ function New-DeterministicMetaPromptArtifact {
     $lines.Add('## ANÁLISE DO DIRETOR') | Out-Null
     $lines.Add('O bundle visível fornece contexto suficiente para orientar uma execução local rastreável sem dependência de IA remota, mantendo contratos, escopo e regras operacionais observáveis.') | Out-Null
     $lines.Add('') | Out-Null
-    $lines.Add('## RACIOCÍNIO (CoT)') | Out-Null
+    $lines.Add('## Síntese técnica') | Out-Null
     $lines.Add('A saída final precisa permanecer determinística, rastreável e estritamente limitada ao bundle visível. O Executor deve operar com Lei da Subtração, preservar contratos e declarar lacunas em vez de inventar arquitetura. Os recortes prioritários para leitura são: ' + $relevantFilesValue + '.') | Out-Null
     $lines.Add('') | Out-Null
     $lines.Add('## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)') | Out-Null
@@ -1148,7 +1348,9 @@ function Export-OperationFilesToTxtDirectory {
     $exportedFiles = New-Object System.Collections.Generic.List[string]
     $skippedFiles = New-Object System.Collections.Generic.List[string]
 
-    foreach ($sourceFile in $Files) {
+    for ($index = 0; $index -lt $Files.Count; $index++) {
+        $sourceFile = $Files[$index]
+        Write-SentinelProgress -Activity 'TXT Export' -Current ($index + 1) -Total $Files.Count -Tone 'Secondary'
         try {
             $sourcePath = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
             if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path $sourcePath -PathType Leaf)) {
@@ -1213,13 +1415,13 @@ function Resolve-BundleMode {
         throw 'Modo de extração obrigatório em execução não interativa. Use -BundleMode full, blueprint, sniper ou txtExport.'
     }
 
-    Write-Host ''
-    Write-Host '  1. Modo de Extração:' -ForegroundColor Cyan
-    Write-Host '    [1] Full / Tudo  -  enviar tudo (análise completa)'
-    Write-Host '    [2] Architect    -  blueprint / estrutura'
-    Write-Host '    [3] Sniper       -  seleção manual (recorte com foco cirúrgico)'
-    Write-Host '    [4] TXT Export   -  pasta com arquivos separados'
-    Write-Host ''
+    Write-SentinelSection -Title 'Modo de Extração' -Subtitle 'Escolha o nível de contexto da execução.' -Tone 'Primary'
+    Write-SentinelMenuOptions -Options @(
+        'Full / Tudo  -  enviar tudo (análise completa)',
+        'Architect    -  blueprint / estrutura',
+        'Sniper       -  seleção manual (recorte com foco cirúrgico)',
+        'TXT Export   -  pasta com arquivos separados'
+    )
 
     $resolved = $null
     while ($null -eq $resolved) {
@@ -1229,7 +1431,7 @@ function Resolve-BundleMode {
             '2' { $resolved = 'blueprint' }
             '3' { $resolved = 'sniper' }
             '4' { $resolved = 'txtExport' }
-            default { Write-Host '  Entrada inválida. Digite 1, 2, 3 ou 4.' -ForegroundColor Yellow }
+            default { Write-SentinelStatus -Message 'Entrada inválida. Digite 1, 2, 3 ou 4.' -Type Warning }
         }
     }
 
@@ -1251,10 +1453,11 @@ function Resolve-RouteMode {
         throw 'Rota obrigatória em execução não interativa. Use -RouteMode director ou executor.'
     }
 
-    Write-Host '  Fluxo de Saída:' -ForegroundColor Cyan
-    Write-Host '    [1] Via Diretor          (gera meta-prompt local)'
-    Write-Host '    [2] Direto para Executor (gera contexto final)'
-    Write-Host ''
+    Write-SentinelSection -Title 'Fluxo de Saída' -Subtitle 'Defina o papel operacional do artefato final.' -Tone 'Primary'
+    Write-SentinelMenuOptions -Options @(
+        'Via Diretor          (gera meta-prompt local)',
+        'Direto para Executor (gera contexto final)'
+    )
 
     $resolved = $null
     while ($null -eq $resolved) {
@@ -1262,7 +1465,7 @@ function Resolve-RouteMode {
         switch ($inp) {
             '1' { $resolved = 'director' }
             '2' { $resolved = 'executor' }
-            default { Write-Host '  Entrada inválida. Digite 1 ou 2.' -ForegroundColor Yellow }
+            default { Write-SentinelStatus -Message 'Entrada inválida. Digite 1 ou 2.' -Type Warning }
         }
     }
 
@@ -1285,21 +1488,17 @@ function Resolve-ProjectSource {
         }
     }
 
-    Write-Host ''
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host '   ORIGEM DO PROJETO' -ForegroundColor Cyan
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host ''
-    Write-Host '  Selecione a origem do projeto:' -ForegroundColor Cyan
-    Write-Host '    [1] Usar path atual'
-    Write-Host '    [2] Clonar repositório GitHub'
-    Write-Host ''
+    Write-SentinelSection -Title 'Origem do Projeto' -Subtitle 'Selecione de onde o contexto será carregado.' -Tone 'Primary'
+    Write-SentinelMenuOptions -Options @(
+        'Usar path atual',
+        'Clonar repositório GitHub'
+    )
 
     $choice = $null
     while ($choice -notin @('1', '2')) {
         $choice = (Read-Host '  Digite 1 ou 2').Trim()
         if ($choice -notin @('1', '2')) {
-            Write-Host '  Entrada inválida. Digite 1 ou 2.' -ForegroundColor Yellow
+            Write-SentinelStatus -Message 'Entrada inválida. Digite 1 ou 2.' -Type Warning
         }
     }
 
@@ -1315,11 +1514,7 @@ function Resolve-ProjectSource {
         }
     }
 
-    Write-Host ''
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host '   CLONAGEM DE REPOSITÓRIO GITHUB' -ForegroundColor Cyan
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host ''
+    Write-SentinelSection -Title 'Clonagem de Repositório GitHub' -Subtitle 'Fluxo temporário ou manual, sem GUI e sem firula.' -Tone 'Primary'
 
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if (-not $gitCmd) {
@@ -1330,7 +1525,7 @@ function Resolve-ProjectSource {
     while ([string]::IsNullOrWhiteSpace($repoUrl)) {
         $repoUrl = (Read-Host '  URL do repositório GitHub (ex: https://github.com/user/repo.git)').Trim()
         if ([string]::IsNullOrWhiteSpace($repoUrl)) {
-            Write-Host '  URL não pode ser vazia.' -ForegroundColor Yellow
+            Write-SentinelStatus -Message 'URL não pode ser vazia.' -Type Warning
         }
     }
 
@@ -1361,14 +1556,14 @@ function Resolve-ProjectSource {
         while ([string]::IsNullOrWhiteSpace($manualPath)) {
             $manualPath = (Read-Host '  Informe o caminho completo do diretório de destino').Trim()
             if ([string]::IsNullOrWhiteSpace($manualPath)) {
-                Write-Host '  Caminho não pode ser vazio.' -ForegroundColor Yellow
+                Write-SentinelStatus -Message 'Caminho não pode ser vazio.' -Type Warning
                 continue
             }
             try {
                 $resolvedManual = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($manualPath))
             }
             catch {
-                Write-Host '  Caminho inválido. Tente novamente.' -ForegroundColor Yellow
+                Write-SentinelStatus -Message 'Caminho inválido. Tente novamente.' -Type Warning
                 $manualPath = $null
                 continue
             }
@@ -1444,6 +1639,8 @@ $script:IgnoredFiles = @(
     'poetry.lock', 'Pipfile.lock', 'Cargo.lock', 'go.sum', 'composer.lock'
 )
 
+Register-SentinelCliFallback
+
 try {
     $sourceResult = Resolve-ProjectSource -DefaultPath $Path -NonInteractive:$NonInteractive
     $resolvedTargetPath = $sourceResult.ResolvedPath
@@ -1471,8 +1668,8 @@ try {
             Register-SentinelCliFallback
             $sentinelUiFallbackActive = $true
             $sentinelFailureSummary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $sentinelBootstrapFailure
-            Write-Host '[!] SentinelUI bloqueado por assinatura/execution policy. Ativando fallback textual para o modo headless.'
-            Write-Host ("    {0}" -f $sentinelFailureSummary)
+            Write-SentinelStatus -Message 'SentinelUI bloqueado por assinatura/execution policy. Ativando fallback textual para o modo headless.' -Type Warning
+            Write-SentinelPanel -Title 'Resumo do bootstrap' -Tone 'Warning' -Lines @($sentinelFailureSummary)
         }
         else {
             $sentinelFailureSummary = Get-SentinelUiBootstrapFailureSummary -ErrorRecord $sentinelBootstrapFailure
@@ -1482,7 +1679,7 @@ try {
 
     Assert-SentinelUiBootstrapContract -SentinelUiPath $SentinelUiPath -FallbackActive:$sentinelUiFallbackActive
 
-    Write-SentinelHeader -Title 'SENTINEL HEADLESS' -Version 'v2.0.0'
+    Write-SentinelHeader -Title 'SENTINEL HEADLESS' -Version 'v2.0.0' -Variant 'Hero'
     if ($sentinelUiFallbackActive) {
         Write-UILog -Message 'Bootstrap headless carregado com fallback textual de console.' -Color $ThemeWarn
     }
@@ -1515,11 +1712,7 @@ try {
     Set-Location $resolvedTargetPath
     $projectName = (Get-Item .).Name
 
-    Write-Host ''
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host '   SENTINEL HEADLESS — Configuração' -ForegroundColor Cyan
-    Write-Host '  ═══════════════════════════════════════' -ForegroundColor DarkCyan
-    Write-Host ''
+    Write-SentinelSection -Title 'SENTINEL HEADLESS — Configuração' -Subtitle 'Fluxo CLI/headless local com renderização progressiva.' -Tone 'Primary'
 
     $executionStartedAt = Get-Date
     $resolvedBundleMode = Resolve-BundleMode -BundleMode $BundleMode -NonInteractive:$NonInteractive
@@ -1529,10 +1722,7 @@ try {
     $currentDocumentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $currentExtractionMode
     $isTxtExportMode = ($choice -eq '4')
 
-    Write-UILog -Message ("Projeto: {0}" -f $projectName)
-    Write-UILog -Message ("Modo headless: {0}" -f $resolvedBundleMode)
-    Write-UILog -Message ("Rota: {0}" -f $(if ($resolvedRouteMode -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }))
-    Write-UILog -Message ("Executor alvo: {0}" -f $ExecutorTarget)
+    Write-SentinelOperationSummary -ProjectNameValue $projectName -BundleModeValue $resolvedBundleMode -RouteModeValue $resolvedRouteMode -ExecutorTargetValue $ExecutorTarget
 
     $foundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path | Sort-Object FullName)
     if ($foundFiles.Count -eq 0) {
@@ -1641,8 +1831,10 @@ try {
 
         Write-UILog -Message 'Lendo arquivos e consolidando conteúdo...'
         $finalContent += "### 2. SOURCE FILES`n`n"
-        foreach ($file in $filesToProcess) {
+        for ($index = 0; $index -lt $filesToProcess.Count; $index++) {
+            $file = $filesToProcess[$index]
             $relPath = Resolve-Path -Path $file.FullName -Relative
+            Write-SentinelProgress -Activity 'Leitura de arquivos' -Current ($index + 1) -Total $filesToProcess.Count -Tone 'Secondary'
             Write-UILog -Message ("Lendo {0}" -f $relPath)
             $content = Read-LocalTextArtifact -Path $file.FullName
             if ($null -ne $content) {

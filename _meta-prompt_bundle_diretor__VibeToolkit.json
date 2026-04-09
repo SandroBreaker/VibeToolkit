@@ -1,0 +1,38 @@
+﻿{
+  "ok": true,
+  "executionId": "9dd86cb6-e502-433c-8754-f5d11e098bfc",
+  "executionMode": "local",
+  "routeMode": "director",
+  "extractionMode": "full",
+  "documentMode": "full",
+  "executorTarget": "ChatGPT",
+  "generatedAt": "2026-04-09T14:18:54.4384795Z",
+  "durationMs": 11310,
+  "sourceArtifactPath": "C:\\dev\\VibeToolkit\\_bundle_diretor__VibeToolkit.md",
+  "sourceArtifactHash": "e2d088d017607c81d29efb8310c2de470463268184bb6de894ce49b27c721bed",
+  "outputPath": "C:\\dev\\VibeToolkit\\_meta-prompt_bundle_diretor__VibeToolkit.md",
+  "outputHash": "367e6786189896107ca806541803b48a82f00de0892a5ec31ea84b5f78baba22",
+  "resultMetaPath": "C:\\dev\\VibeToolkit\\_meta-prompt_bundle_diretor__VibeToolkit.json",
+  "generatedLocally": true,
+  "environment": {
+    "osVersion": "Microsoft Windows NT 10.0.19045.0",
+    "psVersion": "7.6.0",
+    "isWindows": true,
+    "hostname": "SANDROBREAKER",
+    "processArchitecture": "X64"
+  },
+  "user": {
+    "username": "alede",
+    "domain": "SANDROBREAKER",
+    "homeDirectory": "C:\\Users\\alede"
+  },
+  "effectiveOutputDirectory": "C:\\dev\\VibeToolkit",
+  "unselectedFileCount": 0,
+  "sourceMode": "local",
+  "resolvedWorkingPath": "C:\\dev\\VibeToolkit",
+  "fileCount": 17,
+  "outputArtifactFile": "_meta-prompt_bundle_diretor__VibeToolkit.md",
+  "sourceArtifactFile": "_bundle_diretor__VibeToolkit.md",
+  "generatedFromLocalGovernance": true,
+  "originalInput": "C:\\dev\\VibeToolkit"
+}

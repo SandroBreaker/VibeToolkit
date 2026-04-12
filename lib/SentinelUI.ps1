@@ -57,11 +57,17 @@ $script:SentinelPlainGlyphs = @{
     Error   = '[ER]'
 }
 
+$script:SentinelUiLayout = @{
+    DividerWidth          = 34
+    ProgressBarWidth      = 18
+    ProgressActivityWidth = 24
+}
+
 $SentinelTheme = [ordered]@{
     Reset     = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[0m" } else { '' }
     Primary   = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;0;229;255m" } else { '' }
-    Secondary = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;110;118;129m" } else { '' }
-    Muted     = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;148;163;184m" } else { '' }
+    Secondary = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;176;190;212m" } else { '' }
+    Muted     = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;120;133;153m" } else { '' }
     Success   = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;34;197;94m" } else { '' }
     Warning   = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;245;158;11m" } else { '' }
     Error     = if ($script:SentinelAnsiEnabled) { "$($script:SentinelEscape)[38;2;239;68;68m" } else { '' }
@@ -77,13 +83,112 @@ function Get-SentinelToneColor {
     param([string]$Tone = 'Primary')
 
     switch ($Tone) {
-        'Success' { return $SentinelTheme.Success }
-        'Warning' { return $SentinelTheme.Warning }
-        'Error'   { return $SentinelTheme.Error }
+        'Success'   { return $SentinelTheme.Success }
+        'Warning'   { return $SentinelTheme.Warning }
+        'Error'     { return $SentinelTheme.Error }
         'Secondary' { return $SentinelTheme.Secondary }
-        'Muted' { return $SentinelTheme.Muted }
-        default { return $SentinelTheme.Primary }
+        'Muted'     { return $SentinelTheme.Muted }
+        default     { return $SentinelTheme.Primary }
     }
+}
+
+function Get-SentinelTrimmedText {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Text = '',
+        [int]$MaxLength = 24
+    )
+
+    $value = if ($null -eq $Text) { '' } else { [string]$Text }
+    if ([string]::IsNullOrEmpty($value)) {
+        return ''
+    }
+
+    if ($value.Length -le $MaxLength) {
+        return $value
+    }
+
+    if ($MaxLength -le 1) {
+        return '…'
+    }
+
+    return ($value.Substring(0, $MaxLength - 1) + '…')
+}
+
+function Get-SentinelDividerContent {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Label = '',
+        [int]$Width = 34,
+        [string]$Character = '═'
+    )
+
+    $safeWidth = [Math]::Max($Width, 8)
+    $dividerChar = if ([string]::IsNullOrEmpty($Character)) { '═' } else { $Character.Substring(0, 1) }
+
+    if ([string]::IsNullOrWhiteSpace($Label)) {
+        return ($dividerChar * $safeWidth)
+    }
+
+    $normalizedLabel = ($Label -replace '\s+', ' ').Trim()
+    if ([string]::IsNullOrWhiteSpace($normalizedLabel)) {
+        return ($dividerChar * $safeWidth)
+    }
+
+    $minimumSideWidth = 2
+    $labelPaddingWidth = 2
+    $maxLabelLength = $safeWidth - (($minimumSideWidth * 2) + $labelPaddingWidth)
+
+    if ($maxLabelLength -le 0) {
+        return ($dividerChar * $safeWidth)
+    }
+
+    if ($normalizedLabel.Length -gt $maxLabelLength) {
+        if ($maxLabelLength -eq 1) {
+            $normalizedLabel = '…'
+        }
+        else {
+            $normalizedLabel = $normalizedLabel.Substring(0, $maxLabelLength - 1) + '…'
+        }
+    }
+
+    $framedLabel = " $normalizedLabel "
+    $remaining = $safeWidth - $framedLabel.Length
+
+    if ($remaining -lt ($minimumSideWidth * 2)) {
+        $maxFramedLabelLength = $safeWidth - ($minimumSideWidth * 2)
+        if ($maxFramedLabelLength -le 0) {
+            return ($dividerChar * $safeWidth)
+        }
+
+        if ($framedLabel.Length -gt $maxFramedLabelLength) {
+            $framedLabel = $framedLabel.Substring(0, $maxFramedLabelLength)
+        }
+
+        $remaining = $safeWidth - $framedLabel.Length
+    }
+
+    $leftWidth = [Math]::Max([int][Math]::Floor($remaining / 2), $minimumSideWidth)
+    $rightWidth = [Math]::Max(($remaining - $leftWidth), $minimumSideWidth)
+
+    $currentLength = $leftWidth + $framedLabel.Length + $rightWidth
+    if ($currentLength -gt $safeWidth) {
+        $overflow = $currentLength - $safeWidth
+
+        if ($rightWidth -gt $minimumSideWidth) {
+            $shrinkRight = [Math]::Min($overflow, $rightWidth - $minimumSideWidth)
+            $rightWidth -= $shrinkRight
+            $overflow -= $shrinkRight
+        }
+
+        if ($overflow -gt 0 -and $leftWidth -gt $minimumSideWidth) {
+            $shrinkLeft = [Math]::Min($overflow, $leftWidth - $minimumSideWidth)
+            $leftWidth -= $shrinkLeft
+            $overflow -= $shrinkLeft
+        }
+    }
+
+    return ('{0}{1}{2}' -f ($dividerChar * $leftWidth), $framedLabel, ($dividerChar * $rightWidth))
 }
 
 function Write-SentinelText {
@@ -107,19 +212,13 @@ function Write-SentinelDivider {
         [string]$Label,
         [ValidateSet('Primary', 'Success', 'Warning', 'Error', 'Secondary', 'Muted')]
         [string]$Tone = 'Secondary',
-        [int]$Width = 39,
+        [int]$Width = 34,
         [string]$Character = '═'
     )
 
-    $line = ($Character * [Math]::Max($Width, 8))
+    $dividerText = Get-SentinelDividerContent -Label $Label -Width $Width -Character $Character
     $color = Get-SentinelToneColor -Tone $Tone
-
-    if ([string]::IsNullOrWhiteSpace($Label)) {
-        Write-SentinelText -Text ("  {0}" -f $line) -Color $color
-        return
-    }
-
-    Write-SentinelText -Text ("  {0} {1} {0}" -f $line, $Label) -Color $color
+    Write-SentinelText -Text ("  {0}" -f $dividerText) -Color $color
 }
 
 function Format-SentinelBadge {
@@ -132,7 +231,7 @@ function Format-SentinelBadge {
         [string]$Tone = 'Primary'
     )
 
-    $normalized = $Label.Trim().ToUpperInvariant()
+    $normalized = ($Label -replace '\s+', ' ').Trim().ToUpperInvariant()
     if ([string]::IsNullOrWhiteSpace($normalized)) {
         return ''
     }
@@ -142,7 +241,7 @@ function Format-SentinelBadge {
     }
 
     $color = Get-SentinelToneColor -Tone $Tone
-    return ("{0}[ {1} ]{2}" -f $color, $normalized, $SentinelTheme.Reset)
+    return ("{0}[{1}]{2}" -f $color, $normalized, $SentinelTheme.Reset)
 }
 
 function Write-SentinelBadgeLine {
@@ -168,15 +267,13 @@ function Write-SentinelHeader {
 
     switch ($Variant) {
         'Minimal' {
-            Write-SentinelDivider -Tone 'Secondary'
-            Write-SentinelText -Text ("  {0}  ·  {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
+            Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
             Write-Host ''
             return
         }
         'Compact' {
-            Write-SentinelDivider -Tone 'Secondary'
-            Write-SentinelText -Text ("  {0}" -f $Title) -Color $SentinelTheme.Primary
-            Write-SentinelText -Text ("  versão {0}" -f $Version) -Color $SentinelTheme.Secondary
+            Write-SentinelDivider -Label $Title -Tone 'Primary'
+            Write-SentinelText -Text ("  {0}" -f $Version) -Color $SentinelTheme.Secondary
             Write-Host ''
             return
         }
@@ -190,11 +287,13 @@ function Write-SentinelHeader {
                 '  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝'
             )
 
+            Write-SentinelDivider -Tone 'Secondary'
             foreach ($line in $logo) {
                 Write-SentinelText -Text $line -Color $SentinelTheme.Primary
             }
 
-            Write-SentinelText -Text ("  {0}  ·  {1}" -f $Title, $Version) -Color $SentinelTheme.Secondary
+            Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Secondary
+            Write-SentinelDivider -Tone 'Secondary'
             Write-Host ''
         }
     }
@@ -211,12 +310,10 @@ function Write-SentinelSection {
     )
 
     Write-Host ''
-    Write-SentinelDivider -Tone $Tone
-    Write-SentinelText -Text ("   {0}" -f $Title) -Color (Get-SentinelToneColor -Tone $Tone)
+    Write-SentinelDivider -Label $Title -Tone $Tone
     if (-not [string]::IsNullOrWhiteSpace($Subtitle)) {
-        Write-SentinelText -Text ("   {0}" -f $Subtitle) -Color $SentinelTheme.Secondary
+        Write-SentinelText -Text ("  {0}" -f $Subtitle) -Color $SentinelTheme.Secondary
     }
-    Write-SentinelDivider -Tone $Tone
     Write-Host ''
 }
 
@@ -261,7 +358,7 @@ function Write-SentinelKeyValue {
 
     $keyColor = $SentinelTheme.Secondary
     $valueColor = Get-SentinelToneColor -Tone $Tone
-    Write-Host ("  {0}{1}{2} : {3}{4}{5}" -f $keyColor, $paddedKey, $SentinelTheme.Reset, $valueColor, $valueText, $SentinelTheme.Reset)
+    Write-Host ("  {0}{1}{2}{3}:{2} {4}{5}{2}" -f $keyColor, $paddedKey, $SentinelTheme.Reset, $SentinelTheme.Muted, $valueColor, $valueText)
 }
 
 function Write-SentinelMenuOptions {
@@ -290,19 +387,24 @@ function Write-SentinelProgress {
     )
 
     if ($Total -le 0) {
-        Write-SentinelText -Text ("  ⟳ {0}" -f $Activity) -Color (Get-SentinelToneColor -Tone $Tone)
+        $activityText = Get-SentinelTrimmedText -Text $Activity -MaxLength ([Math]::Max(($script:SentinelUiLayout.ProgressActivityWidth + 8), 12))
+        Write-SentinelText -Text ("  ⟳ {0}" -f $activityText) -Color (Get-SentinelToneColor -Tone $Tone)
         return
     }
 
     $safeCurrent = [Math]::Min([Math]::Max($Current, 0), $Total)
-    $barWidth = 22
+    $barWidth = [Math]::Max($script:SentinelUiLayout.ProgressBarWidth, 10)
     $ratio = if ($Total -eq 0) { 0 } else { [double]$safeCurrent / [double]$Total }
-    $filled = [Math]::Round($ratio * $barWidth)
+    $filled = [int][Math]::Round(($ratio * $barWidth), 0, [System.MidpointRounding]::AwayFromZero)
+    $filled = [Math]::Min([Math]::Max($filled, 0), $barWidth)
     $empty = $barWidth - $filled
     $bar = ('█' * $filled) + ('·' * $empty)
-    $percent = [Math]::Round($ratio * 100)
+    $percent = [int][Math]::Round(($ratio * 100), 0, [System.MidpointRounding]::AwayFromZero)
 
-    Write-SentinelText -Text ("  {0,-26} [{1}] {2,3}% ({3}/{4})" -f $Activity, $bar, $percent, $safeCurrent, $Total) -Color (Get-SentinelToneColor -Tone $Tone)
+    $activityText = Get-SentinelTrimmedText -Text $Activity -MaxLength $script:SentinelUiLayout.ProgressActivityWidth
+    $activityDisplay = $activityText.PadRight([Math]::Max($script:SentinelUiLayout.ProgressActivityWidth, 12))
+
+    Write-SentinelText -Text ("  ⟳ {0} [{1}] {2,3}% ({3}/{4})" -f $activityDisplay, $bar, $percent, $safeCurrent, $Total) -Color (Get-SentinelToneColor -Tone $Tone)
 }
 
 function Write-SentinelStatus {
@@ -319,11 +421,11 @@ function Write-SentinelStatus {
     $color = switch ($Type) {
         'Success' { $SentinelTheme.Success }
         'Warning' { $SentinelTheme.Warning }
-        'Error' { $SentinelTheme.Error }
-        default { $SentinelTheme.Primary }
+        'Error'   { $SentinelTheme.Error }
+        default   { $SentinelTheme.Primary }
     }
 
-    Write-SentinelText -Text (" {0} {1}" -f $glyph, $Message) -Color $color
+    Write-SentinelText -Text ("  {0} {1}" -f $glyph, $Message) -Color $color
 }
 
 function Show-SentinelMenu {
@@ -347,4 +449,3 @@ function Show-SentinelSpinner {
 
     Write-SentinelProgress -Activity $Message -Tone 'Primary'
 }
-

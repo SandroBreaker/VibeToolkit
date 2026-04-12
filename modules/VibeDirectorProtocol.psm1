@@ -17,7 +17,7 @@ function Get-VibeDirectorLocalProtocolHeader {
     )
 
     return @"
-## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR v4.0
+## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR
 
 #### §0 — MODO ATIVO
 * **Assuma imediatamente o modo Diretor.** Este header define regras operacionais ativas e obrigatórias para toda a resposta.
@@ -59,7 +59,7 @@ function Get-VibeExecutorLocalProtocolHeader {
     }
 
     return @"
-## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0
+## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR
 
 #### §0 — MODO ATIVO
 * **Assuma imediatamente o modo Executor.** Este header define regras operacionais ativas e obrigatórias para toda a resposta.

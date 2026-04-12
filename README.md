@@ -3,7 +3,7 @@ Aqui está o **README.md completo** para o VibeToolkit, pensado para **iniciante
 ```markdown
 # 🧰 VibeToolkit
 
-**Empacotador de código para IAs** – transforme qualquer projeto em um artefato pronto para ChatGPT, Claude, Gemini ou qualquer outro assistente.
+**Empacotador de código para IAs** – transforme qualquer projeto em um artefato pronto para IA Generativa (GenAI), Claude, Gemini ou qualquer outro assistente.
 
 > ✅ 100% PowerShell • Zero dependências externas • Funciona em Windows • Instalação com dois cliques
 
@@ -74,7 +74,7 @@ Você tem um projeto com vários arquivos (código, configurações, docs) e que
 ### Rotas de saída
 
 - **Diretor** → gera um **meta-prompt** que instrui outra IA a executar uma tarefa (modo delegado).
-- **Executor** → gera o **bundle final pronto** para você copiar e colar no ChatGPT (recomendado para uso direto).
+- **Executor** → gera o **bundle final pronto** para você copiar e colar no IA Generativa (GenAI) (recomendado para uso direto).
 
 ---
 

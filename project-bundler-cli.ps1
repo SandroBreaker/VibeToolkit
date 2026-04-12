@@ -7,7 +7,7 @@ param(
     [string]$BundleMode = '',
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
-    [string]$ExecutorTarget = 'ChatGPT',
+    [string]$ExecutorTarget = 'IA Generativa (GenAI)',
     [switch]$NonInteractive
 )
 
@@ -98,7 +98,7 @@ function Format-SentinelLogMessage {
         }
     }
 
-    if ($normalizedMessage -match '^(?<prefix>TXT gerado:|Pasta de saída:|Arquivo ZIP:|Metadados locais salvos em:|Meta-prompt determinístico salvo em:|Clone temporário removido:|Diretório temporário automático:|Diretório manual informado:)\s*(?<path>.+)$') {
+    if ($normalizedMessage -match '^(?<prefix>TXT gerado:|Artefato final TXT Export:|Staging interno removido:|Pasta de saída:|Arquivo ZIP:|Metadados locais salvos em:|Meta-prompt determinístico salvo em:|Clone temporário removido:|Diretório temporário automático:|Diretório manual informado:)\s*(?<path>.+)$') {
         $prefix = $Matches.prefix
         $pathValue = $Matches.path.Trim()
         $leafName = Get-SentinelLogLeafName -PathValue $pathValue
@@ -741,6 +741,7 @@ function Test-IsGeneratedArtifactFileName {
     $patterns = @(
         '^_(?:bundle|blueprint|manual|txt_export)_(?:diretor|executor)(?:_[A-Za-z0-9\-]+)?__.*\.(?:md|json)$',
         '^_meta-prompt_(?:bundle|blueprint|manual)_(?:diretor|executor)(?:_[A-Za-z0-9\-]+)?__.*\.(?:md|json)$',
+        '^_txt_export_(?:diretor|executor)(?:_[A-Za-z0-9\-]+)?__.*\.zip$',
         '^_TXT_EXPORT__',
         '^_TXT_EXPORT__.*\.zip$'
     )
@@ -1644,23 +1645,25 @@ function Convert-SourceFileToTxtExportName {
 }
 
 function New-TxtExportZipFilePath {
-    param([string]$OutputDirectory)
+    param(
+        [string]$BaseDirectory,
+        [string]$ProjectNameValue,
+        [string]$RouteMode
+    )
 
-    $resolvedOutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-    $resolvedOutputDirectory = $resolvedOutputDirectory.TrimEnd([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+    $resolvedBaseDirectory = [System.IO.Path]::GetFullPath($BaseDirectory)
 
-    $parentDirectory = [System.IO.Path]::GetDirectoryName($resolvedOutputDirectory)
-    $directoryName = [System.IO.Path]::GetFileName($resolvedOutputDirectory)
-
-    if ([string]::IsNullOrWhiteSpace($parentDirectory)) {
-        $parentDirectory = (Get-Location).Path
+    if ([string]::IsNullOrWhiteSpace($resolvedBaseDirectory) -or -not (Test-Path $resolvedBaseDirectory -PathType Container)) {
+        throw "Diretório base inválido para o artefato final TXT Export: $BaseDirectory"
     }
 
-    $candidate = Join-Path $parentDirectory ("{0}.zip" -f $directoryName)
+    $artifactFileName = Get-VibeArtifactFileName -ProjectNameValue $ProjectNameValue -ExtractionMode 'txt_export' -RouteMode $RouteMode -Extension '.zip'
+    $candidate = Join-Path $resolvedBaseDirectory $artifactFileName
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($artifactFileName)
     $suffix = 2
 
     while (Test-Path $candidate) {
-        $candidate = Join-Path $parentDirectory ("{0}__{1}.zip" -f $directoryName, $suffix)
+        $candidate = Join-Path $resolvedBaseDirectory ("{0}__{1}.zip" -f $baseName, $suffix)
         $suffix++
     }
 
@@ -1668,15 +1671,20 @@ function New-TxtExportZipFilePath {
 }
 
 function New-TxtExportZipArchive {
-    param([string]$OutputDirectory)
+    param(
+        [string]$OutputDirectory,
+        [string]$BaseDirectory,
+        [string]$ProjectNameValue,
+        [string]$RouteMode
+    )
 
     if ([string]::IsNullOrWhiteSpace($OutputDirectory) -or -not (Test-Path $OutputDirectory -PathType Container)) {
-        throw "Diretório de saída do TXT Export inválido para compactação: $OutputDirectory"
+        throw "Diretório de staging do TXT Export inválido para compactação: $OutputDirectory"
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-    $zipFilePath = New-TxtExportZipFilePath -OutputDirectory $OutputDirectory
+    $zipFilePath = New-TxtExportZipFilePath -BaseDirectory $BaseDirectory -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
         $OutputDirectory,
         $zipFilePath,
@@ -1685,6 +1693,17 @@ function New-TxtExportZipArchive {
     )
 
     return $zipFilePath
+}
+
+function Remove-TxtExportOutputDirectory {
+    param([string]$OutputDirectory)
+
+    if ([string]::IsNullOrWhiteSpace($OutputDirectory) -or -not (Test-Path $OutputDirectory -PathType Container)) {
+        return $false
+    }
+
+    Remove-Item -Path $OutputDirectory -Recurse -Force -ErrorAction Stop
+    return $true
 }
 
 function Test-IsLikelyBinaryFile {
@@ -1726,7 +1745,8 @@ function Export-OperationFilesToTxtDirectory {
         [object[]]$Files,
         [string]$ProjectRootPath,
         [string]$BaseOutputDirectory,
-        [string]$ProjectNameValue
+        [string]$ProjectNameValue,
+        [string]$RouteMode
     )
 
     $outputDirectory = New-TxtExportOutputDirectory -BaseDirectory $BaseOutputDirectory -ProjectNameValue $ProjectNameValue
@@ -1773,10 +1793,26 @@ function Export-OperationFilesToTxtDirectory {
         }
     }
 
-    $zipFilePath = New-TxtExportZipArchive -OutputDirectory $outputDirectory
+    try {
+        $zipFilePath = New-TxtExportZipArchive -OutputDirectory $outputDirectory -BaseDirectory $BaseOutputDirectory -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode
+    }
+    catch {
+        throw "Falha ao criar o artefato final do TXT Export: $($_.Exception.Message)"
+    }
+
+    try {
+        $stagingRemoved = Remove-TxtExportOutputDirectory -OutputDirectory $outputDirectory
+        if (-not $stagingRemoved) {
+            throw "Diretório de staging não encontrado para remoção: $outputDirectory"
+        }
+    }
+    catch {
+        throw "Artefato final do TXT Export criado em '$zipFilePath', mas não foi possível remover o staging interno '$outputDirectory': $($_.Exception.Message)"
+    }
 
     return [pscustomobject]@{
-        OutputDirectory = $outputDirectory
+        StagingDirectory = $outputDirectory
+        StagingDirectoryRemoved = $stagingRemoved
         ZipFilePath = $zipFilePath
         ExportedFiles = $exportedFiles
         SkippedFiles = $skippedFiles
@@ -1806,7 +1842,7 @@ function Resolve-BundleMode {
         (New-SentinelMenuOptionLine -Label 'Full / Tudo' -Description 'enviar tudo (análise completa)' -LabelWidth 14),
         (New-SentinelMenuOptionLine -Label 'Architect' -Description 'blueprint / estrutura' -LabelWidth 14),
         (New-SentinelMenuOptionLine -Label 'Sniper' -Description 'seleção manual (recorte com foco cirúrgico)' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'pasta com arquivos separados' -LabelWidth 14)
+        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'ZIP final com arquivos .txt' -LabelWidth 14)
     )
 
     $resolved = $null
@@ -2164,10 +2200,10 @@ try {
     }
 
     if ($isTxtExportMode) {
-        $txtExportResult = Export-OperationFilesToTxtDirectory -Files $filesToProcess -ProjectRootPath (Get-Location).Path -BaseOutputDirectory $script:EffectiveOutputDirectory -ProjectNameValue $projectName
+        $txtExportResult = Export-OperationFilesToTxtDirectory -Files $filesToProcess -ProjectRootPath (Get-Location).Path -BaseOutputDirectory $script:EffectiveOutputDirectory -ProjectNameValue $projectName -RouteMode $resolvedRouteMode
 
-        Write-UILog -Message ("Pasta de saída: {0}" -f $txtExportResult.OutputDirectory) -Color $ThemeSuccess
-        Write-UILog -Message ("Arquivo ZIP: {0}" -f $txtExportResult.ZipFilePath) -Color $ThemeSuccess
+        Write-UILog -Message ("Artefato final TXT Export: {0}" -f $txtExportResult.ZipFilePath) -Color $ThemeSuccess
+        Write-UILog -Message ("Staging interno removido: {0}" -f $txtExportResult.StagingDirectory) -Color $ThemeSuccess
         Write-UILog -Message ("Arquivos exportados: {0}" -f $txtExportResult.ExportedFiles.Count) -Color $ThemeSuccess
 
         if ($txtExportResult.SkippedFiles.Count -gt 0) {
@@ -2175,8 +2211,10 @@ try {
         }
 
         $extraData = $baseExtraData.Clone()
-        $extraData.outputDirectory = $txtExportResult.OutputDirectory
+        $extraData.finalArtifactPath = $txtExportResult.ZipFilePath
         $extraData.zipFilePath = $txtExportResult.ZipFilePath
+        $extraData.stagingDirectory = $txtExportResult.StagingDirectory
+        $extraData.stagingDirectoryRemoved = $txtExportResult.StagingDirectoryRemoved
         $extraData.exportedFiles = @($txtExportResult.ExportedFiles)
         $extraData.skippedFiles = @($txtExportResult.SkippedFiles)
         $extraData.exportedFileCount = $txtExportResult.ExportedFiles.Count

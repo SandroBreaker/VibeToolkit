@@ -13,7 +13,7 @@ param(
     [string]$BundleMode = '',
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
-    [string]$ExecutorTarget = 'ChatGPT',
+    [string]$ExecutorTarget = 'IA Generativa (GenAI)',
     [switch]$NonInteractive
 )
 

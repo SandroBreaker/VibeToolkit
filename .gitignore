@@ -21,10 +21,7 @@ _blueprint_diretor_*
 _blueprint_executor_*
 _manual_diretor_*
 _manual_executor_*
-_meta-prompt_blueprint_diretor_*
-_meta-prompt_blueprint_executor_*
-post*
-
+_meta-prompt*
 
 # Artefatos gerados por provider
 _blueprint_*__*.md

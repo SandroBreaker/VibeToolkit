@@ -8,7 +8,6 @@ param(
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
     [string]$ExecutorTarget = 'ChatGPT',
-    [switch]$NoClipboard,
     [switch]$NonInteractive
 )
 
@@ -842,21 +841,6 @@ function Resolve-SelectedFilesForSniper {
     return @($selectedMap.Values | Sort-Object FullName)
 }
 
-function Set-ClipboardData {
-    param([AllowEmptyString()][string]$Content)
-
-    if ($NoClipboard) {
-        return $false
-    }
-
-    try {
-        Set-Clipboard -Value $Content
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
 
 function Get-VibeArtifactRouteLabel {
     param([string]$RouteMode)
@@ -1629,7 +1613,7 @@ $script:SignatureExtensions = @(
 $script:IgnoredDirs = @(
     'node_modules', '.git', 'dist', 'build', '.next', '.cache', 'out',
     'coverage', '.venv', 'venv', 'env', '__pycache__', '.pytest_cache', '.tox',
-    'bin', 'obj', 'target', 'vendor'
+    'bin', 'obj', 'target', 'vendor', '.agent', '.github', '.vite', 'android'
 )
 
 $script:IgnoredFiles = @(
@@ -1878,9 +1862,6 @@ try {
 
     $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName
     Write-LocalTextArtifact -Path $sourceArtifactPath -Content $finalContent -UseBom
-    Write-UILog -Message ("Artefato operacional salvo em: {0}" -f $sourceArtifactPath) -Color $ThemeSuccess
-
-    $artifactForClipboardPath = $sourceArtifactPath
     $finalOutputPath = $sourceArtifactPath
 
     if ($resolvedRouteMode -eq 'director') {
@@ -1891,7 +1872,6 @@ try {
         $deterministicContent = New-DeterministicMetaPromptArtifact -ProjectNameValue $projectName -ExecutorTargetValue $ExecutorTarget -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -SourceArtifactFileName $sourceArtifactFileName -OutputArtifactFileName $deterministicOutputFile -BundleContent $finalContent -Files $filesToProcess
 
         Write-LocalTextArtifact -Path $deterministicOutputPath -Content $deterministicContent -UseBom
-        $artifactForClipboardPath = $deterministicOutputPath
         $finalOutputPath = $deterministicOutputPath
 
         Write-UILog -Message ("Meta-prompt determinístico salvo em: {0}" -f $deterministicOutputPath) -Color $ThemeSuccess
@@ -1906,16 +1886,6 @@ try {
     else {
         Write-UILog -Message 'Artefato consolidado com sucesso.' -Color $ThemeSuccess
     }
-
-    $clipboardContent = Read-LocalTextArtifact -Path $artifactForClipboardPath
-    $copied = Set-ClipboardData -Content $clipboardContent
-    if ($copied) {
-        Write-UILog -Message 'Artefato final copiado para a área de clipboard.' -Color $ThemeCyan
-    }
-    else {
-        Write-UILog -Message 'Artefato final salvo. Clipboard indisponível.' -Color $ThemeWarn
-    }
-
     $durationMs = [int][Math]::Round(((Get-Date) - $executionStartedAt).TotalMilliseconds)
     $extraData = $baseExtraData.Clone()
     $extraData.sourceArtifactFile = $sourceArtifactFileName

@@ -50,7 +50,7 @@ Você tem um projeto com vários arquivos (código, configurações, docs) e que
 - Escolha **"VibeToolkit: Abrir Terminal (CLI)"**.
 - O terminal vai abrir já dentro da pasta do projeto.
 - Siga as opções do menu (escolha o modo de extração, rota, etc.).
-- O artefato final será salvo na pasta do projeto e copiado para a área de transferência.
+- O artefato final será salvo na pasta do projeto.
 
 ### Opção 2 – Execução direta
 - Abra o **PowerShell** na pasta do VibeToolkit (ou na pasta do seu projeto).

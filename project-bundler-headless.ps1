@@ -14,7 +14,6 @@ param(
     [string[]]$SelectedPaths,
     [string]$RouteMode = '',
     [string]$ExecutorTarget = 'ChatGPT',
-    [switch]$NoClipboard,
     [switch]$NonInteractive
 )
 

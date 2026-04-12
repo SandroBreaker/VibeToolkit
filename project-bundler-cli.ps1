@@ -800,6 +800,177 @@ function Get-BundlerSignaturesForFile {
     return @(Get-VibeBundlerSignaturesForFile -File $File -IssueMessage $IssueMessage)
 }
 
+function Get-NormalizedRelativeProjectPath {
+    param([System.IO.FileInfo]$File)
+
+    if ($null -eq $File) {
+        return $null
+    }
+
+    $relPath = Resolve-Path -Path $File.FullName -Relative
+    if ([string]::IsNullOrWhiteSpace($relPath)) {
+        return $relPath
+    }
+
+    return ($relPath -replace '/', '\')
+}
+
+function Get-BlueprintContractBucket {
+    param([System.IO.FileInfo]$File)
+
+    if ($null -eq $File) {
+        return $null
+    }
+
+    if ($script:SignatureExtensions -notcontains $File.Extension) {
+        return $null
+    }
+
+    $relPath = (Get-NormalizedRelativeProjectPath -File $File).ToLowerInvariant()
+    $leafName = $File.Name.ToLowerInvariant()
+
+    if ($File.Extension -in @('.cmd', '.bat', '.reg', '.vbs', '.ps1xml')) {
+        return $null
+    }
+
+    if ($relPath -match '^\.\\project-bundler(?:-headless)?\.ps1$') {
+        return 'ENTRYPOINTS & ORCHESTRATION'
+    }
+
+    if ($relPath -match '^\.\\modules\\.*protocol.*\.psm1$') {
+        return 'PROTOCOLS & OPERATING RULES'
+    }
+
+    if ($relPath -match '^\.\\modules\\.*(discovery|writer|extractor).*\.psm1$') {
+        return 'DISCOVERY, WRITERS & EXTRACTORS'
+    }
+
+    if ($relPath -match '^\.\\modules\\.*(bundle|artifact|context|execution|route|naming).*\.psm1$') {
+        return 'CORE MODULES'
+    }
+
+    if ($relPath -match '^\.\\modules\\.*\.psm1$' -and $leafName -notmatch '^(sentinelui|sentineltheme|sentinelclonehelpers)\.psm1$') {
+        return 'CORE MODULES'
+    }
+
+    if ($relPath -match '^\.\\(?:src|app|server|api|lib|core)\\.*\.(?:ts|tsx|js|jsx|py|go|rs|cs|java|kt|php|rb)$') {
+        return 'APPLICATION ENTRYPOINTS'
+    }
+
+    if ($relPath -match '^\.\\(?:main|index|app|server|router|routes|config)\.(?:ts|tsx|js|jsx|py|go|rs|cs|java|kt|php|rb)$') {
+        return 'APPLICATION ENTRYPOINTS'
+    }
+
+    return $null
+}
+
+function Get-BlueprintContractEntries {
+    param([System.IO.FileInfo[]]$Files)
+
+    if ($null -eq $Files -or $Files.Count -eq 0) {
+        return @()
+    }
+
+    $bucketOrder = @{
+        'ENTRYPOINTS & ORCHESTRATION' = 0
+        'APPLICATION ENTRYPOINTS' = 1
+        'PROTOCOLS & OPERATING RULES' = 2
+        'DISCOVERY, WRITERS & EXTRACTORS' = 3
+        'CORE MODULES' = 4
+    }
+
+    $entries = New-Object System.Collections.Generic.List[object]
+
+    foreach ($file in $Files) {
+        $bucket = Get-BlueprintContractBucket -File $file
+        if ([string]::IsNullOrWhiteSpace($bucket)) {
+            continue
+        }
+
+        $relPath = Get-NormalizedRelativeProjectPath -File $file
+        $order = if ($bucketOrder.ContainsKey($bucket)) { $bucketOrder[$bucket] } else { 999 }
+
+        $entries.Add([pscustomobject]@{
+            File = $file
+            RelativePath = $relPath
+            Bucket = $bucket
+            BucketOrder = $order
+        }) | Out-Null
+    }
+
+    return @($entries | Sort-Object BucketOrder, RelativePath -Unique)
+}
+
+function New-BlueprintContractsBlock {
+    param(
+        [System.IO.FileInfo[]]$Files,
+        [ref]$IssueCollector,
+        [string]$StructureHeading,
+        [string]$ContractsHeading,
+        [switch]$LogExtraction
+    )
+
+    if ($null -eq $Files -or $Files.Count -eq 0) {
+        return ''
+    }
+
+    $structureLines = New-Object System.Collections.Generic.List[string]
+    foreach ($file in $Files) {
+        $structureLines.Add((Get-NormalizedRelativeProjectPath -File $file)) | Out-Null
+    }
+
+    $contractEntries = @(Get-BlueprintContractEntries -Files $Files)
+
+    $block = "${StructureHeading}`n"
+    $block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
+    $block += "`n`n"
+    $block += "${ContractsHeading}`n"
+    $block += "> Seleção priorizada para entrypoints, protocolos, discovery, writers, extractors e módulos centrais. Arquivos periféricos permanecem em `PROJECT STRUCTURE`, mas não poluem esta seção.`n`n"
+
+    if ($contractEntries.Count -le 0) {
+        $block += "_Nenhum contrato central elegível foi identificado no recorte visível._`n`n"
+        return $block
+    }
+
+    $groupedEntries = $contractEntries | Group-Object Bucket | Sort-Object {
+        if ($_.Group.Count -gt 0) { $_.Group[0].BucketOrder } else { 999 }
+    }, Name
+
+    foreach ($group in $groupedEntries) {
+        $block += "#### $($group.Name)`n`n"
+
+        foreach ($entry in $group.Group) {
+            $file = $entry.File
+            $relPath = $entry.RelativePath
+
+            if ($LogExtraction) {
+                Write-UILog -Message "Extraindo assinaturas prioritárias de $relPath"
+            }
+
+            $issueMessage = $null
+            $signatures = @(Get-BundlerSignaturesForFile -File $file -IssueMessage ([ref]$issueMessage))
+            if ($issueMessage) {
+                if ($IssueCollector) {
+                    $IssueCollector.Value += $issueMessage
+                }
+                continue
+            }
+
+            if ($signatures.Count -le 0) {
+                continue
+            }
+
+            $fenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
+            $signatureContent = ($signatures -join '')
+            $block += "##### File: $relPath`n"
+            $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
+            $block += "`n`n"
+        }
+    }
+
+    return $block
+}
+
 function New-BundlerContractsBlock {
     param(
         [System.IO.FileInfo[]]$Files,
@@ -889,6 +1060,10 @@ function Resolve-DocumentModeFromExtractionMode {
 
     if ($ExtractionMode -eq 'txt_export') {
         return 'txt_export'
+    }
+
+    if ($ExtractionMode -eq 'blueprint') {
+        return 'blueprint'
     }
 
     return 'full'
@@ -1353,6 +1528,8 @@ function New-DeterministicMetaPromptArtifact {
     $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
     $extractionLabel = Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode
 
+    $visibleArtifactHeading = if ($ExtractionMode -eq 'blueprint') { '## BLUEPRINT VISÍVEL' } else { '## BUNDLE VISÍVEL' }
+
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR v4.0') | Out-Null
     $lines.Add('') | Out-Null
@@ -1419,7 +1596,7 @@ function New-DeterministicMetaPromptArtifact {
     $lines.Add('- Propor checks de regressão, cenários negativos e validações compatíveis com o escopo.') | Out-Null
     $lines.Add('--- FIM DO PROMPT ---') | Out-Null
     $lines.Add('') | Out-Null
-    $lines.Add('## BUNDLE VISÍVEL') | Out-Null
+    $lines.Add($visibleArtifactHeading) | Out-Null
     $lines.Add('') | Out-Null
     $lines.Add('```text') | Out-Null
     $lines.Add((Format-BundleContentForDiff -Content $BundleContent)) | Out-Null
@@ -2289,27 +2466,52 @@ try {
     else {
         $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
         Write-UILog -Message 'Iniciando Modo Architect / Blueprint...' -Color $ThemeCyan
-        $finalContent += "## MODO INTELIGENTE: $projectName`n`n"
-        $finalContent += "### 1. TECH STACK`n"
+        $finalContent += "## ARCHITECT / BLUEPRINT: $projectName`n`n"
+        $finalContent += "### 0. BLUEPRINT CONTRACT`n"
+        $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content @'
+Ler nesta ordem:
+1. PROJECT STRUCTURE
+2. CORE DOMAINS & CONTRACTS
+
+Use apenas o recorte visível deste artefato.
+Quando faltar contexto, declarar: não visível no recorte enviado.
+A seção de contratos foi priorizada para entrypoints, protocolos, discovery, writers, extractors e módulos centrais.
+'@.Trim() -Language 'text')
+        $finalContent += "`n`n"
+        $finalContent += "### 1. EXTERNAL DEPENDENCIES`n"
 
         $packageJsonPath = Join-Path (Get-Location).Path 'package.json'
         if (Test-Path $packageJsonPath -PathType Leaf) {
             try {
-                Write-UILog -Message 'Lendo package.json para tech stack...'
+                Write-UILog -Message 'Lendo package.json para dependências externas do blueprint...'
                 $pkg = (Read-LocalTextArtifact -Path $packageJsonPath) | ConvertFrom-Json
-                if ($pkg.dependencies) { $finalContent += "* **Deps:** $(($pkg.dependencies.PSObject.Properties.Name -join ', '))`n" }
-                if ($pkg.devDependencies) { $finalContent += "* **Dev Deps:** $(($pkg.devDependencies.PSObject.Properties.Name -join ', '))`n" }
+                $runtimeDeps = @()
+                $devDeps = @()
+
+                if ($pkg.dependencies) {
+                    $runtimeDeps = @($pkg.dependencies.PSObject.Properties.Name | Sort-Object -Unique)
+                }
+
+                if ($pkg.devDependencies) {
+                    $devDeps = @($pkg.devDependencies.PSObject.Properties.Name | Sort-Object -Unique)
+                }
+
+                if ($runtimeDeps.Count -gt 0) { $finalContent += "* **Runtime:** $(($runtimeDeps -join ', '))`n" }
+                if ($devDeps.Count -gt 0) { $finalContent += "* **Dev:** $(($devDeps -join ', '))`n" }
+                if ($runtimeDeps.Count -eq 0 -and $devDeps.Count -eq 0) { $finalContent += "* Nenhuma dependência declarada no package.json.`n" }
             }
             catch {
-                Write-UILog -Message 'package.json existe, mas não pôde ser lido. Seguindo sem tech stack declarada.' -Color $ThemeWarn
+                Write-UILog -Message 'package.json existe, mas não pôde ser lido. Seguindo sem dependências externas declaradas.' -Color $ThemeWarn
+                $finalContent += "* package.json presente, mas não legível no recorte local.`n"
             }
         }
         else {
-            Write-UILog -Message 'package.json não encontrado; tech stack externa será omitida.' -Color $ThemeWarn
+            Write-UILog -Message 'package.json não encontrado; dependências externas serão omitidas do blueprint.' -Color $ThemeWarn
+            $finalContent += "* package.json não visível no recorte local.`n"
         }
 
         $finalContent += "`n"
-        $finalContent += New-BundlerContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### 2. PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
+        $finalContent += New-BlueprintContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### 2. PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
     }
 
     $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName

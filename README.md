@@ -209,10 +209,8 @@ VibeToolkit/
 ├── run-vibe-headless.vbs
 ├── install-vibe-menu.cmd
 ├── install-vibe-menu.ps1
-├── install-vibe-menu.reg
 ├── uninstall-vibe-menu.cmd
 ├── uninstall-vibe-menu.ps1
-├── uninstall-vibe-menu.reg
 ├── lib/
 │   └── SentinelUI.ps1
 ├── modules/

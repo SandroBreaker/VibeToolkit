@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
 
 <#
 .SYNOPSIS

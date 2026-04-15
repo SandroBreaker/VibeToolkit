@@ -1,4 +1,4 @@
-$script:SentinelEscape = [char]27
+﻿$script:SentinelEscape = [char]27
 
 function Test-SentinelAnsiSupport {
     $isOutputRedirected = $false

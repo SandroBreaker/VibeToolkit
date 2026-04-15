@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
 
 [CmdletBinding()]
 param(
@@ -145,7 +145,6 @@ function Write-UILog {
         [Console]::Out.WriteLine($formattedMessage)
     }
 }
-
 
 function Get-SentinelBundleModeTone {
     param([string]$BundleModeValue)
@@ -1414,7 +1413,6 @@ function Resolve-SelectedFilesForSniper {
     return @($selectedMap.Values | Sort-Object FullName)
 }
 
-
 function Get-VibeArtifactRouteLabel {
     param([string]$RouteMode)
 
@@ -1648,10 +1646,23 @@ function Get-EnvironmentSnapshot {
     catch {
     }
 
+    $isWindowsFlag = $false
+    try {
+        if (Test-Path variable:IsWindows) {
+            $isWindowsFlag = [bool]$IsWindows
+        }
+        else {
+            $isWindowsFlag = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+        }
+    }
+    catch {
+        $isWindowsFlag = $false
+    }
+
     return [ordered]@{
         osVersion = [System.Environment]::OSVersion.VersionString
         psVersion = $psVersion
-        isWindows = $IsWindows
+        isWindows = $isWindowsFlag
         hostname = [System.Environment]::MachineName
         processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     }

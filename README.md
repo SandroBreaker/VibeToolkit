@@ -1,175 +1,169 @@
 # VibeToolkit
 
-Toolkit em PowerShell para transformar um projeto em artefatos consumíveis por IA, com fluxo CLI/headless, modos de extração distintos e duas rotas operacionais: **via Diretor** ou **direto para Executor**.
+Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturais** e **gerar artefatos determinísticos** para uso com IA.
 
-> PowerShell 7+ • CLI/headless • Menu de contexto no Windows • Saídas em Markdown, JSON e ZIP
+> PowerShell 7 preferencial • Windows PowerShell 5.1 como fallback no Windows • CLI/headless • Menu de contexto no Windows • Saídas em Markdown, JSON e ZIP
+
+O projeto combina uma **CLI em PowerShell**, módulos para descoberta e serialização de contexto, geração de artefatos em Markdown/JSON/ZIP e integração operacional com rotas **Director** e **Executor**.
 
 ---
 
 ## O que o VibeToolkit faz
 
-O VibeToolkit percorre um projeto, filtra arquivos relevantes e gera um artefato final pronto para uso com IA.
+Capacidades centrais:
 
-Ele cobre quatro necessidades principais:
-
-- **Full / Tudo**: leva o contexto completo visível do projeto.
-- **Architect / Blueprint**: leva estrutura, contratos e pontos de integração com custo menor de contexto.
-- **Sniper / Manual**: leva só o recorte selecionado.
-- **TXT Export**: exporta os arquivos textuais elegíveis para `.txt` e entrega um **ZIP final único**.
-
-Além disso, o toolkit pode operar em duas rotas:
-
-- **Diretor**: gera um artefato intermediário com meta-prompt local determinístico para delegação.
-- **Executor**: gera o artefato final pronto para copiar e usar diretamente na IA.
-
----
-
-## Como o fluxo funciona
-
-O uso padrão segue três decisões:
-
-1. **Origem do projeto**
-   - usar o path local atual
-   - ou clonar um repositório GitHub
-
-2. **Modo de extração**
-   - `full`
-   - `blueprint`
-   - `sniper`
-   - `txtExport`
-
-3. **Rota de saída**
-   - `director`
-   - `executor`
-
-No Windows, o caminho mais simples é pelo menu de contexto. Em qualquer ambiente com PowerShell 7, a CLI também pode ser executada diretamente.
+- **Bundler Engine**: consolida arquivos relevantes do projeto em artefatos legíveis.
+- **CLI interativa**: execução via terminal com seleção de modo e feedback operacional.
+- **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e pontos de integração.
+- **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
+- **Route modes**:
+  - **Director**: gera meta-prompt determinístico local.
+  - **Executor**: gera contexto operacional pronto para implementação direta.
+- **Governança local**: grava metadata útil de execução em JSON.
+- **TXT Export**: exporta arquivos como texto plano em diretório + ZIP final.
 
 ---
 
 ## Requisitos
 
 ### Obrigatórios
-- **PowerShell 7 ou superior**
-- Permissão para executar scripts locais
 
-### Opcionais
-- **Git**, apenas para o fluxo de clonagem de repositório GitHub
-- Windows Explorer, apenas para o menu de contexto
+- **PowerShell 7** como runtime principal e recomendado
+- **Windows PowerShell 5.1** como fallback compatível apenas no Windows
 
 ### Compatibilidade
-- **Windows**: suporte completo, incluindo instalador e menu de contexto
-- **Linux/macOS**: uso via CLI; o menu de contexto do Windows não se aplica
+
+- **Windows**: suporte completo, incluindo instalador e menu de contexto, com política **PS7 preferencial / PS5.1 fallback**
+- **Linux/macOS**: uso via CLI com **PowerShell 7 (`pwsh`)**; o menu de contexto do Windows não se aplica
 
 ---
 
-## Instalação no Windows
+## Instalação e execução
 
-### Instalação recomendada
-1. Extraia ou clone a pasta do VibeToolkit.
-2. Execute **`Instalar VibeToolkit.cmd`**.
-3. O instalador:
-   - verifica a política de execução
-   - sugere ajuste para `RemoteSigned` no escopo do usuário, quando necessário
-   - instala o menu **`VibeToolkit: Abrir Terminal (CLI)`**
+No Windows, o caminho mais simples é pelo menu de contexto. Nos fluxos Windows, o toolkit tenta **PowerShell 7 (`pwsh`)** primeiro e usa **Windows PowerShell 5.1 (`powershell.exe`)** apenas como fallback quando necessário.
 
-### O que é instalado
-A integração de shell é registrada no escopo do usuário atual, via `HKEY_CURRENT_USER\Software\Classes`, sem depender de caminho fixo do repositório.
+Em Linux/macOS, a CLI continua dependendo de **PowerShell 7 (`pwsh`)**.
 
----
+### Instalador principal
 
-## Uso rápido
+```bat
+.\Instalar VibeToolkit.cmd
+```
 
-### Opção 1 — menu de contexto no Windows
-1. Clique com o botão direito em uma pasta, em seu fundo ou em uma unidade.
-2. Escolha **`VibeToolkit: Abrir Terminal (CLI)`**.
-3. O toolkit abre no terminal já apontando para o alvo escolhido.
-4. Selecione origem, modo e rota.
-
-### Opção 2 — CLI direta
-Na pasta do toolkit:
+### CLI direta
 
 ```powershell
 .\project-bundler-cli.ps1
 ```
 
-Ou apontando para outro projeto:
+### Wrapper headless
 
 ```powershell
-.\project-bundler-cli.ps1 -Path "C:\MeuProjeto"
+.\project-bundler-headless.ps1
 ```
 
 ---
 
-## Modos de extração
+## Modos operacionais
 
-| Modo | Objetivo | Saída típica |
-|---|---|---|
-| `full` | contexto completo do projeto | bundle Markdown + metadata JSON |
-| `blueprint` | estrutura, contratos e integração com menor custo | blueprint Markdown + metadata JSON |
-| `sniper` | recorte manual e cirúrgico | bundle manual Markdown + metadata JSON |
-| `txtExport` | exportação textual para ambientes que preferem arquivos `.txt` | **ZIP final** + metadata JSON |
+### Extraction mode
+
+| Modo        | Objetivo                                                       | Saída típica                           |
+| ----------- | -------------------------------------------------------------- | -------------------------------------- |
+| `full`      | contexto completo do projeto                                   | bundle Markdown + metadata JSON        |
+| `blueprint` | estrutura, contratos e integração com menor custo              | blueprint Markdown + metadata JSON     |
+| `sniper`    | recorte manual e cirúrgico                                     | bundle manual Markdown + metadata JSON |
+| `txtExport` | exportação textual para ambientes que preferem arquivos `.txt` | ZIP final + metadata JSON              |
 
 ### Observações por modo
 
-#### Full / Tudo
+#### Full
+
 Use quando a IA precisa do máximo de contexto visível: código, docs, configs e estrutura.
 
-#### Architect / Blueprint
+#### Blueprint
+
 Use quando o foco é arquitetura, contratos, entrypoints, integração e leitura econômica de contexto.
 
-#### Sniper / Manual
+#### Sniper
+
 Use quando você já sabe quais arquivos quer enviar e precisa de um recorte mínimo, sem carregar o restante do projeto.
 
 #### TXT Export
+
 Use quando o destino não trabalha bem com bundle Markdown.
 
 No contrato atual do projeto, o `txtExport`:
-- gera os `.txt` internamente
-- compacta o resultado
-- remove o staging ao final
-- deixa **apenas o `.zip` como artefato final visível**
+
+* gera os `.txt` internamente
+* compacta o resultado
+* remove o staging ao final
+* deixa **apenas o `.zip` como artefato final visível**
 
 ---
 
 ## Rotas de saída
 
-| Rota | Objetivo |
-|---|---|
+| Rota       | Objetivo                                                         |
+| ---------- | ---------------------------------------------------------------- |
 | `director` | gerar um artefato analítico com meta-prompt local determinístico |
-| `executor` | gerar o contexto final pronto para uso direto |
+| `executor` | gerar o contexto final pronto para uso direto                    |
 
 ### Quando usar `director`
+
 Quando você quer que outra IA receba um framing operacional mais forte, com instrução explícita de leitura do artefato e de atuação por papel.
 
 ### Quando usar `executor`
+
 Quando você quer o resultado final pronto para colar na IA sem camada intermediária.
+
+---
+
+## Compatibilidade rápida por modo x rota
+
+| Combinação             | Resultado principal          | Observações                                         |
+| ---------------------- | ---------------------------- | --------------------------------------------------- |
+| `full + director`      | bundle + meta-prompt         | fluxo completo delegado                             |
+| `full + executor`      | bundle final direto          | fluxo completo direto                               |
+| `blueprint + director` | blueprint + meta-prompt      | foco em contratos/estrutura                         |
+| `blueprint + executor` | blueprint direto             | foco em contratos/estrutura                         |
+| `sniper + director`    | recorte manual + meta-prompt | em modo não interativo exige `-SelectedPaths`       |
+| `sniper + executor`    | recorte manual direto        | em modo não interativo exige `-SelectedPaths`       |
+| `txtExport + director` | pasta `.txt` + `.zip`        | a rota afeta identidade/meta, não o miolo do export |
+| `txtExport + executor` | pasta `.txt` + `.zip`        | a rota afeta identidade/meta, não o miolo do export |
+
+### Observações importantes
+
+* O CLI aceita `txtExport` e também o alias `txt_export`.
+* Internamente, `txtExport` é persistido como `ExtractionMode = txt_export`.
 
 ---
 
 ## Exemplos de uso
 
 ### Full + Executor
+
 ```powershell
 .\project-bundler-cli.ps1 -NonInteractive -BundleMode full -RouteMode executor
 ```
 
-### Blueprint + Diretor
+### Blueprint + Director
+
 ```powershell
 .\project-bundler-cli.ps1 -NonInteractive -BundleMode blueprint -RouteMode director
 ```
 
 ### Sniper com seleção antecipada
+
 ```powershell
 .\project-bundler-cli.ps1 -BundleMode sniper -SelectedPaths ".\src\*.ps1", ".\README.md"
 ```
 
 ### TXT Export + Executor
+
 ```powershell
 .\project-bundler-cli.ps1 -NonInteractive -BundleMode txtExport -RouteMode executor
 ```
-
-### Clonando um repositório GitHub
-Execute a CLI sem `-NonInteractive` e escolha a origem remota no passo 1. O fluxo permite clonagem temporária ou manual e pode limpar o clone ao final da execução.
 
 ---
 
@@ -189,12 +183,13 @@ _bundle_executor__MeuProjeto.json
 ```
 
 ### O que cada família representa
-- `bundle`: contexto completo
-- `blueprint`: contexto arquitetural/econômico
-- `manual`: recorte sniper
-- `meta-prompt`: framing determinístico da rota Diretor
-- `txt_export`: exportação ZIP do modo TXT Export
-- `.json`: metadata local da execução
+
+* `bundle`: contexto completo
+* `blueprint`: contexto arquitetural/econômico
+* `manual`: recorte sniper
+* `meta-prompt`: framing determinístico da rota Director
+* `txt_export`: exportação ZIP do modo TXT Export
+* `.json`: metadata local da execução
 
 ---
 
@@ -222,93 +217,47 @@ VibeToolkit/
 ```
 
 ### Papéis principais dos arquivos
-- **`project-bundler-cli.ps1`**: engine principal
-- **`project-bundler-headless.ps1`**: wrapper fino para preservar integração visual
-- **`run-vibe-headless.vbs`**: launcher do menu de contexto
-- **`install-vibe-menu.ps1`**: grava a integração de shell
-- **`uninstall-vibe-menu.ps1`**: remove integrações portáveis e legadas conhecidas
-- **`modules/*`**: descoberta, escrita, protocolo e extração de assinaturas
-- **`lib/SentinelUI.ps1`**: camada visual do terminal
+
+* **`project-bundler-cli.ps1`**: engine principal
+* **`project-bundler-headless.ps1`**: wrapper fino para preservar integração operacional
+* **`run-vibe-headless.vbs`**: launcher do menu de contexto
+* **`install-vibe-menu.ps1`**: grava a integração de shell
+* **`uninstall-vibe-menu.ps1`**: remove integrações existentes
+* **`modules/*`**: descoberta, escrita, protocolo e extração de assinaturas
+* **`lib/SentinelUI.ps1`**: camada visual do terminal
 
 ---
 
 ## Comportamento relevante do produto
 
 ### Descoberta de arquivos
-O toolkit ignora artefatos gerados anteriormente e trabalha só sobre extensões elegíveis do projeto.
+
+O toolkit ignora artefatos gerados anteriormente e trabalha apenas sobre arquivos elegíveis do projeto.
 
 ### Metadata local
+
 Toda execução gera metadata local em JSON ao lado do artefato final correspondente.
 
-### Clonagem temporária
-Quando a origem é GitHub, o toolkit pode clonar para diretório temporário e remover esse clone ao final da execução, salvo quando o usuário opta por mantê-lo.
+---
 
-### UI e fallback
-A UI principal usa SentinelUI. O projeto também mantém fallback local para garantir operação em cenários onde o bootstrap visual falha.
+## Política de runtime
+
+Regra operacional do projeto:
+
+* **Tentar `pwsh` primeiro**
+* **Usar `powershell.exe` apenas como fallback no Windows**
+* **Não tratar Windows PowerShell 5.1 como padrão**
+* **Em Linux/macOS, manter dependência de `pwsh`**
+
+Essa política preserva compatibilidade com ambientes Windows legados sem rebaixar o fluxo principal quando PowerShell 7 estiver disponível.
 
 ---
 
-## Desinstalação
+## Resumo
 
-### Remover apenas o menu de contexto
-Execute:
+O VibeToolkit opera com dois princípios práticos:
 
-```powershell
-.\uninstall-vibe-menu.cmd
-```
+1. **PS7-first**
+2. **PS5.1 apenas como contingência no Windows**
 
-ou
-
-```powershell
-.\uninstall-vibe-menu.ps1
-```
-
-### Remover o toolkit por completo
-Exclua a pasta do repositório.
-
----
-
-## Solução de problemas
-
-### O script não executa por causa da política do PowerShell
-Rode o instalador recomendado (`Instalar VibeToolkit.cmd`).  
-Se precisar ajustar manualmente:
-
-```powershell
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-### O menu de contexto não apareceu
-- execute o instalador novamente
-- reinicie o Explorer
-- confirme que `run-vibe-headless.vbs` está presente na pasta do toolkit
-
-### O fluxo de clonagem falha
-Verifique:
-- se o Git está instalado e no `PATH`
-- se a URL do repositório está correta
-- se há conectividade de rede
-
-### Quero usar em Linux ou macOS
-Use a CLI com PowerShell 7:
-
-```bash
-pwsh ./project-bundler-cli.ps1
-```
-
----
-
-## Filosofia operacional
-
-O toolkit foi moldado para uso local e determinístico, com separação explícita entre:
-- extração de contexto
-- framing operacional
-- artefato final
-
-A combinação de **modos de extração**, **rotas de saída** e **metadata local** permite adaptar o mesmo projeto a cenários de análise completa, blueprint arquitetural, recorte cirúrgico ou exportação textual.
-
----
-
-## Licença
-
-MIT.
+Com isso, os launchers e entrypoints mantêm o caminho moderno como padrão, sem perder degradabilidade onde o PowerShell 7 não estiver disponível.

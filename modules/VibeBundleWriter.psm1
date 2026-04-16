@@ -228,6 +228,196 @@ function ConvertTo-VibeSafeMarkdownCodeBlock {
     return "${fence}${langPart}`n${normalizedContent}${trailingNewline}${fence}"
 }
 
+
+function ConvertTo-VibeNormalizedPath {
+    param(
+        [AllowNull()][string]$Path,
+        [switch]$TrimTrailingSeparator
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return ''
+    }
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $normalized = $fullPath -replace '/', '\'
+
+    if ($TrimTrailingSeparator) {
+        $normalized = $normalized.TrimEnd([char[]]@('\'))
+    }
+
+    return $normalized
+}
+
+function Get-VibeRelativeProjectPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string]$ProjectRootPath
+    )
+
+    $normalizedRoot = ConvertTo-VibeNormalizedPath -Path $ProjectRootPath -TrimTrailingSeparator
+    $normalizedFile = ConvertTo-VibeNormalizedPath -Path $FilePath
+
+    if ([string]::IsNullOrWhiteSpace($normalizedRoot) -or [string]::IsNullOrWhiteSpace($normalizedFile)) {
+        return ''
+    }
+
+    $comparison = [System.StringComparison]::OrdinalIgnoreCase
+    $prefix = "${normalizedRoot}\"
+
+    if ($normalizedFile.Equals($normalizedRoot, $comparison)) {
+        return '.'
+    }
+
+    if ($normalizedFile.StartsWith($prefix, $comparison)) {
+        $relativePath = $normalizedFile.Substring($prefix.Length).TrimStart([char[]]@('\'))
+        if (-not [string]::IsNullOrWhiteSpace($relativePath)) {
+            return ('.\' + $relativePath)
+        }
+    }
+
+    return $normalizedFile
+}
+
+function New-VibeProjectTreeNode {
+    return @{
+        Directories = @{}
+        Files       = @{}
+    }
+}
+
+function Add-VibeProjectTreePath {
+    param(
+        [hashtable]$Node,
+        [string]$RelativePath
+    )
+
+    if ($null -eq $Node -or [string]::IsNullOrWhiteSpace($RelativePath)) {
+        return
+    }
+
+    $normalizedPath = ($RelativePath -replace '/', '\').Trim()
+    $normalizedPath = $normalizedPath.TrimStart('.')
+    $normalizedPath = $normalizedPath.TrimStart([char[]]@('\'))
+
+    if ([string]::IsNullOrWhiteSpace($normalizedPath)) {
+        return
+    }
+
+    $segments = @($normalizedPath -split '[\\/]+')
+    if ($segments.Count -eq 0) {
+        return
+    }
+
+    $currentNode = $Node
+    for ($index = 0; $index -lt ($segments.Count - 1); $index++) {
+        $segment = $segments[$index].Trim()
+        if ([string]::IsNullOrWhiteSpace($segment)) {
+            continue
+        }
+
+        if (-not $currentNode.Directories.ContainsKey($segment)) {
+            $currentNode.Directories[$segment] = (New-VibeProjectTreeNode)
+        }
+
+        $currentNode = $currentNode.Directories[$segment]
+    }
+
+    $leaf = $segments[$segments.Count - 1].Trim()
+    if (-not [string]::IsNullOrWhiteSpace($leaf)) {
+        $currentNode.Files[$leaf] = $true
+    }
+}
+
+function Write-VibeProjectTreeNode {
+    param(
+        [hashtable]$Node,
+        [System.Collections.Generic.List[string]]$Lines,
+        [string]$Indent = ''
+    )
+
+    if ($null -eq $Node -or $null -eq $Lines) {
+        return
+    }
+
+    $directories = @($Node.Directories.Keys | Sort-Object { $_.ToLowerInvariant() }, { $_ })
+    $files = @($Node.Files.Keys | Sort-Object { $_.ToLowerInvariant() }, { $_ })
+
+    $entries = New-Object System.Collections.Generic.List[object]
+
+    foreach ($directoryName in $directories) {
+        $entries.Add([pscustomobject]@{
+            Name = $directoryName
+            Type = 'Directory'
+            Node = $Node.Directories[$directoryName]
+        }) | Out-Null
+    }
+
+    foreach ($fileName in $files) {
+        $entries.Add([pscustomobject]@{
+            Name = $fileName
+            Type = 'File'
+            Node = $null
+        }) | Out-Null
+    }
+
+    for ($index = 0; $index -lt $entries.Count; $index++) {
+        $entry = $entries[$index]
+        $isLast = ($index -eq ($entries.Count - 1))
+        $branch = if ($isLast) { '└──' } else { '├──' }
+
+        $Lines.Add(('{0}{1} {2}' -f $Indent, $branch, $entry.Name)) | Out-Null
+
+        if ($entry.Type -eq 'Directory' -and $null -ne $entry.Node) {
+            $childIndent = $Indent + $(if ($isLast) { '    ' } else { '│   ' })
+            Write-VibeProjectTreeNode -Node $entry.Node -Lines $Lines -Indent $childIndent
+        }
+    }
+}
+
+function Get-VibeProjectStructureTree {
+    [CmdletBinding()]
+    param(
+        [System.IO.FileInfo[]]$Files,
+        [Parameter(Mandatory = $true)][string]$ProjectRootPath,
+        [string]$ProjectName
+    )
+
+    if ($null -eq $Files -or $Files.Count -eq 0) {
+        return ''
+    }
+
+    $resolvedProjectName = $ProjectName
+    if ([string]::IsNullOrWhiteSpace($resolvedProjectName)) {
+        $resolvedProjectName = [System.IO.Path]::GetFileName((ConvertTo-VibeNormalizedPath -Path $ProjectRootPath -TrimTrailingSeparator))
+    }
+
+    $rootNode = New-VibeProjectTreeNode
+    $seenPaths = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($file in $Files) {
+        if ($null -eq $file) {
+            continue
+        }
+
+        $relativePath = Get-VibeRelativeProjectPath -FilePath $file.FullName -ProjectRootPath $ProjectRootPath
+        if ([string]::IsNullOrWhiteSpace($relativePath) -or $relativePath -eq '.') {
+            continue
+        }
+
+        if ($seenPaths.Add($relativePath)) {
+            Add-VibeProjectTreePath -Node $rootNode -RelativePath $relativePath
+        }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add(('└── {0}' -f $resolvedProjectName)) | Out-Null
+    Write-VibeProjectTreeNode -Node $rootNode -Lines $lines -Indent '    '
+
+    return ($lines -join "`n")
+}
+
+
 function Get-VibeMomentumSectionContent {
     param($MomentumContext)
 
@@ -281,4 +471,4 @@ function Get-VibeCodeFenceLanguageFromExtension {
     return $Ext
 }
 
-Export-ModuleMember -Function Get-VibeUtf8Encoding, Read-VibeTextFile, Write-VibeTextFile, Test-VibeMomentumResultFileName, Resolve-VibeLatestMomentumContext, Get-VibeMarkdownFenceToken, ConvertTo-VibeSafeMarkdownCodeBlock, Get-VibeMomentumSectionContent, Get-VibeCodeFenceLanguageFromExtension
+Export-ModuleMember -Function Get-VibeUtf8Encoding, Read-VibeTextFile, Write-VibeTextFile, Test-VibeMomentumResultFileName, Resolve-VibeLatestMomentumContext, Get-VibeMarkdownFenceToken, ConvertTo-VibeSafeMarkdownCodeBlock, Get-VibeMomentumSectionContent, Get-VibeCodeFenceLanguageFromExtension, Get-VibeProjectStructureTree

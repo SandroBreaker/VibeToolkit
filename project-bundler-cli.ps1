@@ -848,6 +848,16 @@ function Get-NormalizedRelativeProjectPath {
     return ($relPath -replace '/', '\')
 }
 
+function Get-ProjectStructureTree {
+    param(
+        [System.IO.FileInfo[]]$Files,
+        [string]$ProjectRootPath = (Get-Location).Path,
+        [string]$ProjectName = (Get-Item $ProjectRootPath).Name
+    )
+
+    return (Get-VibeProjectStructureTree -Files $Files -ProjectRootPath $ProjectRootPath -ProjectName $ProjectName)
+}
+
 function Test-BlueprintPeripheralFile {
     param([string]$LeafName)
 
@@ -1062,13 +1072,12 @@ function New-BlueprintContractsBlock {
         return ''
     }
 
-    $structureLines = New-Object System.Collections.Generic.List[string]
-    foreach ($file in $Files) {
-        $structureLines.Add((Get-NormalizedRelativeProjectPath -File $file)) | Out-Null
-    }
+    $projectRootPath = (Get-Location).Path
+    $projectName = (Get-Item $projectRootPath).Name
+    $projectStructureTree = Get-ProjectStructureTree -Files $Files -ProjectRootPath $projectRootPath -ProjectName $projectName
 
     $block = "${StructureHeading}`n"
-    $block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
+    $block += (Convert-ToSafeMarkdownCodeBlock -Content $projectStructureTree -Language 'text')
     $block += "`n`n"
     $block += "${ContractsHeading}`n"
     $block += "> Cobertura abrangente de superfícies estruturais. Todos os arquivos elegíveis do escopo visível que possuem assinaturas extraíveis (contratos, headers, exports, tipos) estão mapeados abaixo. O blueprint preserva contexto mantendo a economia ao focar exclusivamente na extração estrutural, omitindo implementação completa.`n`n"
@@ -1131,13 +1140,12 @@ function New-BundlerContractsBlock {
         return ''
     }
 
-    $structureLines = New-Object System.Collections.Generic.List[string]
-    foreach ($file in $Files) {
-        $structureLines.Add((Resolve-Path -Path $file.FullName -Relative)) | Out-Null
-    }
+    $projectRootPath = (Get-Location).Path
+    $projectName = (Get-Item $projectRootPath).Name
+    $projectStructureTree = Get-ProjectStructureTree -Files $Files -ProjectRootPath $projectRootPath -ProjectName $projectName
 
     $block = "${StructureHeading}`n"
-    $block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
+    $block += (Convert-ToSafeMarkdownCodeBlock -Content $projectStructureTree -Language 'text')
     $block += "`n`n"
     $block += "${ContractsHeading}`n"
 
@@ -1761,12 +1769,16 @@ function New-DeterministicMetaPromptArtifact {
             '## PROJECT STRUCTURE'
         )
 
+        $anchorIndex = -1
         foreach ($anchor in $structuralAnchors) {
             $idx = $croppedContent.IndexOf($anchor, [System.StringComparison]::OrdinalIgnoreCase)
-            if ($idx -ge 0) {
-                $croppedContent = $croppedContent.Substring($idx)
-                break
+            if ($idx -ge 0 -and ($anchorIndex -lt 0 -or $idx -lt $anchorIndex)) {
+                $anchorIndex = $idx
             }
+        }
+
+        if ($anchorIndex -ge 0) {
+            $croppedContent = $croppedContent.Substring($anchorIndex)
         }
     }
 
@@ -2626,11 +2638,9 @@ try {
         }
 
         Write-UILog -Message 'Montando estrutura do projeto...'
-        $finalContent += "### 1. PROJECT STRUCTURE`n```text`n"
-        foreach ($file in $filesToProcess) {
-            $finalContent += (Resolve-Path -Path $file.FullName -Relative) + "`n"
-        }
-        $finalContent += "```\n\n"
+        $projectStructureTree = Get-ProjectStructureTree -Files $filesToProcess -ProjectRootPath (Get-Location).Path -ProjectName $projectName
+        $finalContent += "## PROJECT STRUCTURE`n"
+        $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content $projectStructureTree -Language 'text') + "`n`n"
 
         Write-UILog -Message 'Lendo arquivos e consolidando conteúdo...'
         $finalContent += "### 2. SOURCE FILES`n`n"
@@ -2650,7 +2660,7 @@ try {
         if ($choice -eq '3' -and $unselectedFiles.Count -gt 0) {
             Write-UILog -Message 'Anexando arquivos não selecionados (modo Bundler)...' -Color $ThemeCyan
             $finalContent += "## ARQUIVOS NÃO SELECIONADOS INSERIDOS EM MODO BUNDLER`n`n"
-            $finalContent += New-BundlerContractsBlock -Files $unselectedFiles -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### PROJECT STRUCTURE (BUNDLER)' -ContractsHeading '### CORE DOMAINS & CONTRACTS (BUNDLER)' -LogExtraction
+            $finalContent += New-BundlerContractsBlock -Files $unselectedFiles -IssueCollector ([ref]$blueprintIssues) -StructureHeading '## PROJECT STRUCTURE' -ContractsHeading '### CORE DOMAINS & CONTRACTS (BUNDLER)' -LogExtraction
         }
     }
     else {
@@ -2701,7 +2711,7 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
         }
 
         $finalContent += "`n"
-        $finalContent += New-BlueprintContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '### 2. PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
+        $finalContent += New-BlueprintContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '## PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
     }
 
     $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName

@@ -1,4 +1,4 @@
-﻿# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
+# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
 
 [CmdletBinding()]
 param(
@@ -98,7 +98,7 @@ function Format-SentinelLogMessage {
         }
     }
 
-    if ($normalizedMessage -match '^(?<prefix>TXT gerado:|Artefato final TXT Export:|Staging interno removido:|Pasta de saída:|Arquivo ZIP:|Metadados locais salvos em:|Meta-prompt determinístico salvo em:|Clone temporário removido:|Diretório temporário automático:|Diretório manual informado:)\s*(?<path>.+)$') {
+    if ($normalizedMessage -match '^(?<prefix>TXT gerado:|Artefato final TXT Export:|Staging interno removido:|Pasta de saída:|Arquivo ZIP:|Metadados locais salvos em:|Meta-prompt salvo em:|Clone temporário removido:|Diretório temporário automático:|Diretório manual informado:)\s*(?<path>.+)$') {
         $prefix = $Matches.prefix
         $pathValue = $Matches.path.Trim()
         $leafName = Get-SentinelLogLeafName -PathValue $pathValue
@@ -190,30 +190,54 @@ function Write-SentinelOperationSummary {
         [string]$ProjectNameValue,
         [string]$BundleModeValue,
         [string]$RouteModeValue,
-        [string]$ExecutorTargetValue
+        [string]$ExecutorTargetValue,
+        [string]$OriginValue = '',
+        [int]$EligibleCount = -1,
+        [int]$OperationCount = -1
     )
 
-    Write-SentinelDivider -Tone 'Secondary'
-    Write-SentinelBadgeLine -Badges (Get-SentinelModeBadgeLines -BundleModeValue $BundleModeValue -RouteModeValue $RouteModeValue)
-    Write-SentinelPanel -Title 'Resumo operacional' -Tone 'Secondary' -Lines @(
-        ('Projeto raiz: {0}' -f $ProjectNameValue),
-        ('Executor alvo: {0}' -f $ExecutorTargetValue)
-    )
-
-    Write-SentinelKeyValue -Key 'Projeto' -Value $ProjectNameValue -Tone 'Primary'
-    Write-SentinelKeyValue -Key 'Extração' -Value $BundleModeValue -Tone (Get-SentinelBundleModeTone -BundleModeValue $BundleModeValue)
-    Write-SentinelKeyValue -Key 'Rota' -Value $(if ($RouteModeValue -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }) -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue)
-    Write-SentinelKeyValue -Key 'Executor' -Value $ExecutorTargetValue -Tone 'Primary'
     Write-Host ''
+    Write-SentinelBadgeLine -Badges (Get-SentinelModeBadgeLines -BundleModeValue $BundleModeValue -RouteModeValue $RouteModeValue)
+    Write-Host ''
+
+    $routeLabel = if ($RouteModeValue -eq 'executor') { 'Executor' } else { 'Diretor' }
+    $extractionLabel = switch ($BundleModeValue) {
+        'full' { 'Full' }
+        'blueprint' { 'Blueprint' }
+        'sniper' { 'Sniper' }
+        'txtExport' { 'TXT Export' }
+        'txt_export' { 'TXT Export' }
+        default { $BundleModeValue }
+    }
+
+    Write-SentinelText -Text '  Projeto' -Color $SentinelTheme.Muted
+    Write-SentinelKeyValue -Key 'Nome' -Value $ProjectNameValue -Tone 'Primary' -KeyWidth 14
+    if (-not [string]::IsNullOrWhiteSpace($OriginValue)) {
+        Write-SentinelKeyValue -Key 'Origem' -Value $OriginValue -Tone 'Primary' -KeyWidth 14
+    }
+    Write-Host ''
+
+    Write-SentinelText -Text '  Execução' -Color $SentinelTheme.Muted
+    Write-SentinelKeyValue -Key 'Extração' -Value $extractionLabel -Tone (Get-SentinelBundleModeTone -BundleModeValue $BundleModeValue) -KeyWidth 14
+    Write-SentinelKeyValue -Key 'Rota' -Value $routeLabel -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue) -KeyWidth 14
+    Write-SentinelKeyValue -Key 'Executor' -Value $ExecutorTargetValue -Tone 'Primary' -KeyWidth 14
+    Write-Host ''
+
+    if ($EligibleCount -ge 0) {
+        Write-SentinelText -Text '  Escopo' -Color $SentinelTheme.Muted
+        Write-SentinelKeyValue -Key 'Elegíveis' -Value $EligibleCount -Tone 'Primary' -KeyWidth 14
+        Write-SentinelKeyValue -Key 'Operação' -Value $(if ($OperationCount -ge 0) { $OperationCount } else { $EligibleCount }) -Tone 'Primary' -KeyWidth 14
+        Write-Host ''
+    }
 }
 
 function Get-SentinelExecutionModeLabel {
     param([string]$ChoiceValue)
 
     switch ($ChoiceValue) {
-        '1' { return 'Copiar Tudo' }
-        '2' { return 'Architect / Blueprint' }
-        '3' { return 'Sniper / Manual' }
+        '1' { return 'Full' }
+        '2' { return 'Blueprint' }
+        '3' { return 'Sniper' }
         '4' { return 'TXT Export' }
         default { return 'Execução' }
     }
@@ -229,18 +253,12 @@ function Write-SentinelExecutionStreamHeader {
         [string]$EffectiveOutputDirectory
     )
 
-    $summaryLines = New-Object System.Collections.Generic.List[string]
-    $summaryLines.Add(('Modo ativo: {0}' -f (Get-SentinelExecutionModeLabel -ChoiceValue $ChoiceValue))) | Out-Null
-    $summaryLines.Add(('Arquivos elegíveis: {0}' -f $DiscoveredFileCount)) | Out-Null
-    $summaryLines.Add(('Arquivos na operação: {0}' -f $FilesToProcessCount)) | Out-Null
+    Write-SentinelKeyValue -Key 'Saída' -Value $EffectiveOutputDirectory -Tone 'Secondary' -KeyWidth 14
 
     if ($UnselectedFileCount -gt 0) {
-        $summaryLines.Add(('Arquivos fora do recorte: {0}' -f $UnselectedFileCount)) | Out-Null
+        Write-SentinelKeyValue -Key 'Fora do recorte' -Value $UnselectedFileCount -Tone 'Warning' -KeyWidth 14
     }
 
-    Write-SentinelPanel -Title 'Pipeline operacional' -Tone 'Secondary' -Lines ($summaryLines.ToArray())
-    Write-SentinelKeyValue -Key 'Projeto' -Value $ProjectNameValue -Tone 'Primary'
-    Write-SentinelKeyValue -Key 'Saída efetiva' -Value $EffectiveOutputDirectory -Tone 'Secondary'
     Write-SentinelDivider -Tone 'Muted'
     Write-Host ''
 }
@@ -310,7 +328,7 @@ function Write-SentinelConfigurationContext {
     }
 
     if (-not [string]::IsNullOrWhiteSpace($RouteModeValue)) {
-        $routeLabel = if ($RouteModeValue -eq 'executor') { 'Direto para Executor' } else { 'Via Diretor' }
+        $routeLabel = if ($RouteModeValue -eq 'executor') { 'Executor' } else { 'Diretor' }
         Write-SentinelKeyValue -Key 'Rota' -Value $routeLabel -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue)
         $hasContext = $true
     }
@@ -651,24 +669,40 @@ function Register-SentinelCliFallback {
             [string]$Activity,
             [int]$Current = 0,
             [int]$Total = 0,
-            [string]$Tone = 'Primary'
+            [string]$Tone = 'Primary',
+            [string]$Item = ''
         )
 
+        $windowWidth = 80
+        try { $windowWidth = [Math]::Max([Console]::WindowWidth, 60) } catch {}
+
         if ($Total -le 0) {
-            Write-Host ("  > {0}" -f $Activity)
+            $line = "  > {0}" -f $Activity
+            Write-Host ("`r{0}" -f $line.PadRight($windowWidth - 1)) -NoNewline
             return
         }
 
         $safeCurrent = [Math]::Min([Math]::Max($Current, 0), $Total)
-        $barWidth = 18
-        $ratio = [double]$safeCurrent / [double]$Total
+        $barWidth = 14
+        $ratio = if ($Total -eq 0) { 0 } else { [double]$safeCurrent / [double]$Total }
         $filled = [int][Math]::Round(($ratio * $barWidth), 0, [System.MidpointRounding]::AwayFromZero)
         $filled = [Math]::Min([Math]::Max($filled, 0), $barWidth)
         $empty = $barWidth - $filled
-        $bar = ('#' * $filled) + ('.' * $empty)
+        $bar = ('#' * $filled) + ('-' * $empty)
         $percent = [int][Math]::Round(($ratio * 100), 0, [System.MidpointRounding]::AwayFromZero)
 
-        Write-Host ("  > {0} [{1}] {2,3}% ({3}/{4})" -f $Activity, $bar, $percent, $safeCurrent, $Total)
+        $progressText = "[{0}] {1,3}% ({2}/{3})" -f $bar, $percent, $safeCurrent, $Total
+        $fixedLength = 4 + $Activity.Length + 1 + $progressText.Length
+        $availableForItem = $windowWidth - $fixedLength - 5
+        
+        $displayItem = ''
+        if (-not [string]::IsNullOrWhiteSpace($Item) -and $availableForItem -gt 5) {
+            $displayItem = if ($Item.Length -le $availableForItem) { $Item } else { '...' + $Item.Substring($Item.Length - ($availableForItem - 3)) }
+            $displayItem = " " + $displayItem
+        }
+
+        $line = "  > {0} {1}{2}" -f $Activity, $progressText, $displayItem
+        Write-Host ("`r{0}" -f $line.PadRight($windowWidth - 1)) -NoNewline
     }
 
     $formatSentinelBadge = {
@@ -814,6 +848,36 @@ function Get-NormalizedRelativeProjectPath {
     return ($relPath -replace '/', '\')
 }
 
+function Test-BlueprintPeripheralFile {
+    param([string]$LeafName)
+
+    if ([string]::IsNullOrWhiteSpace($LeafName)) {
+        return $true
+    }
+
+    if ($LeafName -match '(?i)\.(test|spec|stories|story|mock|stub|fake|fixture|bench|snapshot)\b') {
+        return $true
+    }
+
+    if ($LeafName -match '(?i)^(test_|spec_|__test|__spec|__mock)') {
+        return $true
+    }
+
+    if ($LeafName -match '(?i)\.(module\.css|module\.scss|styles|styled|theme|animation)\b') {
+        return $true
+    }
+
+    if ($LeafName -match '(?i)^(migration|seed|fixture|changelog|license)') {
+        return $true
+    }
+
+    if ($LeafName -match '(?i)\.(generated|auto|g|designer)\.[^.]+$') {
+        return $true
+    }
+
+    return $false
+}
+
 function Get-BlueprintContractBucket {
     param([System.IO.FileInfo]$File)
 
@@ -827,10 +891,17 @@ function Get-BlueprintContractBucket {
 
     $relPath = (Get-NormalizedRelativeProjectPath -File $File).ToLowerInvariant()
     $leafName = $File.Name.ToLowerInvariant()
+    $baseName = $File.BaseName.ToLowerInvariant()
 
     if ($File.Extension -in @('.cmd', '.bat', '.reg', '.vbs', '.ps1xml')) {
         return $null
     }
+
+    if (Test-BlueprintPeripheralFile -LeafName $leafName) {
+        return $null
+    }
+
+    # --- VibeToolkit-specific rules (preserved) ---
 
     if ($relPath -match '^\.\\project-bundler(?:-headless)?\.ps1$') {
         return 'ENTRYPOINTS & ORCHESTRATION'
@@ -852,12 +923,60 @@ function Get-BlueprintContractBucket {
         return 'CORE MODULES'
     }
 
-    if ($relPath -match '^\.\\(?:src|app|server|api|lib|core)\\.*\.(?:ts|tsx|js|jsx|py|go|rs|cs|java|kt|php|rb)$') {
+    # --- Generic entrypoints & roots (stack-agnostic) ---
+
+    if ($relPath -match '^\.\\(?:main|index|app|server|program|startup|host|root|bootstrap|entrypoint)\.(?:ts|tsx|js|jsx|mjs|py|go|rs|cs|java|kt|php|rb|ex|swift|dart|scala)$') {
         return 'APPLICATION ENTRYPOINTS'
     }
 
-    if ($relPath -match '^\.\\(?:main|index|app|server|router|routes|config)\.(?:ts|tsx|js|jsx|py|go|rs|cs|java|kt|php|rb)$') {
+    if ($relPath -match '^\.\\(?:src|app|server|api|lib|core)\\(?:main|index|app|server|program|startup|host|root|bootstrap|entrypoint)\.[^.]+$') {
         return 'APPLICATION ENTRYPOINTS'
+    }
+
+    # --- Contracts, types, schemas, DTOs, enums, protocols (stack-agnostic) ---
+
+    if ($baseName -match '(?:^|[._-])(?:types|interfaces|contracts|schemas|models|dtos|entities|enums|protocols|events|constants|definitions|declarations)(?:$|[._-])') {
+        return 'CONTRACTS & TYPES'
+    }
+
+    if ($relPath -match '[\\/](?:types|interfaces|contracts|schemas|models|dtos|entities|enums|protocols|events|definitions)[\\/]') {
+        return 'CONTRACTS & TYPES'
+    }
+
+    if ($leafName -match '(?i)\.d\.ts$') {
+        return 'CONTRACTS & TYPES'
+    }
+
+    # --- Integrations & boundaries (stack-agnostic) ---
+
+    if ($baseName -match '(?:^|[._-])(?:client|service|provider|gateway|repository|adapter|transport|connector|proxy|driver|api[._-]?client|http[._-]?client|grpc[._-]?client)(?:$|[._-])') {
+        return 'INTEGRATIONS & BOUNDARIES'
+    }
+
+    if ($baseName -match '(?:^|[._-])(?:auth|storage|database|cache|queue|messaging|notification|email|payment|search)[._-]?(?:service|client|provider|gateway|repository|adapter|boundary)(?:$|[._-])') {
+        return 'INTEGRATIONS & BOUNDARIES'
+    }
+
+    if ($relPath -match '[\\/](?:services|providers|gateways|repositories|adapters|clients|infrastructure|integrations|boundaries)[\\/]') {
+        return 'INTEGRATIONS & BOUNDARIES'
+    }
+
+    # --- Flow orchestrators (stack-agnostic) ---
+
+    if ($baseName -match '(?:^|[._-])(?:store|state|context|session|middleware|pipeline|runtime|orchestrat|coordinat|dispatcher|controller|handler|resolver|interceptor|guard|router|routes|navigation|bus|queue|worker|scheduler|registry|factory|container|injector|compositor|manager|engine)(?:$|[._-])') {
+        return 'FLOW ORCHESTRATORS'
+    }
+
+    if ($relPath -match '[\\/](?:stores|state|middleware|controllers|handlers|resolvers|interceptors|guards|routes|routing|orchestration|coordination|dispatchers|pipelines|workers|schedulers)[\\/]') {
+        return 'FLOW ORCHESTRATORS'
+    }
+
+    # --- Domain core modules (position-based, stack-agnostic) ---
+
+    if ($relPath -match '^\.\\(?:src|app|lib|core|pkg|internal|domain)\\[^\\/]+\.(?:ts|tsx|js|jsx|mjs|py|go|rs|cs|java|kt|php|rb|ex|swift|dart|scala|psm1|ps1)$') {
+        if ($baseName -notmatch '(?:^|[._-])(?:utils?|helpers?|tools|common|shared|misc|log|logger|debug|polyfill|shim|patch|compat|i18n|locale|env|setup|teardown|init|cleanup)(?:$|[._-])') {
+            return 'DOMAIN CORE'
+        }
     }
 
     return $null
@@ -874,8 +993,20 @@ function Get-BlueprintContractEntries {
         'ENTRYPOINTS & ORCHESTRATION' = 0
         'APPLICATION ENTRYPOINTS' = 1
         'PROTOCOLS & OPERATING RULES' = 2
-        'DISCOVERY, WRITERS & EXTRACTORS' = 3
-        'CORE MODULES' = 4
+        'CONTRACTS & TYPES' = 3
+        'INTEGRATIONS & BOUNDARIES' = 4
+        'FLOW ORCHESTRATORS' = 5
+        'DISCOVERY, WRITERS & EXTRACTORS' = 6
+        'CORE MODULES' = 7
+        'DOMAIN CORE' = 8
+    }
+
+    $bucketCap = @{
+        'APPLICATION ENTRYPOINTS' = 6
+        'CONTRACTS & TYPES' = 8
+        'INTEGRATIONS & BOUNDARIES' = 8
+        'FLOW ORCHESTRATORS' = 6
+        'DOMAIN CORE' = 6
     }
 
     $entries = New-Object System.Collections.Generic.List[object]
@@ -897,7 +1028,25 @@ function Get-BlueprintContractEntries {
         }) | Out-Null
     }
 
-    return @($entries | Sort-Object BucketOrder, RelativePath -Unique)
+    $sorted = @($entries | Sort-Object BucketOrder, RelativePath -Unique)
+
+    $bucketCounts = @{}
+    $result = @($sorted | Where-Object {
+        $b = $_.Bucket
+        if (-not $bucketCounts.ContainsKey($b)) {
+            $bucketCounts[$b] = 0
+        }
+        $cap = if ($bucketCap.ContainsKey($b)) { $bucketCap[$b] } else { 999 }
+        if ($bucketCounts[$b] -lt $cap) {
+            $bucketCounts[$b]++
+            $true
+        }
+        else {
+            $false
+        }
+    })
+
+    return $result
 }
 
 function New-BlueprintContractsBlock {
@@ -918,54 +1067,53 @@ function New-BlueprintContractsBlock {
         $structureLines.Add((Get-NormalizedRelativeProjectPath -File $file)) | Out-Null
     }
 
-    $contractEntries = @(Get-BlueprintContractEntries -Files $Files)
-
     $block = "${StructureHeading}`n"
     $block += (Convert-ToSafeMarkdownCodeBlock -Content ($structureLines -join "`n") -Language 'text')
     $block += "`n`n"
     $block += "${ContractsHeading}`n"
-    $block += "> Seleção priorizada para entrypoints, protocolos, discovery, writers, extractors e módulos centrais. Arquivos periféricos permanecem em `PROJECT STRUCTURE`, mas não poluem esta seção.`n`n"
-
-    if ($contractEntries.Count -le 0) {
-        $block += "_Nenhum contrato central elegível foi identificado no recorte visível._`n`n"
-        return $block
-    }
-
-    $groupedEntries = $contractEntries | Group-Object Bucket | Sort-Object {
-        if ($_.Group.Count -gt 0) { $_.Group[0].BucketOrder } else { 999 }
-    }, Name
-
-    foreach ($group in $groupedEntries) {
-        $block += "#### $($group.Name)`n`n"
-
-        foreach ($entry in $group.Group) {
-            $file = $entry.File
-            $relPath = $entry.RelativePath
-
-            if ($LogExtraction) {
-                Write-UILog -Message "Extraindo assinaturas prioritárias de $relPath"
-            }
-
-            $issueMessage = $null
-            $signatures = @(Get-BundlerSignaturesForFile -File $file -IssueMessage ([ref]$issueMessage))
-            if ($issueMessage) {
-                if ($IssueCollector) {
-                    $IssueCollector.Value += $issueMessage
-                }
-                continue
-            }
-
-            if ($signatures.Count -le 0) {
-                continue
-            }
-
-            $fenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
-            $signatureContent = ($signatures -join '')
-            $block += "##### File: $relPath`n"
-            $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
-            $block += "`n`n"
+    $block += "> Cobertura abrangente de superfícies estruturais. Todos os arquivos elegíveis do escopo visível que possuem assinaturas extraíveis (contratos, headers, exports, tipos) estão mapeados abaixo. O blueprint preserva contexto mantendo a economia ao focar exclusivamente na extração estrutural, omitindo implementação completa.`n`n"
+    
+    $hasContracts = $false
+    
+    $processedCount = 0
+    foreach ($file in $Files) {
+        $processedCount++
+        if ($script:SignatureExtensions -notcontains $file.Extension) {
+            continue
         }
+        
+        $relPath = Get-NormalizedRelativeProjectPath -File $file
+        
+        if ($LogExtraction) {
+            Write-SentinelProgress -Activity 'Extraindo assinaturas estruturais' -Current $processedCount -Total $Files.Count -Tone 'Secondary' -Item $relPath
+        }
+        
+        $issueMessage = $null
+        $signatures = @(Get-BundlerSignaturesForFile -File $file -IssueMessage ([ref]$issueMessage))
+        if ($issueMessage) {
+            if ($IssueCollector) {
+                $IssueCollector.Value += $issueMessage
+            }
+            continue
+        }
+        
+        if ($signatures.Count -le 0) {
+            continue
+        }
+        
+        $hasContracts = $true
+        $fenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
+        $signatureContent = ($signatures -join '')
+        $block += "#### File: $relPath`n"
+        $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
+        $block += "`n`n"
     }
+
+    if (-not $hasContracts) {
+        $block += "_Nenhuma assinatura ou contrato central foi identificado no recorte visível._`n`n"
+    }
+
+    if ($LogExtraction) { Write-Host "" }
 
     return $block
 }
@@ -993,14 +1141,16 @@ function New-BundlerContractsBlock {
     $block += "`n`n"
     $block += "${ContractsHeading}`n"
 
+    $processedCount = 0
     foreach ($file in $Files) {
+        $processedCount++
         if ($script:SignatureExtensions -notcontains $file.Extension) {
             continue
         }
 
         $relPath = Resolve-Path -Path $file.FullName -Relative
         if ($LogExtraction) {
-            Write-UILog -Message "Extraindo assinaturas de $relPath"
+            Write-SentinelProgress -Activity 'Extraindo assinaturas' -Current $processedCount -Total $Files.Count -Tone 'Secondary' -Item $relPath
         }
 
         $issueMessage = $null
@@ -1022,6 +1172,8 @@ function New-BundlerContractsBlock {
         $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
         $block += "`n`n"
     }
+
+    if ($LogExtraction) { Write-Host "" }
 
     return $block
 }
@@ -1596,9 +1748,32 @@ function New-DeterministicMetaPromptArtifact {
     $lines.Add('') | Out-Null
     $lines.Add($visibleArtifactHeading) | Out-Null
     $lines.Add('') | Out-Null
-    $lines.Add('```text') | Out-Null
-    $lines.Add((Format-BundleContentForDiff -Content $BundleContent)) | Out-Null
-    $lines.Add('```') | Out-Null
+    
+    $croppedContent = $BundleContent
+    if (-not [string]::IsNullOrWhiteSpace($croppedContent)) {
+        $structuralAnchors = @(
+            '### 1. PROJECT STRUCTURE',
+            '### 2. PROJECT STRUCTURE',
+            '### PROJECT STRUCTURE (BUNDLER)',
+            '### PROJECT STRUCTURE',
+            '## 1. PROJECT STRUCTURE',
+            '## 2. PROJECT STRUCTURE',
+            '## PROJECT STRUCTURE'
+        )
+
+        foreach ($anchor in $structuralAnchors) {
+            $idx = $croppedContent.IndexOf($anchor, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($idx -ge 0) {
+                $croppedContent = $croppedContent.Substring($idx)
+                break
+            }
+        }
+    }
+
+    # Limpar as costuras internas (fences vazios ou nomeados) para envelopar em um único fence coerente
+    $cleanContent = [regex]::Replace($croppedContent, '(?m)^[ \t]*```+[a-zA-Z0-9\-\+]*[ \t]*\r?\n?', '')
+
+    $lines.Add((Convert-ToSafeMarkdownCodeBlock -Content (Format-BundleContentForDiff -Content $cleanContent) -Language 'text')) | Out-Null
 
     return ($lines -join "`n")
 }
@@ -1943,10 +2118,12 @@ function Export-OperationFilesToTxtDirectory {
 
     for ($index = 0; $index -lt $Files.Count; $index++) {
         $sourceFile = $Files[$index]
-        Write-SentinelProgress -Activity 'TXT Export' -Current ($index + 1) -Total $Files.Count -Tone 'Secondary'
+        $sourcePathVisual = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
+        Write-SentinelProgress -Activity 'TXT Export' -Current ($index + 1) -Total $Files.Count -Tone 'Secondary' -Item $sourcePathVisual
         try {
             $sourcePath = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
             if ([string]::IsNullOrWhiteSpace($sourcePath) -or -not (Test-Path $sourcePath -PathType Leaf)) {
+                Write-Host ""
                 Write-UILog -Message "TXT Export ignorado: arquivo não encontrado -> $sourcePath" -Color $ThemeWarn
                 $skippedFiles.Add([string]$sourcePath) | Out-Null
                 continue
@@ -1955,6 +2132,7 @@ function Export-OperationFilesToTxtDirectory {
             $resolvedSource = (Resolve-Path $sourcePath).Path
 
             if (Test-IsLikelyBinaryFile -FilePath $resolvedSource) {
+                Write-Host ""
                 Write-UILog -Message "TXT Export ignorado: arquivo binário/incompatível -> $resolvedSource" -Color $ThemeWarn
                 $skippedFiles.Add($resolvedSource) | Out-Null
                 continue
@@ -1971,15 +2149,16 @@ function Export-OperationFilesToTxtDirectory {
 
             Write-LocalTextArtifact -Path $targetPath -Content $content -UseBom
             $exportedFiles.Add($targetPath) | Out-Null
-
-            Write-UILog -Message "TXT gerado: $targetName" -Color $ThemeCyan
         }
         catch {
+            Write-Host ""
             $failedPath = if ($sourceFile -is [System.IO.FileInfo]) { $sourceFile.FullName } else { [string]$sourceFile }
             Write-UILog -Message "Falha ao exportar TXT: $failedPath :: $($_.Exception.Message)" -Color $ThemePink
             $skippedFiles.Add([string]$failedPath) | Out-Null
         }
     }
+    
+    Write-Host ""
 
     try {
         $zipFilePath = New-TxtExportZipArchive -OutputDirectory $outputDirectory -BaseDirectory $BaseOutputDirectory -ProjectNameValue $ProjectNameValue -RouteMode $RouteMode
@@ -2024,24 +2203,23 @@ function Resolve-BundleMode {
         throw 'Modo de extração obrigatório em execução não interativa. Use -BundleMode full, blueprint, sniper ou txtExport.'
     }
 
-    Write-SentinelSection -Title 'Modo de Extração' -Subtitle 'Etapa 2 de 3 · escolha o nível de contexto da execução.' -Tone 'Primary'
-    Write-SentinelConfigurationContext -StepLabel 'ETAPA 2/3' -ProjectNameValue $projectName -SourceModeValue $sourceMode -OriginValue $resolvedTargetPath -ExecutorTargetValue $ExecutorTarget
+    Write-SentinelSection -Title 'ETAPA 2/3 · Extração' -Tone 'Primary'
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Full / Tudo' -Description 'enviar tudo (análise completa)' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'Architect' -Description 'blueprint / estrutura' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'Sniper' -Description 'seleção manual (recorte com foco cirúrgico)' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'ZIP final com arquivos .txt' -LabelWidth 14)
+        (New-SentinelMenuOptionLine -Label 'Full' -Description 'análise completa' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Blueprint' -Description 'estrutura e contratos' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Sniper' -Description 'recorte manual cirúrgico' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'zip com .txt' -LabelWidth 14)
     )
 
     $resolved = $null
     while ($null -eq $resolved) {
-        $inp = (Read-Host '  Digite 1, 2, 3 ou 4').Trim()
+        $inp = (Read-Host '  Escolha a extração [1-4]').Trim()
         switch ($inp) {
             '1' { $resolved = 'full' }
             '2' { $resolved = 'blueprint' }
             '3' { $resolved = 'sniper' }
             '4' { $resolved = 'txtExport' }
-            default { Write-SentinelStatus -Message 'Entrada inválida. Digite 1, 2, 3 ou 4.' -Type Warning }
+            default { Write-SentinelStatus -Message 'Entrada inválida. Escolha entre 1 e 4.' -Type Warning }
         }
     }
 
@@ -2063,20 +2241,20 @@ function Resolve-RouteMode {
         throw 'Rota obrigatória em execução não interativa. Use -RouteMode director ou executor.'
     }
 
-    Write-SentinelSection -Title 'Fluxo de Saída' -Subtitle 'Etapa 3 de 3 · defina o papel operacional do artefato final.' -Tone 'Primary'
-    Write-SentinelConfigurationContext -StepLabel 'ETAPA 3/3' -ProjectNameValue $projectName -SourceModeValue $sourceMode -OriginValue $resolvedTargetPath -BundleModeValue $resolvedBundleMode -ExecutorTargetValue $ExecutorTarget
+    Write-SentinelSection -Title 'ETAPA 3/3 · Rota' -Tone 'Primary'
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Via Diretor' -Description '(gera meta-prompt local)' -LabelWidth 22),
-        (New-SentinelMenuOptionLine -Label 'Direto para Executor' -Description '(gera contexto final)' -LabelWidth 22)
+        (New-SentinelMenuOptionLine -Label 'Diretor' -Description 'gera meta-prompt local   ← padrão' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Executor' -Description 'gera contexto final' -LabelWidth 14)
     )
 
     $resolved = $null
     while ($null -eq $resolved) {
-        $inp = (Read-Host '  Digite 1 ou 2').Trim()
+        $inp = (Read-Host '  Escolha a rota [1-2] (padrão: 1)').Trim()
+        if ([string]::IsNullOrWhiteSpace($inp)) { $inp = '1' }
         switch ($inp) {
             '1' { $resolved = 'director' }
             '2' { $resolved = 'executor' }
-            default { Write-SentinelStatus -Message 'Entrada inválida. Digite 1 ou 2.' -Type Warning }
+            default { Write-SentinelStatus -Message 'Entrada inválida. Escolha 1 ou 2.' -Type Warning }
         }
     }
 
@@ -2107,18 +2285,19 @@ function Resolve-ProjectSource {
         $originPreview = $DefaultPath
     }
 
-    Write-SentinelSection -Title 'Origem do Projeto' -Subtitle 'Etapa 1 de 3 · selecione de onde o contexto será carregado.' -Tone 'Primary'
-    Write-SentinelConfigurationContext -StepLabel 'ETAPA 1/3' -OriginValue $originPreview -ExecutorTargetValue $ExecutorTarget
+    Write-SentinelSection -Title 'ETAPA 1/3 · Origem' -Tone 'Primary'
+    Write-SentinelKeyValue -Key 'Path atual' -Value $originPreview -Tone 'Secondary' -KeyWidth 14
+    Write-Host ''
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Usar path atual' -Description '(diretório local informado)' -LabelWidth 24),
-        (New-SentinelMenuOptionLine -Label 'Clonar repositório GitHub' -Description '(clonagem interativa/local)' -LabelWidth 24)
+        (New-SentinelMenuOptionLine -Label 'Path atual' -Description 'diretório informado' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Clonar GitHub' -Description 'clonagem local/interativa' -LabelWidth 14)
     )
 
     $choice = $null
     while ($choice -notin @('1', '2')) {
-        $choice = (Read-Host '  Digite 1 ou 2').Trim()
+        $choice = (Read-Host '  Escolha a origem [1-2]').Trim()
         if ($choice -notin @('1', '2')) {
-            Write-SentinelStatus -Message 'Entrada inválida. Digite 1 ou 2.' -Type Warning
+            Write-SentinelStatus -Message 'Entrada inválida. Escolha 1 ou 2.' -Type Warning
         }
     }
 
@@ -2134,8 +2313,7 @@ function Resolve-ProjectSource {
         }
     }
 
-    Write-SentinelSection -Title 'Clonagem de Repositório GitHub' -Subtitle 'Etapa 1.1 · fluxo temporário ou manual, sem GUI e sem firula.' -Tone 'Primary'
-    Write-SentinelConfigurationContext -StepLabel 'ORIGEM REMOTA' -SourceModeValue 'github' -ExecutorTargetValue $ExecutorTarget
+    Write-SentinelSection -Title 'ETAPA 1.1 · Clonagem GitHub' -Tone 'Primary'
 
     $gitCmd = Get-Command git -ErrorAction SilentlyContinue
     if (-not $gitCmd) {
@@ -2297,8 +2475,9 @@ try {
         Write-UILog -Message 'Bootstrap headless carregado.' -Color $ThemeSuccess
     }
 
-    Write-SentinelSection -Title 'SENTINEL HEADLESS — Configuração' -Subtitle 'Etapas: origem → extração → rota.' -Tone 'Primary'
-    Write-SentinelConfigurationContext -StepLabel 'CONFIGURAÇÃO' -OriginValue $Path -ExecutorTargetValue $ExecutorTarget
+    Write-SentinelKeyValue -Key 'Projeto' -Value $Path -Tone 'Primary' -KeyWidth 14
+    Write-SentinelKeyValue -Key 'Executor' -Value $ExecutorTarget -Tone 'Primary' -KeyWidth 14
+    Write-Host ''
 
     $sourceResult = Resolve-ProjectSource -DefaultPath $Path -NonInteractive:$NonInteractive
     $resolvedTargetPath = $sourceResult.ResolvedPath
@@ -2344,8 +2523,6 @@ try {
     $currentDocumentMode = Resolve-DocumentModeFromExtractionMode -ExtractionMode $currentExtractionMode
     $isTxtExportMode = ($choice -eq '4')
 
-    Write-SentinelOperationSummary -ProjectNameValue $projectName -BundleModeValue $resolvedBundleMode -RouteModeValue $resolvedRouteMode -ExecutorTargetValue $ExecutorTarget
-
     $foundFiles = @(Get-RelevantFiles -CurrentPath (Get-Location).Path | Sort-Object FullName)
     if ($foundFiles.Count -eq 0) {
         throw "Nenhum arquivo elegível foi encontrado em: $resolvedTargetPath"
@@ -2371,6 +2548,8 @@ try {
     else {
         $filesToProcess = @($foundFiles)
     }
+
+    Write-SentinelOperationSummary -ProjectNameValue $projectName -BundleModeValue $resolvedBundleMode -RouteModeValue $resolvedRouteMode -ExecutorTargetValue $ExecutorTarget -OriginValue $resolvedTargetPath -EligibleCount $foundFiles.Count -OperationCount $filesToProcess.Count
 
     Write-SentinelExecutionStreamHeader -ChoiceValue $choice -ProjectNameValue $projectName -DiscoveredFileCount $foundFiles.Count -FilesToProcessCount $filesToProcess.Count -UnselectedFileCount $unselectedFiles.Count -EffectiveOutputDirectory $script:EffectiveOutputDirectory
 
@@ -2422,13 +2601,13 @@ try {
     if ($choice -eq '1' -or $choice -eq '3') {
         if ($choice -eq '1') {
             $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
-            $headerTitle = 'MODO COPIAR TUDO'
-            Write-UILog -Message 'Iniciando Modo Copiar Tudo...' -Color $ThemeCyan
+            $headerTitle = 'MODO FULL'
+            Write-UILog -Message 'Iniciando Modo Full...' -Color $ThemeCyan
         }
         else {
             $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
-            $headerTitle = 'MODO MANUAL'
-            Write-UILog -Message 'Iniciando Modo Sniper / Manual...' -Color $ThemePink
+            $headerTitle = 'MODO SNIPER'
+            Write-UILog -Message 'Iniciando Modo Sniper...' -Color $ThemePink
         }
 
         $finalContent += "## ${headerTitle}: $projectName`n`n"
@@ -2458,8 +2637,7 @@ try {
         for ($index = 0; $index -lt $filesToProcess.Count; $index++) {
             $file = $filesToProcess[$index]
             $relPath = Resolve-Path -Path $file.FullName -Relative
-            Write-SentinelProgress -Activity 'Leitura de arquivos' -Current ($index + 1) -Total $filesToProcess.Count -Tone 'Secondary'
-            Write-UILog -Message ("Lendo {0}" -f $relPath)
+            Write-SentinelProgress -Activity 'Consolidação' -Current ($index + 1) -Total $filesToProcess.Count -Tone 'Secondary' -Item $relPath
             $content = Read-LocalTextArtifact -Path $file.FullName
             if ($null -ne $content) {
                 $content = $content -replace "(`r?`n){3,}", "`r`n`r`n"
@@ -2467,6 +2645,7 @@ try {
                 $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content $content.TrimEnd() -Language 'text') + "`n`n"
             }
         }
+        Write-Host ""
 
         if ($choice -eq '3' -and $unselectedFiles.Count -gt 0) {
             Write-UILog -Message 'Anexando arquivos não selecionados (modo Bundler)...' -Color $ThemeCyan
@@ -2476,8 +2655,8 @@ try {
     }
     else {
         $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
-        Write-UILog -Message 'Iniciando Modo Architect / Blueprint...' -Color $ThemeCyan
-        $finalContent += "## ARCHITECT / BLUEPRINT: $projectName`n`n"
+        Write-UILog -Message 'Iniciando Modo Blueprint...' -Color $ThemeCyan
+        $finalContent += "## BLUEPRINT: $projectName`n`n"
         $finalContent += "### 0. BLUEPRINT CONTRACT`n"
         $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content @'
 Ler nesta ordem:
@@ -2486,7 +2665,7 @@ Ler nesta ordem:
 
 Use apenas o recorte visível deste artefato.
 Quando faltar contexto, declarar: não visível no recorte enviado.
-A seção de contratos foi priorizada para entrypoints, protocolos, discovery, writers, extractors e módulos centrais.
+A seção de contratos foi priorizada para entrypoints, contratos/tipos, integrações, orquestradores, protocolos, discovery, writers, extractors e módulos centrais de domínio.
 '@.Trim() -Language 'text')
         $finalContent += "`n`n"
         $finalContent += "### 1. EXTERNAL DEPENDENCIES`n"
@@ -2539,7 +2718,7 @@ A seção de contratos foi priorizada para entrypoints, protocolos, discovery, w
         Write-LocalTextArtifact -Path $deterministicOutputPath -Content $deterministicContent -UseBom
         $finalOutputPath = $deterministicOutputPath
 
-        Write-UILog -Message ("Meta-prompt determinístico salvo em: {0}" -f $deterministicOutputPath) -Color $ThemeSuccess
+        Write-UILog -Message ("Meta-prompt salvo em: {0}" -f $deterministicOutputPath) -Color $ThemeSuccess
     }
 
     if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
@@ -2562,7 +2741,14 @@ A seção de contratos foi priorizada para entrypoints, protocolos, discovery, w
     $resultMetaPath = Join-Path $script:EffectiveOutputDirectory ([System.IO.Path]::GetFileNameWithoutExtension($finalOutputPath) + '.json')
     $metaResult = Write-LocalExecutionMeta -ProjectNameValue $projectName -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -ExecutorTargetValue $ExecutorTarget -SourceArtifactPath $sourceArtifactPath -OutputPath $finalOutputPath -ResultMetaPath $resultMetaPath -DurationMs $durationMs -ExtraData $extraData
 
-    Write-UILog -Message ("Metadados locais salvos em: {0}" -f $metaResult.ResultMetaPath) -Color $ThemeSuccess
+    Write-Host ''
+    Write-SentinelSection -Title 'SUCESSO' -Tone 'Success'
+    $artifactName = [System.IO.Path]::GetFileName($finalOutputPath)
+    $metaName = [System.IO.Path]::GetFileName($metaResult.ResultMetaPath)
+    Write-SentinelKeyValue -Key 'Artefato' -Value $artifactName -Tone 'Success' -KeyWidth 12
+    Write-SentinelKeyValue -Key 'Metadata' -Value $metaName -Tone 'Secondary' -KeyWidth 12
+    Write-SentinelKeyValue -Key 'Destino' -Value $script:EffectiveOutputDirectory -Tone 'Secondary' -KeyWidth 12
+    Write-Host ''
 }
 catch {
     $errorMessage = $_.Exception.Message

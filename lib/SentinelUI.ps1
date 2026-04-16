@@ -1,4 +1,4 @@
-﻿$script:SentinelEscape = [char]27
+$script:SentinelEscape = [char]27
 
 function Test-SentinelAnsiSupport {
     $isOutputRedirected = $false
@@ -383,28 +383,63 @@ function Write-SentinelProgress {
         [int]$Current = 0,
         [int]$Total = 0,
         [ValidateSet('Primary', 'Success', 'Warning', 'Error', 'Secondary', 'Muted')]
-        [string]$Tone = 'Primary'
+        [string]$Tone = 'Primary',
+        [string]$Item = ''
     )
+
+    $windowWidth = 80
+    try {
+        $windowWidth = [Math]::Max([Console]::WindowWidth, 60)
+    } catch {}
 
     if ($Total -le 0) {
         $activityText = Get-SentinelTrimmedText -Text $Activity -MaxLength ([Math]::Max(($script:SentinelUiLayout.ProgressActivityWidth + 8), 12))
-        Write-SentinelText -Text ("  ⟳ {0}" -f $activityText) -Color (Get-SentinelToneColor -Tone $Tone)
+        $line = "  ⟳ {0}" -f $activityText
+        $paddedLine = $line.PadRight($windowWidth - 1)
+        if ($script:SentinelAnsiEnabled) {
+            Write-Host ("`r{0}{1}{2}" -f (Get-SentinelToneColor -Tone $Tone), $paddedLine, $SentinelTheme.Reset) -NoNewline
+        } else {
+            Write-Host ("`r{0}" -f $paddedLine) -NoNewline
+        }
         return
     }
 
     $safeCurrent = [Math]::Min([Math]::Max($Current, 0), $Total)
-    $barWidth = [Math]::Max($script:SentinelUiLayout.ProgressBarWidth, 10)
+    $barWidth = [Math]::Max($script:SentinelUiLayout.ProgressBarWidth, 14)
     $ratio = if ($Total -eq 0) { 0 } else { [double]$safeCurrent / [double]$Total }
     $filled = [int][Math]::Round(($ratio * $barWidth), 0, [System.MidpointRounding]::AwayFromZero)
     $filled = [Math]::Min([Math]::Max($filled, 0), $barWidth)
     $empty = $barWidth - $filled
-    $bar = ('█' * $filled) + ('·' * $empty)
+    $bar = if ($script:SentinelAnsiEnabled) { ('█' * $filled) + ('░' * $empty) } else { ('#' * $filled) + ('·' * $empty) }
     $percent = [int][Math]::Round(($ratio * 100), 0, [System.MidpointRounding]::AwayFromZero)
 
-    $activityText = Get-SentinelTrimmedText -Text $Activity -MaxLength $script:SentinelUiLayout.ProgressActivityWidth
-    $activityDisplay = $activityText.PadRight([Math]::Max($script:SentinelUiLayout.ProgressActivityWidth, 12))
+    $progressLine = "  ⟳ {0}  [{1}] {2,3}% ({3}/{4})" -f $Activity, $bar, $percent, $safeCurrent, $Total
+    $paddedProgressLine = $progressLine.PadRight($windowWidth - 1)
 
-    Write-SentinelText -Text ("  ⟳ {0} [{1}] {2,3}% ({3}/{4})" -f $activityDisplay, $bar, $percent, $safeCurrent, $Total) -Color (Get-SentinelToneColor -Tone $Tone)
+    $itemLine = ''
+    if (-not [string]::IsNullOrWhiteSpace($Item)) {
+        $maxItemLen = $windowWidth - 22
+        $displayItem = if ($Item.Length -le $maxItemLen) { $Item } else { '...' + $Item.Substring($Item.Length - ($maxItemLen - 3)) }
+        $itemLine = "    Arquivo atual: {0}" -f $displayItem
+        $itemLine = $itemLine.PadRight($windowWidth - 1)
+    }
+
+    if ($script:SentinelAnsiEnabled) {
+        $color = Get-SentinelToneColor -Tone $Tone
+        Write-Host ("`r{0}{1}{2}" -f $color, $paddedProgressLine, $SentinelTheme.Reset) -NoNewline
+        if (-not [string]::IsNullOrWhiteSpace($itemLine)) {
+            Write-Host ''
+            Write-Host ("`r{0}{1}{2}" -f $SentinelTheme.Muted, $itemLine, $SentinelTheme.Reset) -NoNewline
+            Write-Host "`e[1A" -NoNewline
+        }
+    } else {
+        Write-Host ("`r{0}" -f $paddedProgressLine) -NoNewline
+        if (-not [string]::IsNullOrWhiteSpace($itemLine)) {
+            Write-Host ''
+            Write-Host ("`r{0}" -f $itemLine) -NoNewline
+            Write-Host "`e[1A" -NoNewline
+        }
+    }
 }
 
 function Write-SentinelStatus {
@@ -435,12 +470,15 @@ function Show-SentinelMenu {
         [string]$Title,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$Options
+        [string[]]$Options,
+
+        [string]$Prompt = ''
     )
 
     Write-SentinelSection -Title $Title -Tone 'Primary'
     Write-SentinelMenuOptions -Options $Options
-    return (Read-Host 'Selecione uma opção')
+    $promptText = if (-not [string]::IsNullOrWhiteSpace($Prompt)) { $Prompt } else { ('  Escolha [1-{0}]' -f $Options.Count) }
+    return (Read-Host $promptText)
 }
 
 function Show-SentinelSpinner {

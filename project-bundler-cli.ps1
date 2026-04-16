@@ -202,29 +202,37 @@ function Write-SentinelOperationSummary {
 
     $routeLabel = if ($RouteModeValue -eq 'executor') { 'Executor' } else { 'Diretor' }
     $extractionLabel = switch ($BundleModeValue) {
-        'full' { 'Full' }
+        'full'      { 'Full' }
         'blueprint' { 'Blueprint' }
-        'sniper' { 'Sniper' }
+        'sniper'    { 'Sniper' }
         'txtExport' { 'TXT Export' }
-        'txt_export' { 'TXT Export' }
-        default { $BundleModeValue }
+        'txt_export'{ 'TXT Export' }
+        default     { $BundleModeValue }
     }
 
-    Write-SentinelText -Text '  Projeto' -Color $SentinelTheme.Muted
+    $displayOrigin = if (-not [string]::IsNullOrWhiteSpace($OriginValue) -and $OriginValue -eq (Get-Location).Path) {
+        "mesmo diretório ($ProjectNameValue)"
+    } elseif (-not [string]::IsNullOrWhiteSpace($OriginValue)) {
+        Get-SentinelCompactDisplayText -Text $OriginValue -MaxLength 60
+    } else {
+        ''
+    }
+
+    Write-SentinelText -Text '  📦 Projeto' -Color $SentinelTheme.Muted
     Write-SentinelKeyValue -Key 'Nome' -Value $ProjectNameValue -Tone 'Primary' -KeyWidth 14
-    if (-not [string]::IsNullOrWhiteSpace($OriginValue)) {
-        Write-SentinelKeyValue -Key 'Origem' -Value $OriginValue -Tone 'Primary' -KeyWidth 14
+    if (-not [string]::IsNullOrWhiteSpace($displayOrigin)) {
+        Write-SentinelKeyValue -Key '📍 Origem' -Value $displayOrigin -Tone 'Primary' -KeyWidth 14
     }
     Write-Host ''
 
-    Write-SentinelText -Text '  Execução' -Color $SentinelTheme.Muted
+    Write-SentinelText -Text '  ⚙️  Execução' -Color $SentinelTheme.Muted
     Write-SentinelKeyValue -Key 'Extração' -Value $extractionLabel -Tone (Get-SentinelBundleModeTone -BundleModeValue $BundleModeValue) -KeyWidth 14
-    Write-SentinelKeyValue -Key 'Rota' -Value $routeLabel -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue) -KeyWidth 14
-    Write-SentinelKeyValue -Key 'Executor' -Value $ExecutorTargetValue -Tone 'Primary' -KeyWidth 14
+    Write-SentinelKeyValue -Key '🎯 Rota' -Value $routeLabel -Tone (Get-SentinelRouteModeTone -RouteModeValue $RouteModeValue) -KeyWidth 14
+    Write-SentinelKeyValue -Key '🤖 Executor' -Value $ExecutorTargetValue -Tone 'Primary' -KeyWidth 14
     Write-Host ''
 
     if ($EligibleCount -ge 0) {
-        Write-SentinelText -Text '  Escopo' -Color $SentinelTheme.Muted
+        Write-SentinelText -Text '  📄 Escopo' -Color $SentinelTheme.Muted
         Write-SentinelKeyValue -Key 'Elegíveis' -Value $EligibleCount -Tone 'Primary' -KeyWidth 14
         Write-SentinelKeyValue -Key 'Operação' -Value $(if ($OperationCount -ge 0) { $OperationCount } else { $EligibleCount }) -Tone 'Primary' -KeyWidth 14
         Write-Host ''
@@ -253,10 +261,17 @@ function Write-SentinelExecutionStreamHeader {
         [string]$EffectiveOutputDirectory
     )
 
-    Write-SentinelKeyValue -Key 'Saída' -Value $EffectiveOutputDirectory -Tone 'Secondary' -KeyWidth 14
+    $displayOutput = if ($EffectiveOutputDirectory -eq (Get-Location).Path) {
+        "mesmo diretório ($ProjectNameValue)"
+    } else {
+        Get-SentinelCompactDisplayText -Text $EffectiveOutputDirectory -MaxLength 60
+    }
+
+    Write-SentinelKeyValue -Key '📁 Saída' -Value $displayOutput -Tone 'Secondary' -KeyWidth 14
+    Write-SentinelKeyValue -Key 'Arquivos na fila' -Value $FilesToProcessCount -Tone 'Primary' -KeyWidth 16
 
     if ($UnselectedFileCount -gt 0) {
-        Write-SentinelKeyValue -Key 'Fora do recorte' -Value $UnselectedFileCount -Tone 'Warning' -KeyWidth 14
+        Write-SentinelKeyValue -Key 'Fora do recorte' -Value $UnselectedFileCount -Tone 'Warning' -KeyWidth 16
     }
 
     Write-SentinelDivider -Tone 'Muted'
@@ -287,6 +302,75 @@ function New-SentinelMenuOptionLine {
     }
 
     return ('{0} {1}' -f $safeLabel.PadRight([Math]::Max($LabelWidth, 8)), $safeDescription)
+}
+
+function Write-SentinelHintLines {
+    param([string[]]$Lines)
+
+    $normalizedLines = @($Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($normalizedLines.Count -eq 0) {
+        return
+    }
+
+    foreach ($line in $normalizedLines) {
+        Write-SentinelText -Text ("  {0}" -f $line.Trim()) -Color $SentinelTheme.Muted
+    }
+
+    Write-Host ''
+}
+
+function Write-SentinelInvalidSelection {
+    param([Parameter(Mandatory = $true)][string]$Expected)
+
+    Write-SentinelStatus -Message ("Opção inválida. Use {0}. Ctrl+C cancela." -f $Expected) -Type 'Warning'
+}
+
+function Get-SentinelBundleModeHintLines {
+    return @(
+        'Full lê tudo. Blueprint prioriza estrutura e contratos. Sniper abre recorte manual.',
+        'TXT Export gera ZIP textual. Digite 1-4 ou Ctrl+C para cancelar.'
+    )
+}
+
+function Get-SentinelRouteModeHintLines {
+    return @(
+        'Director compila meta-prompt local. Executor entrega o artefato final direto.',
+        'Enter mantém Director. Digite 1-2 ou Ctrl+C para cancelar.'
+    )
+}
+
+function Get-SentinelSourceModeHintLines {
+    return @(
+        'Path atual usa o diretório informado. Clonar GitHub baixa uma cópia local para leitura.',
+        'Digite 1-2 ou Ctrl+C para cancelar.'
+    )
+}
+
+function Write-SentinelPostSuccessGuidance {
+    param(
+        [Parameter(Mandatory = $true)][string]$RouteMode,
+        [Parameter(Mandatory = $true)][string]$ArtifactPath,
+        [Parameter(Mandatory = $true)][string]$MetadataPath
+    )
+
+    $artifactLeaf = [System.IO.Path]::GetFileName($ArtifactPath)
+    $metadataLeaf = [System.IO.Path]::GetFileName($MetadataPath)
+
+    Write-SentinelDivider -Label '' -Tone 'Secondary' -Character '━'
+    Write-SentinelText -Text '  💡 PRÓXIMO PASSO' -Color $SentinelTheme.Secondary
+    Write-Host ''
+
+    if ($RouteMode -eq 'executor') {
+        Write-SentinelText -Text ("  • {0} é o contexto operacional final — pronto para execução direta." -f $artifactLeaf) -Color $SentinelTheme.Secondary
+        Write-SentinelText -Text "  • Envie diretamente para a IA executora — nenhum meta-prompt adicional necessário." -Color $SentinelTheme.Secondary
+    }
+    else {
+        Write-SentinelText -Text ("  • {0} é um meta-prompt determinístico local — copie o conteúdo." -f $artifactLeaf) -Color $SentinelTheme.Secondary
+        Write-SentinelText -Text "  • Cole no ChatGPT, Claude ou Gemini para gerar artefatos baseados no blueprint." -Color $SentinelTheme.Secondary
+    }
+
+    Write-SentinelText -Text ("  • {0} guarda auditoria e metadados para automação." -f $metadataLeaf) -Color $SentinelTheme.Muted
+    Write-Host ''
 }
 
 function Write-SentinelConfigurationContext {
@@ -1270,6 +1354,23 @@ function Get-SentinelCompactDisplayText {
     return ('{0}…{1}' -f $value.Substring(0, $headLength), $value.Substring($value.Length - $tailLength))
 }
 
+function Reset-SentinelTransientConsoleLine {
+    try {
+        $lineWidth = 160
+        try {
+            $lineWidth = [Math]::Max(([Console]::WindowWidth - 1), 32)
+        }
+        catch {
+            $lineWidth = 160
+        }
+
+        [Console]::Out.Write("`r" + (' ' * $lineWidth) + "`r")
+    }
+    catch {
+        Write-Host ''
+    }
+}
+
 function Get-SentinelConsoleMultiSelectHintLines {
     param([AllowEmptyString()][string]$Hint = '')
 
@@ -1675,6 +1776,7 @@ function New-DeterministicMetaPromptArtifact {
         [string]$ExecutorTargetValue,
         [string]$ExtractionMode,
         [string]$DocumentMode,
+        [string]$RouteMode,
         [string]$SourceArtifactFileName,
         [string]$OutputArtifactFileName,
         [AllowEmptyString()][string]$BundleContent,
@@ -1685,78 +1787,126 @@ function New-DeterministicMetaPromptArtifact {
     $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
     $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
     $extractionLabel = Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode
+    $routeLabel = Get-VibeArtifactRouteLabel -RouteMode $RouteMode
+    $isExecutorRoute = ($routeLabel -eq 'executor')
 
     $visibleArtifactHeading = if ($ExtractionMode -eq 'blueprint') { '## BLUEPRINT VISÍVEL' } else { '## BUNDLE VISÍVEL' }
 
     $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR v4.0') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### MODO ATIVO') | Out-Null
-    $lines.Add('- Assuma imediatamente o modo Diretor. Este documento contém regras operacionais ativas, não texto informativo.') | Out-Null
-    $lines.Add('- Papel obrigatório durante toda a resposta: Diretor de Engenharia Agêntica em modo determinístico local.') | Out-Null
-    $lines.Add('- Rota ativa: VIA DIRETOR.') | Out-Null
-    $lines.Add(("- Extração efetiva: {0}." -f $extractionLabel)) | Out-Null
-    $lines.Add(("- Executor alvo de referência: {0}." -f $ExecutorTargetValue)) | Out-Null
-    $lines.Add('- Fronteira de execução: não implementar código diretamente.') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
-    $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do artefato fonte.') | Out-Null
-    $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
-    $lines.Add('3. Ler depois `SOURCE FILES` do mesmo artefato.') | Out-Null
-    $lines.Add('4. Só então analisar, responder e compor instruções para o Executor.') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### FONTE PRIMÁRIA E RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
-    $lines.Add(("- Artefato fonte obrigatório: {0}." -f $SourceArtifactFileName)) | Out-Null
-    $lines.Add('- O artefato visível é a única fonte primária obrigatória.') | Out-Null
-    $lines.Add('- Não usar memória anterior, contexto implícito, seleção remota ou comportamento presumido fora do artefato.') | Out-Null
-    $lines.Add('- Quando faltar contexto, declarar explicitamente `não visível no recorte enviado`.') | Out-Null
-    $lines.Add('- Recortes prioritários para leitura após a estrutura: ' + $relevantFilesValue + '.') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('## EXECUTION META') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add(("- Projeto: {0}" -f $ProjectNameValue)) | Out-Null
-    $lines.Add(("- Artefato fonte: {0}" -f $SourceArtifactFileName)) | Out-Null
-    $lines.Add(("- Artefato final: {0}" -f $OutputArtifactFileName)) | Out-Null
-    $lines.Add(("- Executor alvo: {0}" -f $ExecutorTargetValue)) | Out-Null
-    $lines.Add('- Route mode: director') | Out-Null
-    $lines.Add(("- Document mode: {0}" -f $DocumentMode)) | Out-Null
-    $lines.Add(("- Gerado em: {0}" -f $generatedAt)) | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('[META-PROMPT PARA EXECUTOR]') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)') | Out-Null
-    $lines.Add('--- INÍCIO DO PROMPT ---') | Out-Null
-    $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### MODO ATIVO') | Out-Null
-    $lines.Add('- Assuma imediatamente o modo Executor. Este prompt contém regras operacionais ativas, não texto informativo.') | Out-Null
-    $lines.Add('- Papel obrigatório durante toda a resposta: Senior Implementation Agent (Sniper).') | Out-Null
-    $lines.Add('- Missão: materializar a solicitação estritamente dentro do escopo visível do bundle.') | Out-Null
-    $lines.Add(("- Extraction mode: {0}." -f $ExtractionMode)) | Out-Null
-    $lines.Add(("- Executor alvo: {0}." -f $ExecutorTargetValue)) | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
-    $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do bundle visível.') | Out-Null
-    $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
-    $lines.Add('3. Ler depois `SOURCE FILES`.') | Out-Null
-    $lines.Add('4. Só então iniciar análise de impacto, implementação e resposta técnica.') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
-    $lines.Add('- O bundle visível é a única fonte primária obrigatória.') | Out-Null
-    $lines.Add('- Não inferir módulos, contratos, dependências ou comportamentos fora do bundle visível.') | Out-Null
-    $lines.Add('- Declarar explicitamente qualquer lacuna de contexto com `não visível no recorte enviado`.') | Out-Null
-    $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
-    $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
-    $lines.Add('- Não usar memória anterior reaproveitada, seleção remota, parametrização externa ou qualquer superfície de IA removida.') | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('### SAÍDA OBRIGATÓRIA') | Out-Null
-    $lines.Add('- Entregar Relatório de Impacto, implementação por arquivo, protocolo de verificação e verificação de segurança.') | Out-Null
-    $lines.Add('- Propor checks de regressão, cenários negativos e validações compatíveis com o escopo.') | Out-Null
-    $lines.Add('--- FIM DO PROMPT ---') | Out-Null
-    $lines.Add('') | Out-Null
+
+    if ($isExecutorRoute) {
+        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### MODO ATIVO') | Out-Null
+        $lines.Add('- Assuma imediatamente o modo Executor. Este documento contém regras operacionais ativas, não texto informativo.') | Out-Null
+        $lines.Add('- Papel obrigatório durante toda a resposta: Senior Implementation Agent (Sniper).') | Out-Null
+        $lines.Add('- Rota ativa: DIRETO PARA O EXECUTOR.') | Out-Null
+        $lines.Add(('- Extração efetiva: {0}.' -f $extractionLabel)) | Out-Null
+        $lines.Add(('- Executor alvo de referência: {0}.' -f $ExecutorTargetValue)) | Out-Null
+        $lines.Add('- Missão: materializar o escopo solicitado com fidelidade ao artefato visível, preservando contratos, comportamento e arquitetura existente.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
+        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do artefato fonte.') | Out-Null
+        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
+        $lines.Add('3. Ler depois `SOURCE FILES` do mesmo artefato.') | Out-Null
+        $lines.Add('4. Só então iniciar análise de impacto, implementação e resposta técnica.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### FONTE PRIMÁRIA E RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
+        $lines.Add(('- Artefato fonte obrigatório: {0}.' -f $SourceArtifactFileName)) | Out-Null
+        $lines.Add('- O artefato visível é a única fonte primária obrigatória.') | Out-Null
+        $lines.Add('- Não usar memória anterior, contexto implícito, seleção remota ou comportamento presumido fora do artefato.') | Out-Null
+        $lines.Add('- Não inferir módulos, contratos, dependências ou comportamentos fora do recorte visível.') | Out-Null
+        $lines.Add('- Quando faltar contexto, declarar explicitamente `não visível no recorte enviado`.') | Out-Null
+        $lines.Add('- Recortes prioritários para leitura após a estrutura: ' + $relevantFilesValue + '.') | Out-Null
+        $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
+        $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### SAÍDA OBRIGATÓRIA') | Out-Null
+        $lines.Add('- Entregar Relatório de Impacto, implementação por arquivo, protocolo de verificação e validações de regressão compatíveis com o escopo.') | Out-Null
+        $lines.Add('- Quando houver lacuna de contexto, declarar isso explicitamente em vez de inventar implementação não visível.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('## EXECUTION META') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add(('- Projeto: {0}' -f $ProjectNameValue)) | Out-Null
+        $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName)) | Out-Null
+        $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName)) | Out-Null
+        $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue)) | Out-Null
+        $lines.Add('- Route mode: executor') | Out-Null
+        $lines.Add(('- Document mode: {0}' -f $DocumentMode)) | Out-Null
+        $lines.Add(('- Gerado em: {0}' -f $generatedAt)) | Out-Null
+        $lines.Add('') | Out-Null
+    }
+    else {
+        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR v4.0') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### MODO ATIVO') | Out-Null
+        $lines.Add('- Assuma imediatamente o modo Diretor. Este documento contém regras operacionais ativas, não texto informativo.') | Out-Null
+        $lines.Add('- Papel obrigatório durante toda a resposta: Diretor de Engenharia Agêntica em modo determinístico local.') | Out-Null
+        $lines.Add('- Rota ativa: VIA DIRETOR.') | Out-Null
+        $lines.Add(('- Extração efetiva: {0}.' -f $extractionLabel)) | Out-Null
+        $lines.Add(('- Executor alvo de referência: {0}.' -f $ExecutorTargetValue)) | Out-Null
+        $lines.Add('- Fronteira de execução: não implementar código diretamente.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
+        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do artefato fonte.') | Out-Null
+        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
+        $lines.Add('3. Ler depois `SOURCE FILES` do mesmo artefato.') | Out-Null
+        $lines.Add('4. Só então analisar, responder e compor instruções para o Executor.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### FONTE PRIMÁRIA E RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
+        $lines.Add(('- Artefato fonte obrigatório: {0}.' -f $SourceArtifactFileName)) | Out-Null
+        $lines.Add('- O artefato visível é a única fonte primária obrigatória.') | Out-Null
+        $lines.Add('- Não usar memória anterior, contexto implícito, seleção remota ou comportamento presumido fora do artefato.') | Out-Null
+        $lines.Add('- Quando faltar contexto, declarar explicitamente `não visível no recorte enviado`.') | Out-Null
+        $lines.Add('- Recortes prioritários para leitura após a estrutura: ' + $relevantFilesValue + '.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('## EXECUTION META') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add(('- Projeto: {0}' -f $ProjectNameValue)) | Out-Null
+        $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName)) | Out-Null
+        $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName)) | Out-Null
+        $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue)) | Out-Null
+        $lines.Add('- Route mode: director') | Out-Null
+        $lines.Add(('- Document mode: {0}' -f $DocumentMode)) | Out-Null
+        $lines.Add(('- Gerado em: {0}' -f $generatedAt)) | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('[META-PROMPT PARA EXECUTOR]') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)') | Out-Null
+        $lines.Add('--- INÍCIO DO PROMPT ---') | Out-Null
+        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### MODO ATIVO') | Out-Null
+        $lines.Add('- Assuma imediatamente o modo Executor. Este prompt contém regras operacionais ativas, não texto informativo.') | Out-Null
+        $lines.Add('- Papel obrigatório durante toda a resposta: Senior Implementation Agent (Sniper).') | Out-Null
+        $lines.Add('- Missão: materializar a solicitação estritamente dentro do escopo visível do bundle.') | Out-Null
+        $lines.Add(('- Extraction mode: {0}.' -f $ExtractionMode)) | Out-Null
+        $lines.Add(('- Executor alvo: {0}.' -f $ExecutorTargetValue)) | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
+        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do bundle visível.') | Out-Null
+        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
+        $lines.Add('3. Ler depois `SOURCE FILES`.') | Out-Null
+        $lines.Add('4. Só então iniciar análise de impacto, implementação e resposta técnica.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
+        $lines.Add('- O bundle visível é a única fonte primária obrigatória.') | Out-Null
+        $lines.Add('- Não inferir módulos, contratos, dependências ou comportamentos fora do bundle visível.') | Out-Null
+        $lines.Add('- Declarar explicitamente qualquer lacuna de contexto com `não visível no recorte enviado`.') | Out-Null
+        $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
+        $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
+        $lines.Add('- Não usar memória anterior reaproveitada, seleção remota, parametrização externa ou qualquer superfície de IA removida.') | Out-Null
+        $lines.Add('') | Out-Null
+        $lines.Add('### SAÍDA OBRIGATÓRIA') | Out-Null
+        $lines.Add('- Entregar Relatório de Impacto, implementação por arquivo, protocolo de verificação e verificação de segurança.') | Out-Null
+        $lines.Add('- Propor checks de regressão, cenários negativos e validações compatíveis com o escopo.') | Out-Null
+        $lines.Add('--- FIM DO PROMPT ---') | Out-Null
+        $lines.Add('') | Out-Null
+    }
+
     $lines.Add($visibleArtifactHeading) | Out-Null
     $lines.Add('') | Out-Null
-    
+
     $croppedContent = $BundleContent
     if (-not [string]::IsNullOrWhiteSpace($croppedContent)) {
         $structuralAnchors = @(
@@ -1783,7 +1933,7 @@ function New-DeterministicMetaPromptArtifact {
     }
 
     # Limpar as costuras internas (fences vazios ou nomeados) para envelopar em um único fence coerente
-    $cleanContent = [regex]::Replace($croppedContent, '(?m)^[ \t]*```+[a-zA-Z0-9\-\+]*[ \t]*\r?\n?', '')
+    $cleanContent = [regex]::Replace($croppedContent, '(?m)^[ 	]*```+[a-zA-Z0-9\-\+]*[ 	]*\r?\n?', '')
 
     $lines.Add((Convert-ToSafeMarkdownCodeBlock -Content (Format-BundleContentForDiff -Content $cleanContent) -Language 'text')) | Out-Null
 
@@ -2217,11 +2367,12 @@ function Resolve-BundleMode {
 
     Write-SentinelSection -Title 'ETAPA 2/3 · Extração' -Tone 'Primary'
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Full' -Description 'análise completa' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'Blueprint' -Description 'estrutura e contratos' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Full' -Description 'código completo + contexto amplo' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Blueprint' -Description 'estrutura + contratos centrais' -LabelWidth 14),
         (New-SentinelMenuOptionLine -Label 'Sniper' -Description 'recorte manual cirúrgico' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'zip com .txt' -LabelWidth 14)
+        (New-SentinelMenuOptionLine -Label 'TXT Export' -Description 'ZIP textual para ingestão externa' -LabelWidth 14)
     )
+    Write-SentinelHintLines -Lines (Get-SentinelBundleModeHintLines)
 
     $resolved = $null
     while ($null -eq $resolved) {
@@ -2231,7 +2382,7 @@ function Resolve-BundleMode {
             '2' { $resolved = 'blueprint' }
             '3' { $resolved = 'sniper' }
             '4' { $resolved = 'txtExport' }
-            default { Write-SentinelStatus -Message 'Entrada inválida. Escolha entre 1 e 4.' -Type Warning }
+            default { Write-SentinelInvalidSelection -Expected '1, 2, 3 ou 4' }
         }
     }
 
@@ -2255,9 +2406,10 @@ function Resolve-RouteMode {
 
     Write-SentinelSection -Title 'ETAPA 3/3 · Rota' -Tone 'Primary'
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Diretor' -Description 'gera meta-prompt local   ← padrão' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'Executor' -Description 'gera contexto final' -LabelWidth 14)
+        (New-SentinelMenuOptionLine -Label 'Diretor' -Description 'compila meta-prompt local   ← padrão' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Executor' -Description 'gera artefato final direto' -LabelWidth 14)
     )
+    Write-SentinelHintLines -Lines (Get-SentinelRouteModeHintLines)
 
     $resolved = $null
     while ($null -eq $resolved) {
@@ -2266,7 +2418,7 @@ function Resolve-RouteMode {
         switch ($inp) {
             '1' { $resolved = 'director' }
             '2' { $resolved = 'executor' }
-            default { Write-SentinelStatus -Message 'Entrada inválida. Escolha 1 ou 2.' -Type Warning }
+            default { Write-SentinelInvalidSelection -Expected '1 ou 2. Enter usa 1' }
         }
     }
 
@@ -2298,18 +2450,19 @@ function Resolve-ProjectSource {
     }
 
     Write-SentinelSection -Title 'ETAPA 1/3 · Origem' -Tone 'Primary'
-    Write-SentinelKeyValue -Key 'Path atual' -Value $originPreview -Tone 'Secondary' -KeyWidth 14
+    Write-SentinelKeyValue -Key 'Path atual' -Value (Get-SentinelCompactDisplayText -Text $originPreview -MaxLength 72) -Tone 'Secondary' -KeyWidth 14
     Write-Host ''
     Write-SentinelMenuOptions -Options @(
-        (New-SentinelMenuOptionLine -Label 'Path atual' -Description 'diretório informado' -LabelWidth 14),
-        (New-SentinelMenuOptionLine -Label 'Clonar GitHub' -Description 'clonagem local/interativa' -LabelWidth 14)
+        (New-SentinelMenuOptionLine -Label 'Path atual' -Description 'usa o diretório informado' -LabelWidth 14),
+        (New-SentinelMenuOptionLine -Label 'Clonar GitHub' -Description 'baixa uma cópia local antes da leitura' -LabelWidth 14)
     )
+    Write-SentinelHintLines -Lines (Get-SentinelSourceModeHintLines)
 
     $choice = $null
     while ($choice -notin @('1', '2')) {
         $choice = (Read-Host '  Escolha a origem [1-2]').Trim()
         if ($choice -notin @('1', '2')) {
-            Write-SentinelStatus -Message 'Entrada inválida. Escolha 1 ou 2.' -Type Warning
+            Write-SentinelInvalidSelection -Expected '1 ou 2'
         }
     }
 
@@ -2336,7 +2489,7 @@ function Resolve-ProjectSource {
     while ([string]::IsNullOrWhiteSpace($repoUrl)) {
         $repoUrl = (Read-Host '  URL do repositório GitHub (ex: https://github.com/user/repo.git)').Trim()
         if ([string]::IsNullOrWhiteSpace($repoUrl)) {
-            Write-SentinelStatus -Message 'URL não pode ser vazia.' -Type Warning
+            Write-SentinelStatus -Message 'URL vazia. Cole uma URL válida ou Ctrl+C cancela.' -Type Warning
         }
     }
 
@@ -2367,14 +2520,14 @@ function Resolve-ProjectSource {
         while ([string]::IsNullOrWhiteSpace($manualPath)) {
             $manualPath = (Read-Host '  Informe o caminho completo do diretório de destino').Trim()
             if ([string]::IsNullOrWhiteSpace($manualPath)) {
-                Write-SentinelStatus -Message 'Caminho não pode ser vazio.' -Type Warning
+                Write-SentinelStatus -Message 'Caminho vazio. Informe um diretório válido ou Ctrl+C cancela.' -Type Warning
                 continue
             }
             try {
                 $resolvedManual = [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($manualPath))
             }
             catch {
-                Write-SentinelStatus -Message 'Caminho inválido. Tente novamente.' -Type Warning
+                Write-SentinelStatus -Message 'Caminho inválido. Revise o diretório e tente novamente. Ctrl+C cancela.' -Type Warning
                 $manualPath = $null
                 continue
             }
@@ -2715,21 +2868,37 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     }
 
     $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName
-    Write-LocalTextArtifact -Path $sourceArtifactPath -Content $finalContent -UseBom
     $finalOutputPath = $sourceArtifactPath
+    $persistSourceArtifact = $true
+    $generateDeterministicMetaPrompt = (($currentExtractionMode -eq 'full') -or ($currentExtractionMode -eq 'blueprint') -or (($currentExtractionMode -eq 'sniper') -and ($resolvedRouteMode -eq 'director')))
 
-    if ($resolvedRouteMode -eq 'director') {
+    if ($generateDeterministicMetaPrompt -and ($currentExtractionMode -eq 'full' -or $currentExtractionMode -eq 'blueprint')) {
+        $persistSourceArtifact = $false
+    }
+
+    if ($persistSourceArtifact) {
+        Write-LocalTextArtifact -Path $sourceArtifactPath -Content $finalContent -UseBom
+    }
+    elseif (Test-Path $sourceArtifactPath -PathType Leaf) {
+        Remove-Item -Path $sourceArtifactPath -Force -ErrorAction SilentlyContinue
+    }
+
+    Reset-SentinelTransientConsoleLine
+
+    if ($generateDeterministicMetaPrompt) {
         $deterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
         $deterministicOutputPath = Join-Path $script:EffectiveOutputDirectory $deterministicOutputFile
 
         Write-UILog -Message 'Compilando meta-prompt determinístico local diretamente no bundler...' -Color $ThemeCyan
-        $deterministicContent = New-DeterministicMetaPromptArtifact -ProjectNameValue $projectName -ExecutorTargetValue $ExecutorTarget -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -SourceArtifactFileName $sourceArtifactFileName -OutputArtifactFileName $deterministicOutputFile -BundleContent $finalContent -Files $filesToProcess
+        $deterministicContent = New-DeterministicMetaPromptArtifact -ProjectNameValue $projectName -ExecutorTargetValue $ExecutorTarget -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -RouteMode $resolvedRouteMode -SourceArtifactFileName $sourceArtifactFileName -OutputArtifactFileName $deterministicOutputFile -BundleContent $finalContent -Files $filesToProcess
 
         Write-LocalTextArtifact -Path $deterministicOutputPath -Content $deterministicContent -UseBom
         $finalOutputPath = $deterministicOutputPath
 
         Write-UILog -Message ("Meta-prompt salvo em: {0}" -f $deterministicOutputPath) -Color $ThemeSuccess
     }
+
+    Reset-SentinelTransientConsoleLine
 
     if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
         Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemeWarn
@@ -2749,16 +2918,19 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     $extraData.generatedFromLocalGovernance = $true
 
     $resultMetaPath = Join-Path $script:EffectiveOutputDirectory ([System.IO.Path]::GetFileNameWithoutExtension($finalOutputPath) + '.json')
-    $metaResult = Write-LocalExecutionMeta -ProjectNameValue $projectName -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -ExecutorTargetValue $ExecutorTarget -SourceArtifactPath $sourceArtifactPath -OutputPath $finalOutputPath -ResultMetaPath $resultMetaPath -DurationMs $durationMs -ExtraData $extraData
+    $metaSourceArtifactPath = if ($persistSourceArtifact) { $sourceArtifactPath } else { $null }
+    $metaResult = Write-LocalExecutionMeta -ProjectNameValue $projectName -RouteMode $resolvedRouteMode -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -ExecutorTargetValue $ExecutorTarget -SourceArtifactPath $metaSourceArtifactPath -OutputPath $finalOutputPath -ResultMetaPath $resultMetaPath -DurationMs $durationMs -ExtraData $extraData
 
+    Reset-SentinelTransientConsoleLine
     Write-Host ''
-    Write-SentinelSection -Title 'SUCESSO' -Tone 'Success'
+    Write-SentinelSection -Title '[^_^] SUCESSO' -Tone 'Success'
     $artifactName = [System.IO.Path]::GetFileName($finalOutputPath)
     $metaName = [System.IO.Path]::GetFileName($metaResult.ResultMetaPath)
     Write-SentinelKeyValue -Key 'Artefato' -Value $artifactName -Tone 'Success' -KeyWidth 12
     Write-SentinelKeyValue -Key 'Metadata' -Value $metaName -Tone 'Secondary' -KeyWidth 12
     Write-SentinelKeyValue -Key 'Destino' -Value $script:EffectiveOutputDirectory -Tone 'Secondary' -KeyWidth 12
     Write-Host ''
+    Write-SentinelPostSuccessGuidance -RouteMode $resolvedRouteMode -ArtifactPath $finalOutputPath -MetadataPath $metaResult.ResultMetaPath
 }
 catch {
     $errorMessage = $_.Exception.Message

@@ -77,7 +77,7 @@ function Get-SentinelLogLeafName {
 function Format-SentinelLogMessage {
     param([Parameter(Mandatory = $true)][string]$Message)
 
-    $normalizedMessage = $Message.Trim()
+    $normalizedMessage = $Message.Trim() -replace '\s+', ' '
     if ([string]::IsNullOrWhiteSpace($normalizedMessage)) {
         return $normalizedMessage
     }
@@ -116,7 +116,7 @@ function Format-SentinelLogMessage {
         }
     }
 
-    return $normalizedMessage
+    return ($normalizedMessage -replace "`n", " " -replace "`r", " ")
 }
 
 function Write-UILog {
@@ -202,19 +202,21 @@ function Write-SentinelOperationSummary {
 
     $routeLabel = if ($RouteModeValue -eq 'executor') { 'Executor' } else { 'Diretor' }
     $extractionLabel = switch ($BundleModeValue) {
-        'full'      { 'Full' }
+        'full' { 'Full' }
         'blueprint' { 'Blueprint' }
-        'sniper'    { 'Sniper' }
+        'sniper' { 'Sniper' }
         'txtExport' { 'TXT Export' }
-        'txt_export'{ 'TXT Export' }
-        default     { $BundleModeValue }
+        'txt_export' { 'TXT Export' }
+        default { $BundleModeValue }
     }
 
     $displayOrigin = if (-not [string]::IsNullOrWhiteSpace($OriginValue) -and $OriginValue -eq (Get-Location).Path) {
         "mesmo diretório ($ProjectNameValue)"
-    } elseif (-not [string]::IsNullOrWhiteSpace($OriginValue)) {
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($OriginValue)) {
         Get-SentinelCompactDisplayText -Text $OriginValue -MaxLength 60
-    } else {
+    }
+    else {
         ''
     }
 
@@ -263,7 +265,8 @@ function Write-SentinelExecutionStreamHeader {
 
     $displayOutput = if ($EffectiveOutputDirectory -eq (Get-Location).Path) {
         "mesmo diretório ($ProjectNameValue)"
-    } else {
+    }
+    else {
         Get-SentinelCompactDisplayText -Text $EffectiveOutputDirectory -MaxLength 60
     }
 
@@ -356,20 +359,25 @@ function Write-SentinelPostSuccessGuidance {
     $artifactLeaf = [System.IO.Path]::GetFileName($ArtifactPath)
     $metadataLeaf = [System.IO.Path]::GetFileName($MetadataPath)
 
-    Write-SentinelDivider -Label '' -Tone 'Secondary' -Character '━'
+    Write-SentinelDivider -Label '' -Tone 'Secondary' -Character '━' -Width 70
     Write-SentinelText -Text '  💡 PRÓXIMO PASSO' -Color $SentinelTheme.Secondary
     Write-Host ''
 
     if ($RouteMode -eq 'executor') {
-        Write-SentinelText -Text ("  • {0} é o contexto operacional final — pronto para execução direta." -f $artifactLeaf) -Color $SentinelTheme.Secondary
-        Write-SentinelText -Text "  • Envie diretamente para a IA executora — nenhum meta-prompt adicional necessário." -Color $SentinelTheme.Secondary
+        $artifactLine = Format-SentinelFitLine -Text ("• {0} é o contexto operacional final — pronto para execução direta." -f $artifactLeaf) -Indent 2
+        Write-SentinelText -Text ("  " + $artifactLine) -Color $SentinelTheme.Secondary
+        $execLine = Format-SentinelFitLine -Text "• Envie diretamente para a IA executora — nenhum meta-prompt adicional necessário." -Indent 2
+        Write-SentinelText -Text ("  " + $execLine) -Color $SentinelTheme.Secondary
     }
     else {
-        Write-SentinelText -Text ("  • {0} é um meta-prompt determinístico local — copie o conteúdo." -f $artifactLeaf) -Color $SentinelTheme.Secondary
-        Write-SentinelText -Text "  • Cole no ChatGPT, Claude ou Gemini para gerar artefatos baseados no blueprint." -Color $SentinelTheme.Secondary
+        $artifactLine = Format-SentinelFitLine -Text ("• {0} é um meta-prompt determinístico local — copie o conteúdo." -f $artifactLeaf) -Indent 2
+        Write-SentinelText -Text ("  " + $artifactLine) -Color $SentinelTheme.Secondary
+        $execLine = Format-SentinelFitLine -Text "• Cole no ChatGPT, Claude ou Gemini para gerar artefatos baseados no blueprint." -Indent 2
+        Write-SentinelText -Text ("  " + $execLine) -Color $SentinelTheme.Secondary
     }
 
-    Write-SentinelText -Text ("  • {0} guarda auditoria e metadados para automação." -f $metadataLeaf) -Color $SentinelTheme.Muted
+    $metaLine = Format-SentinelFitLine -Text ("• {0} guarda auditoria e metadados para automação." -f $metadataLeaf) -Indent 2
+    Write-SentinelText -Text ("  " + $metaLine) -Color $SentinelTheme.Muted
     Write-Host ''
 }
 
@@ -1084,23 +1092,23 @@ function Get-BlueprintContractEntries {
     }
 
     $bucketOrder = @{
-        'ENTRYPOINTS & ORCHESTRATION' = 0
-        'APPLICATION ENTRYPOINTS' = 1
-        'PROTOCOLS & OPERATING RULES' = 2
-        'CONTRACTS & TYPES' = 3
-        'INTEGRATIONS & BOUNDARIES' = 4
-        'FLOW ORCHESTRATORS' = 5
+        'ENTRYPOINTS & ORCHESTRATION'     = 0
+        'APPLICATION ENTRYPOINTS'         = 1
+        'PROTOCOLS & OPERATING RULES'     = 2
+        'CONTRACTS & TYPES'               = 3
+        'INTEGRATIONS & BOUNDARIES'       = 4
+        'FLOW ORCHESTRATORS'              = 5
         'DISCOVERY, WRITERS & EXTRACTORS' = 6
-        'CORE MODULES' = 7
-        'DOMAIN CORE' = 8
+        'CORE MODULES'                    = 7
+        'DOMAIN CORE'                     = 8
     }
 
     $bucketCap = @{
-        'APPLICATION ENTRYPOINTS' = 6
-        'CONTRACTS & TYPES' = 8
+        'APPLICATION ENTRYPOINTS'   = 6
+        'CONTRACTS & TYPES'         = 8
         'INTEGRATIONS & BOUNDARIES' = 8
-        'FLOW ORCHESTRATORS' = 6
-        'DOMAIN CORE' = 6
+        'FLOW ORCHESTRATORS'        = 6
+        'DOMAIN CORE'               = 6
     }
 
     $entries = New-Object System.Collections.Generic.List[object]
@@ -1115,30 +1123,30 @@ function Get-BlueprintContractEntries {
         $order = if ($bucketOrder.ContainsKey($bucket)) { $bucketOrder[$bucket] } else { 999 }
 
         $entries.Add([pscustomobject]@{
-            File = $file
-            RelativePath = $relPath
-            Bucket = $bucket
-            BucketOrder = $order
-        }) | Out-Null
+                File         = $file
+                RelativePath = $relPath
+                Bucket       = $bucket
+                BucketOrder  = $order
+            }) | Out-Null
     }
 
     $sorted = @($entries | Sort-Object BucketOrder, RelativePath -Unique)
 
     $bucketCounts = @{}
     $result = @($sorted | Where-Object {
-        $b = $_.Bucket
-        if (-not $bucketCounts.ContainsKey($b)) {
-            $bucketCounts[$b] = 0
-        }
-        $cap = if ($bucketCap.ContainsKey($b)) { $bucketCap[$b] } else { 999 }
-        if ($bucketCounts[$b] -lt $cap) {
-            $bucketCounts[$b]++
-            $true
-        }
-        else {
-            $false
-        }
-    })
+            $b = $_.Bucket
+            if (-not $bucketCounts.ContainsKey($b)) {
+                $bucketCounts[$b] = 0
+            }
+            $cap = if ($bucketCap.ContainsKey($b)) { $bucketCap[$b] } else { 999 }
+            if ($bucketCounts[$b] -lt $cap) {
+                $bucketCounts[$b]++
+                $true
+            }
+            else {
+                $false
+            }
+        })
 
     return $result
 }
@@ -1997,10 +2005,10 @@ function Get-EnvironmentSnapshot {
     }
 
     return [ordered]@{
-        osVersion = [System.Environment]::OSVersion.VersionString
-        psVersion = $psVersion
-        isWindows = $isWindowsFlag
-        hostname = [System.Environment]::MachineName
+        osVersion           = [System.Environment]::OSVersion.VersionString
+        psVersion           = $psVersion
+        isWindows           = $isWindowsFlag
+        hostname            = [System.Environment]::MachineName
         processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     }
 }
@@ -2012,8 +2020,8 @@ function Get-UserSnapshot {
     }
 
     return [ordered]@{
-        username = $username
-        domain = $env:USERDOMAIN
+        username      = $username
+        domain        = $env:USERDOMAIN
         homeDirectory = $(if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $env:USERPROFILE } else { $env:HOME })
     }
 }
@@ -2044,23 +2052,23 @@ function Write-LocalExecutionMeta {
     $outputHash = Get-FileHashSha256 -Path $OutputPath
 
     $meta = [ordered]@{
-        ok = $true
-        executionId = [guid]::NewGuid().ToString()
-        executionMode = 'local'
-        routeMode = $RouteMode
-        extractionMode = $ExtractionMode
-        documentMode = $DocumentMode
-        executorTarget = $ExecutorTargetValue
-        generatedAt = [DateTime]::UtcNow.ToString('o')
-        durationMs = $DurationMs
+        ok                 = $true
+        executionId        = [guid]::NewGuid().ToString()
+        executionMode      = 'local'
+        routeMode          = $RouteMode
+        extractionMode     = $ExtractionMode
+        documentMode       = $DocumentMode
+        executorTarget     = $ExecutorTargetValue
+        generatedAt        = [DateTime]::UtcNow.ToString('o')
+        durationMs         = $DurationMs
         sourceArtifactPath = $SourceArtifactPath
         sourceArtifactHash = $sourceHash
-        outputPath = $OutputPath
-        outputHash = $outputHash
-        resultMetaPath = $resolvedResultMetaPath
-        generatedLocally = $true
-        environment = Get-EnvironmentSnapshot
-        user = Get-UserSnapshot
+        outputPath         = $OutputPath
+        outputHash         = $outputHash
+        resultMetaPath     = $resolvedResultMetaPath
+        generatedLocally   = $true
+        environment        = Get-EnvironmentSnapshot
+        user               = Get-UserSnapshot
     }
 
     if ($ExtraData) {
@@ -2073,7 +2081,7 @@ function Write-LocalExecutionMeta {
     Write-LocalTextArtifact -Path $resolvedResultMetaPath -Content $metaJson -UseBom
 
     return [pscustomobject]@{
-        Meta = [pscustomobject]$meta
+        Meta           = [pscustomobject]$meta
         ResultMetaPath = $resolvedResultMetaPath
     }
 }
@@ -2340,11 +2348,11 @@ function Export-OperationFilesToTxtDirectory {
     }
 
     return [pscustomobject]@{
-        StagingDirectory = $outputDirectory
+        StagingDirectory        = $outputDirectory
         StagingDirectoryRemoved = $stagingRemoved
-        ZipFilePath = $zipFilePath
-        ExportedFiles = $exportedFiles
-        SkippedFiles = $skippedFiles
+        ZipFilePath             = $zipFilePath
+        ExportedFiles           = $exportedFiles
+        SkippedFiles            = $skippedFiles
     }
 }
 
@@ -2434,9 +2442,9 @@ function Resolve-ProjectSource {
 
     if ($NonInteractive) {
         return [pscustomobject]@{
-            ResolvedPath = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
-            SourceMode = 'local'
-            OriginalInput = $DefaultPath
+            ResolvedPath     = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
+            SourceMode       = 'local'
+            OriginalInput    = $DefaultPath
             CloneCleanupInfo = $null
         }
     }
@@ -2471,9 +2479,9 @@ function Resolve-ProjectSource {
         $resolved = [System.IO.Path]::GetFullPath((Resolve-Path -Path $DefaultPath -ErrorAction Stop).Path)
         Write-UILog -Message ("Origem: path local -> {0}" -f $resolved) -Color $ThemeSuccess
         return [pscustomobject]@{
-            ResolvedPath = $resolved
-            SourceMode = 'local'
-            OriginalInput = $DefaultPath
+            ResolvedPath     = $resolved
+            SourceMode       = 'local'
+            OriginalInput    = $DefaultPath
             CloneCleanupInfo = $null
         }
     }
@@ -2551,17 +2559,17 @@ function Resolve-ProjectSource {
     Write-UILog -Message 'Clone concluído com sucesso.' -Color $ThemeSuccess
 
     $cleanupInfo = @{
-        Path = $targetDir
-        CloneMode = $cloneMode
-        KeepClone = $keepClone
-        CreatedByUs = $true
+        Path             = $targetDir
+        CloneMode        = $cloneMode
+        KeepClone        = $keepClone
+        CreatedByUs      = $true
         cleanupPerformed = $false
     }
 
     return [pscustomobject]@{
-        ResolvedPath = $targetDir
-        SourceMode = 'github'
-        OriginalInput = $repoUrl
+        ResolvedPath     = $targetDir
+        SourceMode       = 'github'
+        OriginalInput    = $repoUrl
         CloneCleanupInfo = $cleanupInfo
     }
 }
@@ -2719,9 +2727,9 @@ try {
     Write-SentinelExecutionStreamHeader -ChoiceValue $choice -ProjectNameValue $projectName -DiscoveredFileCount $foundFiles.Count -FilesToProcessCount $filesToProcess.Count -UnselectedFileCount $unselectedFiles.Count -EffectiveOutputDirectory $script:EffectiveOutputDirectory
 
     $baseExtraData = @{
-        sourceMode = $sourceMode
-        originalInput = $originalInput
-        resolvedWorkingPath = $resolvedTargetPath
+        sourceMode               = $sourceMode
+        originalInput            = $originalInput
+        resolvedWorkingPath      = $resolvedTargetPath
         effectiveOutputDirectory = $script:EffectiveOutputDirectory
     }
 
@@ -2775,6 +2783,8 @@ try {
             Write-UILog -Message 'Iniciando Modo Sniper...' -Color $ThemePink
         }
 
+        Write-Host ''
+
         $finalContent += "## ${headerTitle}: $projectName`n`n"
 
         if ($choice -eq '3') {
@@ -2819,6 +2829,7 @@ try {
     else {
         $sourceArtifactFileName = Get-VibeArtifactFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
         Write-UILog -Message 'Iniciando Modo Blueprint...' -Color $ThemeCyan
+        Write-Host ''
         $finalContent += "## BLUEPRINT: $projectName`n`n"
         $finalContent += "### 0. BLUEPRINT CONTRACT`n"
         $finalContent += (Convert-ToSafeMarkdownCodeBlock -Content @'
@@ -2862,6 +2873,8 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
             Write-UILog -Message 'package.json não encontrado; dependências externas serão omitidas do blueprint.' -Color $ThemeWarn
             $finalContent += "* package.json não visível no recorte local.`n"
         }
+        
+        Write-Host ''
 
         $finalContent += "`n"
         $finalContent += New-BlueprintContractsBlock -Files $filesToProcess -IssueCollector ([ref]$blueprintIssues) -StructureHeading '## PROJECT STRUCTURE' -ContractsHeading '### 3. CORE DOMAINS & CONTRACTS' -LogExtraction
@@ -2889,6 +2902,7 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
         $deterministicOutputFile = Get-DeterministicMetaPromptOutputFileName -ProjectNameValue $projectName -ExtractionMode $currentExtractionMode -RouteMode $resolvedRouteMode
         $deterministicOutputPath = Join-Path $script:EffectiveOutputDirectory $deterministicOutputFile
 
+        Write-Host ''
         Write-UILog -Message 'Compilando meta-prompt determinístico local diretamente no bundler...' -Color $ThemeCyan
         $deterministicContent = New-DeterministicMetaPromptArtifact -ProjectNameValue $projectName -ExecutorTargetValue $ExecutorTarget -ExtractionMode $currentExtractionMode -DocumentMode $currentDocumentMode -RouteMode $resolvedRouteMode -SourceArtifactFileName $sourceArtifactFileName -OutputArtifactFileName $deterministicOutputFile -BundleContent $finalContent -Files $filesToProcess
 
@@ -2901,6 +2915,7 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     Reset-SentinelTransientConsoleLine
 
     if ($blueprintIssues -and $blueprintIssues.Count -gt 0) {
+        Write-Host ''
         Write-UILog -Message ("Artefato gerado com {0} aviso(s)." -f $blueprintIssues.Count) -Color $ThemeWarn
         foreach ($issue in ($blueprintIssues | Select-Object -First 10)) {
             Write-UILog -Message $issue -Color $ThemeWarn
@@ -2926,9 +2941,23 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     Write-SentinelSection -Title '[^_^] SUCESSO' -Tone 'Success'
     $artifactName = [System.IO.Path]::GetFileName($finalOutputPath)
     $metaName = [System.IO.Path]::GetFileName($metaResult.ResultMetaPath)
-    Write-SentinelKeyValue -Key 'Artefato' -Value $artifactName -Tone 'Success' -KeyWidth 12
-    Write-SentinelKeyValue -Key 'Metadata' -Value $metaName -Tone 'Secondary' -KeyWidth 12
-    Write-SentinelKeyValue -Key 'Destino' -Value $script:EffectiveOutputDirectory -Tone 'Secondary' -KeyWidth 12
+
+    # Trunca nomes de arquivo muito longos para evitar quebra de linha
+    $displayArtifact = Get-SentinelCompactDisplayText -Text $artifactName -MaxLength 50
+    $displayMeta = Get-SentinelCompactDisplayText -Text $metaName -MaxLength 50
+
+    # Compacta o diretório de destino (já existia a lógica "mesmo diretório")
+    $currentDir = (Get-Location).Path
+    $displayDestino = if ($script:EffectiveOutputDirectory -eq $currentDir) {
+        "mesmo diretório ($projectName)"
+    }
+    else {
+        Get-SentinelCompactDisplayText -Text $script:EffectiveOutputDirectory -MaxLength 60
+    }
+
+    Write-SentinelKeyValue -Key 'Artefato' -Value $displayArtifact -Tone 'Success' -KeyWidth 12
+    Write-SentinelKeyValue -Key 'Metadata' -Value $displayMeta -Tone 'Secondary' -KeyWidth 12
+    Write-SentinelKeyValue -Key 'Destino' -Value $displayDestino -Tone 'Secondary' -KeyWidth 12
     Write-Host ''
     Write-SentinelPostSuccessGuidance -RouteMode $resolvedRouteMode -ArtifactPath $finalOutputPath -MetadataPath $metaResult.ResultMetaPath
 }

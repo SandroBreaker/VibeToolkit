@@ -58,7 +58,7 @@ $script:SentinelPlainGlyphs = @{
 }
 
 $script:SentinelUiLayout = @{
-    DividerWidth          = 34
+    DividerWidth          = 70
     ProgressBarWidth      = 18
     ProgressActivityWidth = 24
 }
@@ -79,16 +79,38 @@ $SentinelTheme = [ordered]@{
     }
 }
 
+function Get-SentinelConsoleWidth {
+    try {
+        $windowWidth = [Console]::WindowWidth
+        if ($windowWidth -gt 0) {
+            return $windowWidth
+        }
+    }
+    catch {
+    }
+
+    try {
+        $rawUiWidth = $Host.UI.RawUI.WindowSize.Width
+        if ($rawUiWidth -gt 0) {
+            return $rawUiWidth
+        }
+    }
+    catch {
+    }
+
+    return 120
+}
+
 function Get-SentinelToneColor {
     param([string]$Tone = 'Primary')
 
     switch ($Tone) {
-        'Success'   { return $SentinelTheme.Success }
-        'Warning'   { return $SentinelTheme.Warning }
-        'Error'     { return $SentinelTheme.Error }
+        'Success' { return $SentinelTheme.Success }
+        'Warning' { return $SentinelTheme.Warning }
+        'Error' { return $SentinelTheme.Error }
         'Secondary' { return $SentinelTheme.Secondary }
-        'Muted'     { return $SentinelTheme.Muted }
-        default     { return $SentinelTheme.Primary }
+        'Muted' { return $SentinelTheme.Muted }
+        default { return $SentinelTheme.Primary }
     }
 }
 
@@ -115,11 +137,35 @@ function Get-SentinelTrimmedText {
     return ($value.Substring(0, $MaxLength - 1) + '…')
 }
 
+function Format-SentinelFitLine {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Text = '',
+        [int]$Indent = 4,
+        [int]$Margin = 2
+    )
+
+    $value = if ($null -eq $Text) { '' } else { [string]$Text }
+
+    $windowWidth = 80
+    try { $windowWidth = [Math]::Max([Console]::WindowWidth, 40) } catch {}
+
+    # Available columns after the indent prefix (e.g. "  ✅ ")
+    $maxLen = $windowWidth - $Indent - $Margin
+    if ($maxLen -le 4) { return $value }
+
+    if ($value.Length -le $maxLen) {
+        return $value
+    }
+
+    return ($value.Substring(0, $maxLen - 1) + '…')
+}
+
 function Get-SentinelDividerContent {
     [CmdletBinding()]
     param(
         [AllowEmptyString()][string]$Label = '',
-        [int]$Width = 34,
+        [int]$Width = 52,
         [string]$Character = '━'
     )
 
@@ -212,7 +258,7 @@ function Write-SentinelDivider {
         [string]$Label,
         [ValidateSet('Primary', 'Success', 'Warning', 'Error', 'Secondary', 'Muted')]
         [string]$Tone = 'Secondary',
-        [int]$Width = 34,
+        [int]$Width = 52,
         [string]$Character = '━'
     )
 
@@ -265,50 +311,150 @@ function Write-SentinelHeader {
         [string]$Variant = 'Hero'
     )
 
-    switch ($Variant) {
-        'Minimal' {
-            Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
-            Write-Host ''
-            return
-        }
-        'Compact' {
-                $logo = @(
-                    '  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ',
-                    '  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ',
-                    '  ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ',
-                    '  ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ',
-                    '  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗',
-                    '  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝'
-                )
+    if ($Variant -eq 'Minimal') {
+        Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
+        Write-Host ''
+        return
+    }
 
-                foreach ($line in $logo) {
-                    Write-SentinelText -Text $line -Color $SentinelTheme.Primary
+    $logo = @(
+        '   (`  ,_ |      |)   _   |  _                                    ',
+        '   _)(|||(||`()  |)|`(/_(||<(/_|`                                 ',
+        '                                                                  ',
+        '  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ',
+        '  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ',
+        '  ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ',
+        '  ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ',
+        '  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗',
+        '  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝',
+        '                                                                  ',
+        '                                                                  '
+    )
+    $mascot = @(
+        ''            
+    )
+
+    $gap = 1
+    $consoleWidth = Get-SentinelConsoleWidth
+    $logoLines = @($logo | ForEach-Object { $_.TrimEnd() })
+    $mascotLines = @($mascot | ForEach-Object { $_.TrimEnd() })
+    $leftWidth = (($logoLines | Measure-Object -Maximum Length).Maximum | ForEach-Object { if ($_ -is [int]) { $_ } else { 0 } })
+    $rightWidth = (($mascotLines | Measure-Object -Maximum Length).Maximum | ForEach-Object { if ($_ -is [int]) { $_ } else { 0 } })
+    $useFixedColumn = ($leftWidth + $gap + $rightWidth) -le $consoleWidth
+
+    $bestOffset = 0
+
+    if (-not $useFixedColumn) {
+        $minOffset = - ($mascotLines.Count - 1)
+        $maxOffset = $logoLines.Count - 1
+        $bestOverflow = [int]::MaxValue
+        $bestWidth = [int]::MaxValue
+        $bestDistance = [int]::MaxValue
+
+        for ($offset = $minOffset; $offset -le $maxOffset; $offset++) {
+            $startRow = [Math]::Min(0, $offset)
+            $endRow = [Math]::Max($logoLines.Count - 1, $offset + $mascotLines.Count - 1)
+            $maxCombinedWidth = 0
+
+            for ($row = $startRow; $row -le $endRow; $row++) {
+                $logoIndex = $row
+                $mascotIndex = $row - $offset
+
+                $logoLine = if ($logoIndex -ge 0 -and $logoIndex -lt $logoLines.Count) { $logoLines[$logoIndex] } else { '' }
+                $mascotLine = if ($mascotIndex -ge 0 -and $mascotIndex -lt $mascotLines.Count) { $mascotLines[$mascotIndex] } else { '' }
+
+                $combinedWidth = 0
+                if (-not [string]::IsNullOrEmpty($logoLine) -and -not [string]::IsNullOrEmpty($mascotLine)) {
+                    $combinedWidth = $logoLine.Length + $gap + $mascotLine.Length
                 }
-                Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
-                Write-SentinelDivider -Label $Title -Tone 'Primary'
-                Write-Host ''
-                return
-        }
-        default {
-            $logo = @(
-                '  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ',
-                '  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ',
-                '  ███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║     ',
-                '  ╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║     ',
-                '  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗',
-                '  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝'
-            )
+                elseif (-not [string]::IsNullOrEmpty($logoLine)) {
+                    $combinedWidth = $logoLine.Length
+                }
+                else {
+                    $combinedWidth = $mascotLine.Length
+                }
 
-            Write-SentinelDivider -Tone 'Secondary'
-            foreach ($line in $logo) {
-                Write-SentinelText -Text $line -Color $SentinelTheme.Primary
+                if ($combinedWidth -gt $maxCombinedWidth) {
+                    $maxCombinedWidth = $combinedWidth
+                }
             }
 
-            Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Secondary
-            Write-SentinelDivider -Tone 'Secondary'
-            Write-Host ''
+            $overflow = [Math]::Max(0, $maxCombinedWidth - $consoleWidth)
+            $distance = [Math]::Abs($offset)
+
+            if (
+                $overflow -lt $bestOverflow -or
+                ($overflow -eq $bestOverflow -and $maxCombinedWidth -lt $bestWidth) -or
+                ($overflow -eq $bestOverflow -and $maxCombinedWidth -eq $bestWidth -and $distance -lt $bestDistance)
+            ) {
+                $bestOverflow = $overflow
+                $bestWidth = $maxCombinedWidth
+                $bestDistance = $distance
+                $bestOffset = $offset
+            }
         }
     }
+
+    $p = $SentinelTheme.Primary
+    $s = $SentinelTheme.Secondary
+    $r = $SentinelTheme.Reset
+
+    if ($Variant -eq 'Hero') {
+        Write-SentinelDivider -Tone 'Secondary'
+    }
+
+    $startRow = [Math]::Min(0, $bestOffset)
+    $endRow = [Math]::Max($logoLines.Count - 1, $bestOffset + $mascotLines.Count - 1)
+
+    for ($row = $startRow; $row -le $endRow; $row++) {
+        $logoIndex = $row
+        $mascotIndex = $row - $bestOffset
+
+        $logoLine = if ($logoIndex -ge 0 -and $logoIndex -lt $logoLines.Count) { $logoLines[$logoIndex] } else { '' }
+        $mascotLine = if ($mascotIndex -ge 0 -and $mascotIndex -lt $mascotLines.Count) { $mascotLines[$mascotIndex] } else { '' }
+
+        if (-not [string]::IsNullOrEmpty($logoLine) -and -not [string]::IsNullOrEmpty($mascotLine)) {
+            if ($useFixedColumn) {
+                $paddedLogo = $logoLine.PadRight($leftWidth + $gap)
+                Write-Host ("{0}{1}{2}{3}{4}{5}" -f $p, $paddedLogo, $r, $s, $mascotLine, $r)
+            }
+            else {
+                Write-Host ("{0}{1}{2}{3}{4}{5}{6}" -f $p, $logoLine, $r, (' ' * $gap), $s, $mascotLine, $r)
+            }
+
+            continue
+        }
+
+        if (-not [string]::IsNullOrEmpty($logoLine)) {
+            Write-Host ("{0}{1}{2}" -f $p, $logoLine, $r)
+            continue
+        }
+
+        if (-not [string]::IsNullOrEmpty($mascotLine)) {
+            if ($useFixedColumn) {
+                Write-Host ("{0}{1}{2}{3}{4}" -f (' ' * ($leftWidth + $gap)), $s, $mascotLine, $r, '')
+            }
+            else {
+                Write-Host ("{0}{1}{2}" -f $s, $mascotLine, $r)
+            }
+
+            continue
+        }
+
+        Write-Host ''
+    }
+
+    if ($Variant -eq 'Hero') {
+        Write-Host ''
+        Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Secondary
+        Write-SentinelDivider -Tone 'Secondary'
+    }
+    else {
+        # Compact
+        Write-SentinelText -Text ("  {0} · {1}" -f $Title, $Version) -Color $SentinelTheme.Primary
+    }
+    
+    Write-Host ''
 }
 
 function Write-SentinelSection {
@@ -402,14 +548,16 @@ function Write-SentinelProgress {
     $windowWidth = 80
     try {
         $windowWidth = [Math]::Max([Console]::WindowWidth, 60)
-    } catch {}
+    }
+    catch {}
 
     if ($Total -le 0) {
         $activityText = Get-SentinelTrimmedText -Text $Activity -MaxLength ([Math]::Max(($script:SentinelUiLayout.ProgressActivityWidth + 8), 12))
         $line = ("  ⟳ {0}" -f $activityText).PadRight($windowWidth - 1)
         if ($script:SentinelAnsiEnabled) {
             Write-Host ("`r{0}{1}{2}" -f (Get-SentinelToneColor -Tone $Tone), $line, $SentinelTheme.Reset) -NoNewline
-        } else {
+        }
+        else {
             Write-Host ("`r{0}" -f $line) -NoNewline
         }
         return
@@ -424,17 +572,25 @@ function Write-SentinelProgress {
     $bar = if ($script:SentinelAnsiEnabled) { ('█' * $filled) + ('░' * $empty) } else { ('#' * $filled) + ('·' * $empty) }
     $percent = [int][Math]::Round(($ratio * 100), 0, [System.MidpointRounding]::AwayFromZero)
 
+    # Monta a base fixa: "  ⟳ Activity  [████████] 100% (37/37)"
     $progressBase = "  ⟳ {0}  [{1}] {2,3}% ({3}/{4})" -f $Activity, $bar, $percent, $safeCurrent, $Total
+    $baseLength = $progressBase.Length
+
+    # Calcula espaço restante para o nome do item
+    $availableForItem = $windowWidth - $baseLength - 2   # margem de segurança
 
     $displayItem = ''
-    if (-not [string]::IsNullOrWhiteSpace($Item)) {
-        $maxItemLen = [Math]::Max($windowWidth - $progressBase.Length - 4, 8)
+    if (-not [string]::IsNullOrWhiteSpace($Item) -and $availableForItem -gt 4) {
+        # Extrai só o nome do arquivo (ou último segmento) para priorizar legibilidade
         $leaf = [System.IO.Path]::GetFileName($Item)
         if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = $Item }
-        $displayItem = if ($leaf.Length -le $maxItemLen) {
-            '  ' + $leaf
-        } else {
-            '  …' + $leaf.Substring([Math]::Max($leaf.Length - $maxItemLen + 1, 0))
+
+        if ($leaf.Length -le $availableForItem) {
+            $displayItem = '  ' + $leaf
+        }
+        else {
+            # Trunca com "…" no início para preservar final do nome (mais informativo)
+            $displayItem = '  …' + $leaf.Substring($leaf.Length - ($availableForItem - 3))
         }
     }
 
@@ -443,7 +599,8 @@ function Write-SentinelProgress {
     if ($script:SentinelAnsiEnabled) {
         $color = Get-SentinelToneColor -Tone $Tone
         Write-Host ("`r{0}{1}{2}" -f $color, $line, $SentinelTheme.Reset) -NoNewline
-    } else {
+    }
+    else {
         Write-Host ("`r{0}" -f $line) -NoNewline
     }
 }
@@ -462,11 +619,13 @@ function Write-SentinelStatus {
     $color = switch ($Type) {
         'Success' { $SentinelTheme.Success }
         'Warning' { $SentinelTheme.Warning }
-        'Error'   { $SentinelTheme.Error }
-        default   { $SentinelTheme.Primary }
+        'Error' { $SentinelTheme.Error }
+        default { $SentinelTheme.Primary }
     }
 
-    Write-SentinelText -Text ("  {0} {1}" -f $glyph, $Message) -Color $color
+    # Indent: 2 spaces + glyph (1-2 chars) + 1 space = ~4-5 chars
+    $fittedMessage = Format-SentinelFitLine -Text $Message -Indent 5 -Margin 2
+    Write-SentinelText -Text ("  {0} {1}" -f $glyph, $fittedMessage) -Color $color
 }
 
 function Show-SentinelMenu {

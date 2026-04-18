@@ -2669,6 +2669,8 @@ try {
         (Join-Path $modulesDir 'VibeBundleWriter.psm1'),
         (Join-Path $modulesDir 'VibeSignatureExtractor.psm1'),
         (Join-Path $modulesDir 'VibeFileDiscovery.psm1')
+        (Join-Path $modulesDir 'VibeExecutionFlow.psm1')
+        (Join-Path $modulesDir 'VibeDeclaredFlowBridge.psm1')
     )
 
     foreach ($modulePath in $requiredModulePaths) {
@@ -2924,6 +2926,7 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     else {
         Write-UILog -Message 'Artefato consolidado com sucesso.' -Color $ThemeSuccess
     }
+
     $durationMs = [int][Math]::Round(((Get-Date) - $executionStartedAt).TotalMilliseconds)
     $extraData = $baseExtraData.Clone()
     $extraData.sourceArtifactFile = $sourceArtifactFileName
@@ -2931,6 +2934,64 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     $extraData.fileCount = $filesToProcess.Count
     $extraData.unselectedFileCount = $unselectedFiles.Count
     $extraData.generatedFromLocalGovernance = $true
+
+    $sentinelFlowRuntime = Invoke-SentinelDeclaredFinalizationFlow `
+        -ToolkitDir $script:ToolkitDir `
+        -ProjectNameValue $projectName `
+        -ExecutorTargetValue $ExecutorTarget `
+        -ExtractionMode $currentExtractionMode `
+        -DocumentMode $currentDocumentMode `
+        -RouteMode $resolvedRouteMode `
+        -SourceArtifactFileName $sourceArtifactFileName `
+        -OutputArtifactFileName ([System.IO.Path]::GetFileName($finalOutputPath)) `
+        -BundleContent $finalContent `
+        -Files $filesToProcess `
+        -MetaPromptOutputPath $finalOutputPath `
+        -SignatureExtractor {
+            param($file, [ref]$issueMessage)
+            Get-BundlerSignaturesForFile -File $file -IssueMessage $issueMessage
+        } `
+        -MetaPromptBuilder {
+            param($flowState)
+            New-DeterministicMetaPromptArtifact `
+                -ProjectNameValue $flowState.ProjectNameValue `
+                -ExecutorTargetValue $flowState.ExecutorTargetValue `
+                -ExtractionMode $flowState.ExtractionMode `
+                -DocumentMode $flowState.DocumentMode `
+                -RouteMode $flowState.RouteMode `
+                -SourceArtifactFileName $flowState.SourceArtifactFileName `
+                -OutputArtifactFileName $flowState.OutputArtifactFileName `
+                -BundleContent $flowState.BundleContent `
+                -Files $flowState.Files
+        } `
+        -ArtifactWriter {
+            param($path, $content)
+            Write-LocalTextArtifact -Path $path -Content $content -UseBom
+        } `
+        -LogWriter {
+            param($message)
+            if (Get-Command -Name Write-UILog -ErrorAction SilentlyContinue) {
+                Write-UILog -Message $message
+            }
+            else {
+                Write-Host $message
+            }
+        }
+
+    if ($sentinelFlowRuntime) {
+        $extraData.executionFlow = @{
+            flowId     = $sentinelFlowRuntime.flowId
+            sourcePath = $sentinelFlowRuntime.sourcePath
+            status     = $sentinelFlowRuntime.status
+            startedAt  = $sentinelFlowRuntime.startedAt
+            finishedAt = $sentinelFlowRuntime.finishedAt
+            durationMs   = $sentinelFlowRuntime.durationMs
+            fallbackCount = $sentinelFlowRuntime.fallbackCount
+            steps        = @($sentinelFlowRuntime.steps)
+        }
+
+        $extraData.stepAudit = @($sentinelFlowRuntime.steps)
+    }
 
     $resultMetaPath = Join-Path $script:EffectiveOutputDirectory ([System.IO.Path]::GetFileNameWithoutExtension($finalOutputPath) + '.json')
     $metaSourceArtifactPath = if ($persistSourceArtifact) { $sourceArtifactPath } else { $null }

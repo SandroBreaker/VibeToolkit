@@ -1,56 +1,63 @@
 # VibeToolkit
 
-Toolkit operacional para **empacotar contexto técnico**, **extrair recortes estruturais** e **gerar artefatos determinísticos** para uso com IA.
+O VibeToolkit é um toolkit para empacotar contexto técnico de um projeto, gerar recortes mais enxutos quando for preciso e produzir artefatos prontos para uso em fluxos com IA.
 
-> PowerShell 7 preferencial • Windows PowerShell 5.1 como fallback no Windows • CLI/headless • Menu de contexto no Windows • Saídas em Markdown, JSON e ZIP
+Ele foi pensado para um uso bem operacional: rodar no terminal, apontar para um projeto e sair com um bundle, um blueprint, um recorte manual ou uma exportação em texto, dependendo do que você precisa.
 
-O projeto combina uma **CLI em PowerShell**, módulos para descoberta e serialização de contexto, geração de artefatos em Markdown/JSON/ZIP e integração operacional com rotas **Director** e **Executor**.
+> PowerShell 7 é o caminho principal. No Windows, o script ainda aceita fallback para Windows PowerShell 5.1 quando necessário.
 
 ---
 
-## O que o VibeToolkit faz
+## O que ele faz
 
-Capacidades centrais:
+Na prática, o toolkit cobre estes cenários:
 
-- **Bundler Engine**: consolida arquivos relevantes do projeto em artefatos legíveis.
-- **CLI interativa**: execução via terminal com seleção de modo e feedback operacional.
-- **Blueprint**: extrai visão estrutural focada em contratos, assinaturas e pontos de integração.
-- **Sniper / Manual**: trabalha com recorte parcial e controlado, sem extrapolar contexto invisível.
-- **Route modes**:
-  - **Director**: gera meta-prompt determinístico local.
-  - **Executor**: gera contexto operacional pronto para implementação direta.
-- **Governança local**: grava metadata útil de execução em JSON.
-- **TXT Export**: exporta arquivos como texto plano em diretório + ZIP final.
+- juntar o contexto relevante de um projeto em um artefato só
+- gerar uma visão mais estrutural e econômica do código, focada em contratos e pontos de integração
+- montar recortes manuais quando você não quer mandar o projeto inteiro
+- exportar conteúdo em `.txt` + `.zip` para fluxos que não lidam bem com Markdown
+- separar a saída entre rota **director** e rota **executor**
+- gravar metadata local da execução em JSON
 
 ---
 
 ## Requisitos
 
-### Obrigatórios
+### Windows
 
-- **PowerShell 7** como runtime principal e recomendado
-- **Windows PowerShell 5.1** como fallback compatível apenas no Windows
+- PowerShell 7 recomendado
+- Windows PowerShell 5.1 como fallback
 
-### Compatibilidade
+### Linux e macOS
 
-- **Windows**: suporte completo, incluindo instalador e menu de contexto, com política **PS7 preferencial / PS5.1 fallback**
-- **Linux/macOS**: uso via CLI com **PowerShell 7 (`pwsh`)**; o menu de contexto do Windows não se aplica
+- PowerShell 7 (`pwsh`)
+
+O menu de contexto é um recurso do Windows. Em Linux e macOS, o uso é direto pela CLI.
 
 ---
 
-## Instalação e execução
+## Instalação e uso rápido
 
-No Windows, o caminho mais simples é pelo menu de contexto. Nos fluxos Windows, o toolkit tenta **PowerShell 7 (`pwsh`)** primeiro e usa **Windows PowerShell 5.1 (`powershell.exe`)** apenas como fallback quando necessário.
-
-Em Linux/macOS, a CLI continua dependendo de **PowerShell 7 (`pwsh`)**.
-
-### Instalador principal
+No Windows, o jeito mais simples é usar o instalador principal:
 
 ```bat
 .\Instalar VibeToolkit.cmd
 ```
 
-### CLI direta
+Quando você executa esse arquivo sem argumentos, o comportamento é o seguinte:
+
+- se o VibeToolkit ainda não estiver instalado, ele faz a instalação
+- se já estiver instalado, ele pergunta se você quer **Repair**, **Uninstall** ou **Cancelar**
+
+Também dá para chamar diretamente com argumento:
+
+```bat
+.\Instalar VibeToolkit.cmd /install
+.\Instalar VibeToolkit.cmd /repair
+.\Instalar VibeToolkit.cmd /uninstall
+```
+
+### Execução direta pela CLI
 
 ```powershell
 .\project-bundler-cli.ps1
@@ -62,80 +69,57 @@ Em Linux/macOS, a CLI continua dependendo de **PowerShell 7 (`pwsh`)**.
 .\project-bundler-headless.ps1
 ```
 
+### Observação sobre o instalador
+
+O instalador gera automaticamente o arquivo `run-vibe-headless.vbs` quando necessário para a integração com o menu de contexto do Windows. Esse arquivo não precisa ficar exposto como entrada principal do repositório.
+
 ---
 
 ## Modos operacionais
 
 ### Extraction mode
 
-| Modo        | Objetivo                                                       | Saída típica                           |
-| ----------- | -------------------------------------------------------------- | -------------------------------------- |
-| `full`      | contexto completo do projeto                                   | bundle Markdown + metadata JSON        |
-| `blueprint` | estrutura, contratos e integração com menor custo              | blueprint Markdown + metadata JSON     |
-| `sniper`    | recorte manual e cirúrgico                                     | bundle manual Markdown + metadata JSON |
-| `txtExport` | exportação textual para ambientes que preferem arquivos `.txt` | ZIP final + metadata JSON              |
+| Modo | Quando usar | Saída típica |
+| --- | --- | --- |
+| `full` | quando você quer o máximo de contexto visível do projeto | bundle Markdown + metadata JSON |
+| `blueprint` | quando o foco é estrutura, contratos e integração com menos custo | blueprint Markdown + metadata JSON |
+| `sniper` | quando você quer mandar só um recorte manual e controlado | bundle manual Markdown + metadata JSON |
+| `txtExport` | quando o destino prefere `.txt` em vez de bundle Markdown | ZIP final + metadata JSON |
 
-### Observações por modo
+### Leituras rápidas por modo
 
 #### Full
 
-Use quando a IA precisa do máximo de contexto visível: código, docs, configs e estrutura.
+Melhor quando a outra ponta precisa de visão ampla: código, docs, configs e estrutura.
 
 #### Blueprint
 
-Use quando o foco é arquitetura, contratos, entrypoints, integração e leitura econômica de contexto.
+Melhor quando o objetivo é entender arquitetura, contratos, entrypoints e integrações sem carregar contexto demais.
 
 #### Sniper
 
-Use quando você já sabe quais arquivos quer enviar e precisa de um recorte mínimo, sem carregar o restante do projeto.
+Melhor quando você já sabe quais arquivos importam e quer um recorte cirúrgico.
 
 #### TXT Export
 
-Use quando o destino não trabalha bem com bundle Markdown.
-
-No contrato atual do projeto, o `txtExport`:
-
-* gera os `.txt` internamente
-* compacta o resultado
-* remove o staging ao final
-* deixa **apenas o `.zip` como artefato final visível**
+Melhor quando o ambiente de destino não lida bem com Markdown. Nesse modo, o toolkit gera os `.txt`, compacta o resultado e deixa o `.zip` como artefato final.
 
 ---
 
-## Rotas de saída
+## Rotas
 
-| Rota       | Objetivo                                                         |
-| ---------- | ---------------------------------------------------------------- |
-| `director` | gerar um artefato analítico com meta-prompt local determinístico |
-| `executor` | gerar o contexto final pronto para uso direto                    |
+| Rota | Objetivo |
+| --- | --- |
+| `director` | gerar um artefato analítico com framing mais forte |
+| `executor` | gerar um artefato final pronto para uso direto |
 
 ### Quando usar `director`
 
-Quando você quer que outra IA receba um framing operacional mais forte, com instrução explícita de leitura do artefato e de atuação por papel.
+Quando você quer passar o contexto para outra IA junto com uma camada mais explícita de enquadramento operacional.
 
 ### Quando usar `executor`
 
-Quando você quer o resultado final pronto para colar na IA sem camada intermediária.
-
----
-
-## Compatibilidade rápida por modo x rota
-
-| Combinação             | Resultado principal          | Observações                                         |
-| ---------------------- | ---------------------------- | --------------------------------------------------- |
-| `full + director`      | bundle + meta-prompt         | fluxo completo delegado                             |
-| `full + executor`      | bundle final direto          | fluxo completo direto                               |
-| `blueprint + director` | blueprint + meta-prompt      | foco em contratos/estrutura                         |
-| `blueprint + executor` | blueprint direto             | foco em contratos/estrutura                         |
-| `sniper + director`    | recorte manual + meta-prompt | em modo não interativo exige `-SelectedPaths`       |
-| `sniper + executor`    | recorte manual direto        | em modo não interativo exige `-SelectedPaths`       |
-| `txtExport + director` | pasta `.txt` + `.zip`        | a rota afeta identidade/meta, não o miolo do export |
-| `txtExport + executor` | pasta `.txt` + `.zip`        | a rota afeta identidade/meta, não o miolo do export |
-
-### Observações importantes
-
-* O CLI aceita `txtExport` e também o alias `txt_export`.
-* Internamente, `txtExport` é persistido como `ExtractionMode = txt_export`.
+Quando você quer a saída mais direta possível, pronta para colar e usar.
 
 ---
 
@@ -169,9 +153,7 @@ Quando você quer o resultado final pronto para colar na IA sem camada intermedi
 
 ## Artefatos gerados
 
-Os nomes seguem uma taxonomia determinística por modo e rota.
-
-Exemplos:
+Os nomes seguem uma convenção por modo e rota. Exemplos:
 
 ```text
 _bundle_executor__MeuProjeto.md
@@ -182,14 +164,14 @@ _txt_export_executor__MeuProjeto.zip
 _bundle_executor__MeuProjeto.json
 ```
 
-### O que cada família representa
+### Leitura rápida dos prefixos
 
-* `bundle`: contexto completo
-* `blueprint`: contexto arquitetural/econômico
-* `manual`: recorte sniper
-* `meta-prompt`: framing determinístico da rota Director
-* `txt_export`: exportação ZIP do modo TXT Export
-* `.json`: metadata local da execução
+- `bundle`: contexto completo
+- `blueprint`: visão estrutural e arquitetural
+- `manual`: recorte sniper
+- `meta-prompt`: framing da rota director
+- `txt_export`: exportação ZIP do modo TXT Export
+- `.json`: metadata da execução
 
 ---
 
@@ -198,14 +180,8 @@ _bundle_executor__MeuProjeto.json
 ```text
 VibeToolkit/
 ├── Instalar VibeToolkit.cmd
-├── setup-vibe-toolkit.ps1
 ├── project-bundler-cli.ps1
 ├── project-bundler-headless.ps1
-├── run-vibe-headless.vbs
-├── install-vibe-menu.cmd
-├── install-vibe-menu.ps1
-├── uninstall-vibe-menu.cmd
-├── uninstall-vibe-menu.ps1
 ├── lib/
 │   └── SentinelUI.ps1
 ├── modules/
@@ -216,48 +192,38 @@ VibeToolkit/
 └── README.md
 ```
 
-### Papéis principais dos arquivos
+### Papel dos arquivos principais
 
-* **`project-bundler-cli.ps1`**: engine principal
-* **`project-bundler-headless.ps1`**: wrapper fino para preservar integração operacional
-* **`run-vibe-headless.vbs`**: launcher do menu de contexto
-* **`install-vibe-menu.ps1`**: grava a integração de shell
-* **`uninstall-vibe-menu.ps1`**: remove integrações existentes
-* **`modules/*`**: descoberta, escrita, protocolo e extração de assinaturas
-* **`lib/SentinelUI.ps1`**: camada visual do terminal
+- **`Instalar VibeToolkit.cmd`**: ponto de entrada de instalação, reparo e remoção no Windows
+- **`project-bundler-cli.ps1`**: engine principal
+- **`project-bundler-headless.ps1`**: wrapper headless para integração operacional
+- **`modules/*`**: descoberta, escrita, protocolo e extração de assinaturas
+- **`lib/SentinelUI.ps1`**: camada visual usada pelo terminal
 
 ---
 
-## Comportamento relevante do produto
+## Comportamento relevante
 
 ### Descoberta de arquivos
 
-O toolkit ignora artefatos gerados anteriormente e trabalha apenas sobre arquivos elegíveis do projeto.
+O toolkit ignora artefatos já gerados e trabalha só com arquivos elegíveis do projeto.
 
 ### Metadata local
 
-Toda execução gera metadata local em JSON ao lado do artefato final correspondente.
+Toda execução gera um JSON de metadata ao lado do artefato final correspondente.
 
----
+### Política de runtime
 
-## Política de runtime
+A regra é simples:
 
-Regra operacional do projeto:
-
-* **Tentar `pwsh` primeiro**
-* **Usar `powershell.exe` apenas como fallback no Windows**
-* **Não tratar Windows PowerShell 5.1 como padrão**
-* **Em Linux/macOS, manter dependência de `pwsh`**
-
-Essa política preserva compatibilidade com ambientes Windows legados sem rebaixar o fluxo principal quando PowerShell 7 estiver disponível.
+- tentar `pwsh` primeiro
+- usar `powershell.exe` apenas como fallback no Windows
+- em Linux/macOS, seguir com `pwsh`
 
 ---
 
 ## Resumo
 
-O VibeToolkit opera com dois princípios práticos:
+O VibeToolkit tenta resolver um problema bem específico: preparar contexto técnico de forma organizada, com pouco atrito, sem depender de improviso a cada execução.
 
-1. **PS7-first**
-2. **PS5.1 apenas como contingência no Windows**
-
-Com isso, os launchers e entrypoints mantêm o caminho moderno como padrão, sem perder degradabilidade onde o PowerShell 7 não estiver disponível.
+Se a ideia é mandar o projeto inteiro, fazer um recorte mais econômico ou montar um bundle manual, o toolkit já cobre esse caminho sem exigir uma coreografia de scripts soltos na raiz.

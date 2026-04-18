@@ -1,0 +1,37 @@
+{
+  "flow": "full_director",
+  "version": "1",
+  "description": "Declared flow for the real full + director finalization path.",
+  "steps": [
+    "discover_files",
+    {
+      "id": "extract_signatures",
+      "fallback": {
+        "action": "continue",
+        "outputSummary": "signature audit skipped; keep current pipeline output"
+      }
+    },
+    "build_bundle",
+    {
+      "id": "build_meta_prompt",
+      "fallback": {
+        "action": "use_existing",
+        "outputSummary": "existing deterministic meta-prompt reused"
+      }
+    },
+    {
+      "id": "validate_result",
+      "fallback": {
+        "action": "continue",
+        "outputSummary": "validation warning recorded; keep current artifact pipeline"
+      }
+    },
+    {
+      "id": "save_artifacts",
+      "fallback": {
+        "action": "use_existing",
+        "outputSummary": "existing artifacts kept"
+      }
+    }
+  ]
+}

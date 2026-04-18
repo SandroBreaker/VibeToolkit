@@ -7,12 +7,15 @@ function Resolve-SentinelDeclaredFlowId {
         [string]$RouteMode
     )
 
-    $declaredFlowMap = @{
+    $declaredFlowMap = [ordered]@{
+        'full:director'      = 'full_director'
+        'full:executor'      = 'full_executor'
+        'blueprint:director' = 'blueprint_director'
         'blueprint:executor' = 'blueprint_executor'
     }
 
     $resolutionKey = ('{0}:{1}' -f [string]$ExtractionMode, [string]$RouteMode).ToLowerInvariant()
-    if ($declaredFlowMap.ContainsKey($resolutionKey)) {
+    if ($declaredFlowMap.Contains($resolutionKey)) {
         return [string]$declaredFlowMap[$resolutionKey]
     }
 

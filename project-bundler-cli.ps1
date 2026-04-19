@@ -1744,7 +1744,7 @@ function Get-DeterministicRelevantFiles {
 
     $priorityPatterns = @(
         '.\project-bundler-cli.ps1',
-        '.\project-bundler-headless.ps1',
+        '.\entrypoints\project-bundler-headless.ps1',
         '.\modules\VibeDirectorProtocol.psm1',
         '.\modules\VibeBundleWriter.psm1',
         '.\modules\VibeFileDiscovery.psm1',

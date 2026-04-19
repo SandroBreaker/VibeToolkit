@@ -72,8 +72,8 @@ Também é possível chamar diretamente com argumento:
   - fundo de pasta (`Directory\Background`)
   - unidade (`Drive`)
 - usa o escopo do **usuário atual** (`HKCU`)
-- gera ou atualiza o wrapper **`run-vibe-headless.vbs`**
-- aponta a execução visual para **`project-bundler-headless.ps1`**
+- gera ou atualiza o wrapper **`entrypoints/run-vibe-headless.vbs`**
+- aponta a execução visual para **`entrypoints/project-bundler-headless.ps1`**
 
 ---
 
@@ -88,7 +88,7 @@ Também é possível chamar diretamente com argumento:
 ### Wrapper headless
 
 ```powershell
-.\project-bundler-headless.ps1
+.\entrypoints/project-bundler-headless.ps1
 ```
 
 ### Parâmetros operacionais principais
@@ -234,7 +234,7 @@ Nesses casos, a execução segue pelo pipeline direto da CLI.
 ### Headless wrapper apontando para outro diretório
 
 ```powershell
-.\project-bundler-headless.ps1 -Path "C:\dev\MeuProjeto" -BundleMode blueprint -RouteMode executor -NonInteractive
+.\entrypoints/project-bundler-headless.ps1 -Path "C:\dev\MeuProjeto" -BundleMode blueprint -RouteMode executor -NonInteractive
 ```
 
 ---
@@ -284,8 +284,8 @@ No modo **`txtExport`**, a saída final é sempre o **ZIP**.
 VibeToolkit/
 ├── Instalar-VibeToolkit.cmd
 ├── project-bundler-cli.ps1
-├── project-bundler-headless.ps1
-├── run-vibe-headless.vbs
+├── entrypoints/project-bundler-headless.ps1
+├── entrypoints/run-vibe-headless.vbs
 ├── vibe-toolkit.Tests.ps1
 ├── flows/
 │   ├── blueprint_director.flow.json
@@ -310,8 +310,8 @@ VibeToolkit/
 
 - **`Instalar-VibeToolkit.cmd`**: instalação, reparo, remoção e integração com o Explorer
 - **`project-bundler-cli.ps1`**: engine canônica e pipeline principal
-- **`project-bundler-headless.ps1`**: wrapper/shim para preservar contratos de integração
-- **`run-vibe-headless.vbs`**: launcher visual usado pelo menu de contexto do Windows
+- **`entrypoints/project-bundler-headless.ps1`**: wrapper/shim para preservar contratos de integração
+- **`entrypoints/run-vibe-headless.vbs`**: launcher visual usado pelo menu de contexto do Windows
 - **`flows/*.flow.json`**: definição declarativa de etapas, fallback e auditoria
 - **`modules/VibeDeclaredFlowBridge.psm1`**: resolução do fluxo declarado aplicável
 - **`modules/VibeExecutionFlow.psm1`**: runtime do fluxo, registro de etapa e fallback

@@ -1,4 +1,4 @@
-﻿# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
+# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
 
 <#
 .SYNOPSIS
@@ -20,7 +20,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$cliScript = Join-Path $PSScriptRoot 'project-bundler-cli.ps1'
+$projectRoot = Split-Path -Path $PSScriptRoot -Parent
+$cliScript = Join-Path $projectRoot 'project-bundler-cli.ps1'
 
 if (-not (Test-Path $cliScript -PathType Leaf)) {
     throw "Erro Crítico: A engine canônica CLI não foi encontrada em: $cliScript`no wrapper headless requer a CLI para funcionar."

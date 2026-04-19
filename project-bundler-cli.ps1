@@ -1793,122 +1793,23 @@ function New-DeterministicMetaPromptArtifact {
 
     $generatedAt = [DateTime]::UtcNow.ToString('o')
     $relevantFiles = @(Get-DeterministicRelevantFiles -Files $Files)
-    $relevantFilesValue = if ($relevantFiles.Count -gt 0) { $relevantFiles -join ', ' } else { 'não identificados objetivamente' }
-    $extractionLabel = Get-VibeExtractionModeLabel -ExtractionMode $ExtractionMode
-    $routeLabel = Get-VibeArtifactRouteLabel -RouteMode $RouteMode
-    $isExecutorRoute = ($routeLabel -eq 'executor')
 
     $visibleArtifactHeading = if ($ExtractionMode -eq 'blueprint') { '## BLUEPRINT VISÍVEL' } else { '## BUNDLE VISÍVEL' }
 
     $lines = New-Object System.Collections.Generic.List[string]
+    $protocolContent = Get-VibeDeterministicMetaPromptProtocolContent `
+        -ProjectNameValue $ProjectNameValue `
+        -ExecutorTargetValue $ExecutorTargetValue `
+        -ExtractionMode $ExtractionMode `
+        -DocumentMode $DocumentMode `
+        -RouteMode $RouteMode `
+        -SourceArtifactFileName $SourceArtifactFileName `
+        -OutputArtifactFileName $OutputArtifactFileName `
+        -GeneratedAt $generatedAt `
+        -RelevantFiles $relevantFiles
 
-    if ($isExecutorRoute) {
-        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### MODO ATIVO') | Out-Null
-        $lines.Add('- Assuma imediatamente o modo Executor. Este documento contém regras operacionais ativas, não texto informativo.') | Out-Null
-        $lines.Add('- Papel obrigatório durante toda a resposta: Senior Implementation Agent (Sniper).') | Out-Null
-        $lines.Add('- Rota ativa: DIRETO PARA O EXECUTOR.') | Out-Null
-        $lines.Add(('- Extração efetiva: {0}.' -f $extractionLabel)) | Out-Null
-        $lines.Add(('- Executor alvo de referência: {0}.' -f $ExecutorTargetValue)) | Out-Null
-        $lines.Add('- Missão: materializar o escopo solicitado com fidelidade ao artefato visível, preservando contratos, comportamento e arquitetura existente.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
-        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do artefato fonte.') | Out-Null
-        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
-        $lines.Add('3. Ler depois `SOURCE FILES` do mesmo artefato.') | Out-Null
-        $lines.Add('4. Só então iniciar análise de impacto, implementação e resposta técnica.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### FONTE PRIMÁRIA E RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
-        $lines.Add(('- Artefato fonte obrigatório: {0}.' -f $SourceArtifactFileName)) | Out-Null
-        $lines.Add('- O artefato visível é a única fonte primária obrigatória.') | Out-Null
-        $lines.Add('- Não usar memória anterior, contexto implícito, seleção remota ou comportamento presumido fora do artefato.') | Out-Null
-        $lines.Add('- Não inferir módulos, contratos, dependências ou comportamentos fora do recorte visível.') | Out-Null
-        $lines.Add('- Quando faltar contexto, declarar explicitamente `não visível no recorte enviado`.') | Out-Null
-        $lines.Add('- Recortes prioritários para leitura após a estrutura: ' + $relevantFilesValue + '.') | Out-Null
-        $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
-        $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### SAÍDA OBRIGATÓRIA') | Out-Null
-        $lines.Add('- Entregar Relatório de Impacto, implementação por arquivo, protocolo de verificação e validações de regressão compatíveis com o escopo.') | Out-Null
-        $lines.Add('- Quando houver lacuna de contexto, declarar isso explicitamente em vez de inventar implementação não visível.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('## EXECUTION META') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add(('- Projeto: {0}' -f $ProjectNameValue)) | Out-Null
-        $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName)) | Out-Null
-        $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName)) | Out-Null
-        $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue)) | Out-Null
-        $lines.Add('- Route mode: executor') | Out-Null
-        $lines.Add(('- Document mode: {0}' -f $DocumentMode)) | Out-Null
-        $lines.Add(('- Gerado em: {0}' -f $generatedAt)) | Out-Null
-        $lines.Add('') | Out-Null
-    }
-    else {
-        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — DIRETOR v4.0') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### MODO ATIVO') | Out-Null
-        $lines.Add('- Assuma imediatamente o modo Diretor. Este documento contém regras operacionais ativas, não texto informativo.') | Out-Null
-        $lines.Add('- Papel obrigatório durante toda a resposta: Diretor de Engenharia Agêntica em modo determinístico local.') | Out-Null
-        $lines.Add('- Rota ativa: VIA DIRETOR.') | Out-Null
-        $lines.Add(('- Extração efetiva: {0}.' -f $extractionLabel)) | Out-Null
-        $lines.Add(('- Executor alvo de referência: {0}.' -f $ExecutorTargetValue)) | Out-Null
-        $lines.Add('- Fronteira de execução: não implementar código diretamente.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
-        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do artefato fonte.') | Out-Null
-        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
-        $lines.Add('3. Ler depois `SOURCE FILES` do mesmo artefato.') | Out-Null
-        $lines.Add('4. Só então analisar, responder e compor instruções para o Executor.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### FONTE PRIMÁRIA E RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
-        $lines.Add(('- Artefato fonte obrigatório: {0}.' -f $SourceArtifactFileName)) | Out-Null
-        $lines.Add('- O artefato visível é a única fonte primária obrigatória.') | Out-Null
-        $lines.Add('- Não usar memória anterior, contexto implícito, seleção remota ou comportamento presumido fora do artefato.') | Out-Null
-        $lines.Add('- Quando faltar contexto, declarar explicitamente `não visível no recorte enviado`.') | Out-Null
-        $lines.Add('- Recortes prioritários para leitura após a estrutura: ' + $relevantFilesValue + '.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('## EXECUTION META') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add(('- Projeto: {0}' -f $ProjectNameValue)) | Out-Null
-        $lines.Add(('- Artefato fonte: {0}' -f $SourceArtifactFileName)) | Out-Null
-        $lines.Add(('- Artefato final: {0}' -f $OutputArtifactFileName)) | Out-Null
-        $lines.Add(('- Executor alvo: {0}' -f $ExecutorTargetValue)) | Out-Null
-        $lines.Add('- Route mode: director') | Out-Null
-        $lines.Add(('- Document mode: {0}' -f $DocumentMode)) | Out-Null
-        $lines.Add(('- Gerado em: {0}' -f $generatedAt)) | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('[META-PROMPT PARA EXECUTOR]') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('## PROMPT PARA O EXECUTOR (COPIAR ABAIXO)') | Out-Null
-        $lines.Add('--- INÍCIO DO PROMPT ---') | Out-Null
-        $lines.Add('## ATIVAÇÃO OPERACIONAL LOCAL — EXECUTOR v4.0') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### MODO ATIVO') | Out-Null
-        $lines.Add('- Assuma imediatamente o modo Executor. Este prompt contém regras operacionais ativas, não texto informativo.') | Out-Null
-        $lines.Add('- Papel obrigatório durante toda a resposta: Senior Implementation Agent (Sniper).') | Out-Null
-        $lines.Add('- Missão: materializar a solicitação estritamente dentro do escopo visível do bundle.') | Out-Null
-        $lines.Add(('- Extraction mode: {0}.' -f $ExtractionMode)) | Out-Null
-        $lines.Add(('- Executor alvo: {0}.' -f $ExecutorTargetValue)) | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### ORDEM OBRIGATÓRIA DE LEITURA') | Out-Null
-        $lines.Add('1. Ler primeiro `PROJECT STRUCTURE` do bundle visível.') | Out-Null
-        $lines.Add('2. Assimilar apenas as pastas, arquivos e limites realmente visíveis.') | Out-Null
-        $lines.Add('3. Ler depois `SOURCE FILES`.') | Out-Null
-        $lines.Add('4. Só então iniciar análise de impacto, implementação e resposta técnica.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### RESTRIÇÕES OBRIGATÓRIAS') | Out-Null
-        $lines.Add('- O bundle visível é a única fonte primária obrigatória.') | Out-Null
-        $lines.Add('- Não inferir módulos, contratos, dependências ou comportamentos fora do bundle visível.') | Out-Null
-        $lines.Add('- Declarar explicitamente qualquer lacuna de contexto com `não visível no recorte enviado`.') | Out-Null
-        $lines.Add('- Aplicar Lei da Subtração antes de adicionar novo código.') | Out-Null
-        $lines.Add('- Preservar contratos, nomes, comportamento existente e compatibilidade com o fluxo atual.') | Out-Null
-        $lines.Add('- Não usar memória anterior reaproveitada, seleção remota, parametrização externa ou qualquer superfície de IA removida.') | Out-Null
-        $lines.Add('') | Out-Null
-        $lines.Add('### SAÍDA OBRIGATÓRIA') | Out-Null
-        $lines.Add('- Entregar Relatório de Impacto, implementação por arquivo, protocolo de verificação e verificação de segurança.') | Out-Null
-        $lines.Add('- Propor checks de regressão, cenários negativos e validações compatíveis com o escopo.') | Out-Null
-        $lines.Add('--- FIM DO PROMPT ---') | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($protocolContent)) {
+        $lines.Add($protocolContent.Trim()) | Out-Null
         $lines.Add('') | Out-Null
     }
 

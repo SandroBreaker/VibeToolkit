@@ -1,0 +1,159 @@
+﻿{
+  "ok": true,
+  "executionId": "b874b44f-0657-496e-b295-2389ef1ab2eb",
+  "executionMode": "local",
+  "routeMode": "director",
+  "extractionMode": "full",
+  "documentMode": "full",
+  "executorTarget": "IA Generativa (GenAI)",
+  "generatedAt": "2026-04-19T17:57:12.9401226Z",
+  "durationMs": 2630,
+  "sourceArtifactPath": "",
+  "sourceArtifactHash": null,
+  "outputPath": "C:\\dev\\VibeToolkit\\_meta-prompt_bundle_diretor__VibeToolkit.md",
+  "outputHash": "73508889538056c09a59eeb38a6352c29e5148d309a47344ec6713a6e1a93539",
+  "resultMetaPath": "C:\\dev\\VibeToolkit\\_meta-prompt_bundle_diretor__VibeToolkit.json",
+  "generatedLocally": true,
+  "environment": {
+    "osVersion": "Microsoft Windows NT 10.0.19045.0",
+    "psVersion": "7.6.0",
+    "isWindows": true,
+    "hostname": "SANDROBREAKER",
+    "processArchitecture": "X64"
+  },
+  "user": {
+    "username": "alede",
+    "domain": "SANDROBREAKER",
+    "homeDirectory": "C:\\Users\\alede"
+  },
+  "sourceMode": "local",
+  "stepAudit": [
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "17 file(s) available in current pipeline state",
+      "finishedAt": "2026-04-19T17:57:12.1624909Z",
+      "stepId": "discover_files",
+      "durationMs": 20,
+      "startedAt": "2026-04-19T17:57:12.1420018Z"
+    },
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "11 file(s) with extractable signatures",
+      "finishedAt": "2026-04-19T17:57:12.7053385Z",
+      "stepId": "extract_signatures",
+      "durationMs": 466,
+      "startedAt": "2026-04-19T17:57:12.2396707Z"
+    },
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "bundle already materialized (240573 chars)",
+      "finishedAt": "2026-04-19T17:57:12.7266620Z",
+      "stepId": "build_bundle",
+      "durationMs": 13,
+      "startedAt": "2026-04-19T17:57:12.7140904Z"
+    },
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "existing deterministic meta-prompt reused",
+      "finishedAt": "2026-04-19T17:57:12.7515111Z",
+      "stepId": "build_meta_prompt",
+      "durationMs": 19,
+      "startedAt": "2026-04-19T17:57:12.7326781Z"
+    },
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "bundle/meta prompt validated",
+      "finishedAt": "2026-04-19T17:57:12.8015796Z",
+      "stepId": "validate_result",
+      "durationMs": 15,
+      "startedAt": "2026-04-19T17:57:12.7867500Z"
+    },
+    {
+      "fallbackUsed": false,
+      "status": "completed",
+      "outputSummary": "existing artifacts preserved",
+      "finishedAt": "2026-04-19T17:57:12.8177449Z",
+      "stepId": "save_artifacts",
+      "durationMs": 13,
+      "startedAt": "2026-04-19T17:57:12.8045298Z"
+    }
+  ],
+  "generatedFromLocalGovernance": true,
+  "sourceArtifactFile": "_bundle_diretor__VibeToolkit.md",
+  "fileCount": 17,
+  "resolvedWorkingPath": "C:\\dev\\VibeToolkit",
+  "originalInput": "C:\\dev\\VibeToolkit",
+  "effectiveOutputDirectory": "C:\\dev\\VibeToolkit",
+  "outputArtifactFile": "_meta-prompt_bundle_diretor__VibeToolkit.md",
+  "unselectedFileCount": 0,
+  "executionFlow": {
+    "sourcePath": "C:\\dev\\VibeToolkit\\flows\\full_director.flow.json",
+    "flowId": "full_director",
+    "finishedAt": "2026-04-19T17:57:12.8203833Z",
+    "status": "completed",
+    "startedAt": "2026-04-19T17:57:12.0978806Z",
+    "fallbackCount": 0,
+    "durationMs": 723,
+    "steps": [
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "17 file(s) available in current pipeline state",
+        "finishedAt": "2026-04-19T17:57:12.1624909Z",
+        "stepId": "discover_files",
+        "durationMs": 20,
+        "startedAt": "2026-04-19T17:57:12.1420018Z"
+      },
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "11 file(s) with extractable signatures",
+        "finishedAt": "2026-04-19T17:57:12.7053385Z",
+        "stepId": "extract_signatures",
+        "durationMs": 466,
+        "startedAt": "2026-04-19T17:57:12.2396707Z"
+      },
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "bundle already materialized (240573 chars)",
+        "finishedAt": "2026-04-19T17:57:12.7266620Z",
+        "stepId": "build_bundle",
+        "durationMs": 13,
+        "startedAt": "2026-04-19T17:57:12.7140904Z"
+      },
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "existing deterministic meta-prompt reused",
+        "finishedAt": "2026-04-19T17:57:12.7515111Z",
+        "stepId": "build_meta_prompt",
+        "durationMs": 19,
+        "startedAt": "2026-04-19T17:57:12.7326781Z"
+      },
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "bundle/meta prompt validated",
+        "finishedAt": "2026-04-19T17:57:12.8015796Z",
+        "stepId": "validate_result",
+        "durationMs": 15,
+        "startedAt": "2026-04-19T17:57:12.7867500Z"
+      },
+      {
+        "fallbackUsed": false,
+        "status": "completed",
+        "outputSummary": "existing artifacts preserved",
+        "finishedAt": "2026-04-19T17:57:12.8177449Z",
+        "stepId": "save_artifacts",
+        "durationMs": 13,
+        "startedAt": "2026-04-19T17:57:12.8045298Z"
+      }
+    ]
+  }
+}

@@ -78,6 +78,24 @@ function Get-VibeDirectorLocalProtocolHeader {
 
 ### REGRA DE COMPOSIÇÃO PARA O EXECUTOR
 - A saída do Diretor deve resultar em instrução operacional copiável para o Executor.
+- Antes de compor o próximo prompt para o Executor, o Diretor deve inspecionar a resposta anterior do Executor efetivamente visível na conversa.
+- A ativação do Executor só pode ser tratada como confirmada quando a resposta anterior do Executor contiver, de forma reconhecível e rastreável, **todas** as seções obrigatórias abaixo:
+  - `[RELATÓRIO DE IMPACTO E RISCO]`
+  - `[PATCHES]`
+  - `[COMANDOS PARA APLICAR]`
+  - `[COMANDOS DE ROLLBACK]`
+  - `[PROTOCOLO DE VERIFICAÇÃO]`
+  - `[VERIFICAÇÃO DE SEGURANÇA]`
+  - `[RESULTADO ESPERADO]`
+  - `[LIMITES / UNKNOWNS]`
+- Similaridade parcial, texto solto, resposta resumida ou presença de apenas parte das seções **não** confirma ativação.
+- Se a ativação não estiver confirmada, o próximo prompt gerado para o Executor deve incluir o bootstrap do Executor **uma única vez** antes da instrução operacional.
+- Para evitar repetição redundante, se já existir na conversa um prompt anterior do Diretor com o bootstrap do Executor emitido **após a mesma resposta não confirmada** e ainda não houver resposta posterior do Executor com ativação confirmada, não reinjetar o bootstrap novamente no mesmo ciclo.
+- A lógica de confirmação estrutural e reinjeção por ciclo pertence exclusivamente ao Diretor e **nunca** deve ser copiada para dentro do payload final enviado ao Executor.
+- O payload final permitido para o Executor contém apenas:
+  - bootstrap do Executor, quando necessário
+  - instrução operacional da tarefa
+- É proibido perguntar manualmente ao usuário se o Executor está ativo quando a própria conversa já contém evidência estrutural suficiente para decidir.
 - Toda instrução para o Executor deve estar delimitada por:
   - objetivo técnico
   - escopo
@@ -261,6 +279,29 @@ function Get-VibeProtocolHeaderContent {
     return (Get-VibeDirectorLocalProtocolHeader -ExtractionMode $ExtractionMode -ExecutorTargetValue $ExecutorTargetValue)
 }
 
+function Get-VibeExecutorBootstrapInjectionTemplate {
+    param(
+        [string]$ExtractionMode,
+        [string]$ExecutorTargetValue
+    )
+
+    $bootstrapHeader = Get-VibeExecutorLocalProtocolHeader -ExtractionMode $ExtractionMode -ExecutorTargetValue $ExecutorTargetValue
+
+    return @"
+[BLOCO OPCIONAL DE BOOTSTRAP DO EXECUTOR]
+
+## USO EXCLUSIVO DO DIRETOR
+- Este bloco existe apenas para composição do próximo prompt ao Executor.
+- Incluir este bloco somente quando a ativação do Executor **não** estiver confirmada pela evidência estrutural da resposta anterior.
+- Se a ativação estiver confirmada, **não** incluir este bloco.
+- Não copiar o título nem as instruções desta seção para o payload final do Executor.
+
+--- INÍCIO DO BLOCO OPCIONAL ---
+$bootstrapHeader
+--- FIM DO BLOCO OPCIONAL ---
+"@.Trim()
+}
+
 function Get-VibeExecutorTaskInstructionTemplate {
     param(
         [string]$ProjectNameValue,
@@ -277,7 +318,6 @@ function Get-VibeExecutorTaskInstructionTemplate {
 
 ## FORMATO DE ENTREGA PARA O EXECUTOR (COPIAR ABAIXO)
 --- INÍCIO DA INSTRUÇÃO ---
-O Executor já foi previamente ativado com o protocolo operacional local correspondente. Não repetir bootstrap, protocolo base, ordem de leitura global ou regras estruturais já carregadas no chat do Executor.
 
 ### CONTEXTO OPERACIONAL
 - Projeto: $ProjectNameValue
@@ -361,6 +401,14 @@ function Get-VibeDeterministicMetaPromptProtocolContent {
 
     if (-not $isExecutorRoute) {
         $lines.Add('') | Out-Null
+
+        $executorBootstrapBlock = Get-VibeExecutorBootstrapInjectionTemplate `
+            -ExtractionMode $ExtractionMode `
+            -ExecutorTargetValue $ExecutorTargetValue
+
+        $lines.AddRange([string[]]($executorBootstrapBlock -split "\r?\n"))
+        $lines.Add('') | Out-Null
+
         $executorTaskInstruction = Get-VibeExecutorTaskInstructionTemplate `
             -ProjectNameValue $ProjectNameValue `
             -SourceArtifactFileName $SourceArtifactFileName `
@@ -374,5 +422,5 @@ function Get-VibeDeterministicMetaPromptProtocolContent {
     return ($lines -join [Environment]::NewLine)
 }
 
-Export-ModuleMember -Function Get-VibeExtractionModeLabel, Get-VibeProtocolHeaderContent, Get-VibeDeterministicMetaPromptProtocolContent, Get-VibeExecutorTaskInstructionTemplate
+Export-ModuleMember -Function Get-VibeExtractionModeLabel, Get-VibeProtocolHeaderContent, Get-VibeDeterministicMetaPromptProtocolContent, Get-VibeExecutorTaskInstructionTemplate, Get-VibeExecutorBootstrapInjectionTemplate
 

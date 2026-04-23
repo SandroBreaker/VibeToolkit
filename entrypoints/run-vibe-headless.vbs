@@ -39,7 +39,7 @@ innerCommand = Quote(powerShellExe) & _
     " -NoProfile -ExecutionPolicy Bypass -File " & Quote(psScript) & _
     " -Path " & Quote(targetPath)
 
-command = "cmd.exe /k " & Quote(innerCommand)
+command = "cmd.exe /c " & Quote(innerCommand)
 
 shell.Run command, 1, False
 

@@ -41,6 +41,7 @@ $script:ToolkitDir = $PSScriptRoot
 $script:OriginalWorkingDirectory = Get-Location
 $script:CloneCleanupInfo = $null
 $script:EffectiveOutputDirectory = $null
+$script:GeneratedArtifactsFolderName = '_generated_artifacts'
 
 $ThemeText = 'Info'
 $ThemeCyan = 'Info'
@@ -902,6 +903,16 @@ function Write-LocalTextArtifact {
 
     Write-VibeTextFile -Path $Path -Content $Content -UseBom:$UseBom
 }
+
+function Resolve-GeneratedArtifactsOutputDirectory {
+    param([Parameter(Mandatory = $true)][string]$BaseDirectory)
+
+    $resolvedBaseDirectory = [System.IO.Path]::GetFullPath($BaseDirectory)
+    $generatedDirectory = Join-Path $resolvedBaseDirectory $script:GeneratedArtifactsFolderName
+    [System.IO.Directory]::CreateDirectory($generatedDirectory) | Out-Null
+    return $generatedDirectory
+}
+
 
 function Convert-ToSafeMarkdownCodeBlock {
     param(
@@ -1841,10 +1852,8 @@ function New-DeterministicMetaPromptArtifact {
         }
     }
 
-    # Limpar as costuras internas (fences vazios ou nomeados) para envelopar em um único fence coerente
-    $cleanContent = [regex]::Replace($croppedContent, '(?m)^[ 	]*```+[a-zA-Z0-9\-\+]*[ 	]*\r?\n?', '')
-
-    $lines.Add((Convert-ToSafeMarkdownCodeBlock -Content (Format-BundleContentForDiff -Content $cleanContent) -Language 'text')) | Out-Null
+    # Preservar a estrutura original do bundle, incluindo seus code fences individuais.
+    $lines.Add((Format-BundleContentForDiff -Content $croppedContent)) | Out-Null
 
     return ($lines -join "`n")
 }
@@ -2559,10 +2568,12 @@ try {
     $originalInput = $sourceResult.OriginalInput
     $script:CloneCleanupInfo = $sourceResult.CloneCleanupInfo
 
-    $script:EffectiveOutputDirectory = $resolvedTargetPath
+    $outputBaseDirectory = $resolvedTargetPath
     if ($sourceMode -eq 'github' -and $script:CloneCleanupInfo.CloneMode -eq 'temporary' -and -not $script:CloneCleanupInfo.KeepClone) {
-        $script:EffectiveOutputDirectory = $script:OriginalWorkingDirectory.Path
+        $outputBaseDirectory = $script:OriginalWorkingDirectory.Path
     }
+
+    $script:EffectiveOutputDirectory = Resolve-GeneratedArtifactsOutputDirectory -BaseDirectory $outputBaseDirectory
 
     $modulesDir = Join-Path $script:ToolkitDir 'modules'
     $requiredModulePaths = @(
@@ -2786,9 +2797,9 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     $sourceArtifactPath = Join-Path $script:EffectiveOutputDirectory $sourceArtifactFileName
     $finalOutputPath = $sourceArtifactPath
     $persistSourceArtifact = $true
-    $generateDeterministicMetaPrompt = (($currentExtractionMode -eq 'full') -or ($currentExtractionMode -eq 'blueprint') -or (($currentExtractionMode -eq 'sniper') -and ($resolvedRouteMode -eq 'director')))
+    $generateDeterministicMetaPrompt = (($currentExtractionMode -eq 'full') -or ($currentExtractionMode -eq 'blueprint') -or (($currentExtractionMode -eq 'sniper') -and (($resolvedRouteMode -eq 'director') -or ($resolvedRouteMode -eq 'executor'))))
 
-    if ($generateDeterministicMetaPrompt -and ($currentExtractionMode -eq 'full' -or $currentExtractionMode -eq 'blueprint')) {
+    if ($generateDeterministicMetaPrompt -and (($currentExtractionMode -eq 'full') -or ($currentExtractionMode -eq 'blueprint') -or (($currentExtractionMode -eq 'sniper') -and ($resolvedRouteMode -eq 'executor')))) {
         $persistSourceArtifact = $false
     }
 
@@ -2922,6 +2933,25 @@ A seção de contratos foi priorizada para entrypoints, contratos/tipos, integra
     Write-SentinelKeyValue -Key 'Destino' -Value $displayDestino -Tone 'Secondary' -KeyWidth 12
     Write-Host ''
     Write-SentinelPostSuccessGuidance -RouteMode $resolvedRouteMode -ArtifactPath $finalOutputPath -MetadataPath $metaResult.ResultMetaPath
+    
+    if (-not $NonInteractive) {
+        Write-Host ''
+        Write-SentinelDivider -Tone 'Secondary' -Label 'CONTINUAR?'
+        Write-SentinelText -Text '  [ Enter ] Sair' -Color $SentinelTheme.Muted
+        Write-SentinelText -Text '  [ R ]     Executar novamente' -Color $SentinelTheme.Muted
+        Write-Host ''
+
+        $keyInfo = [Console]::ReadKey($true)
+
+        if ($keyInfo.Key -eq [ConsoleKey]::R -or $keyInfo.KeyChar -eq 'r') {
+            Write-Host ''
+            Write-UILog -Message 'Reiniciando execução...' -Color $ThemeCyan
+            Clear-Host
+
+            & $PSCommandPath @PSBoundParameters
+            return
+        }
+    }
 }
 catch {
     $errorMessage = $_.Exception.Message

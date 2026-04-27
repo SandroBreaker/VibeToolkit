@@ -1,4 +1,4 @@
-# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
+﻿# Política de runtime: PowerShell 7 preferencial; Windows PowerShell 5.1 como fallback operacional.
 
 [CmdletBinding()]
 param(
@@ -42,12 +42,100 @@ $script:OriginalWorkingDirectory = Get-Location
 $script:CloneCleanupInfo = $null
 $script:EffectiveOutputDirectory = $null
 $script:GeneratedArtifactsFolderName = '_generated_artifacts'
+$script:SentinelVisualRhythmPolicy = @{
+    Enabled          = $true
+    InteractiveOnly  = $true
+    StatusMinGapMs   = 80
+    FlowMinGapMs     = 60
+    ProgressBudgetMs = 900
+    ProgressMaxGapMs = 12
+}
+$script:SentinelVisualRhythmState = @{
+    Status   = $null
+    Flow     = $null
+    Progress = $null
+}
 
 $ThemeText = 'Info'
 $ThemeCyan = 'Info'
 $ThemeSuccess = 'Success'
 $ThemeWarn = 'Warning'
 $ThemePink = 'Error'
+
+function Test-SentinelVisualRhythmEnabled {
+    if (-not $script:SentinelVisualRhythmPolicy.Enabled) {
+        return $false
+    }
+
+    if ($script:SentinelVisualRhythmPolicy.InteractiveOnly) {
+        if ($NonInteractive) {
+            return $false
+        }
+
+        if ($script:SentinelPlainOutput) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Get-SentinelVisualRhythmTargetDelayMs {
+    param(
+        [ValidateSet('Status', 'Flow', 'Progress')]
+        [string]$Channel = 'Status',
+        [int]$TotalUnits = 0
+    )
+
+    switch ($Channel) {
+        'Flow' {
+            return [int]$script:SentinelVisualRhythmPolicy.FlowMinGapMs
+        }
+        'Progress' {
+            if ($TotalUnits -le 0) {
+                return 0
+            }
+
+            $budgetMs = [int]$script:SentinelVisualRhythmPolicy.ProgressBudgetMs
+            $maxGapMs = [int]$script:SentinelVisualRhythmPolicy.ProgressMaxGapMs
+            $calculatedGapMs = [int][Math]::Floor($budgetMs / [Math]::Max($TotalUnits, 1))
+            return [int][Math]::Min($maxGapMs, [Math]::Max($calculatedGapMs, 0))
+        }
+        default {
+            return [int]$script:SentinelVisualRhythmPolicy.StatusMinGapMs
+        }
+    }
+}
+
+function Invoke-SentinelVisualRhythm {
+    param(
+        [ValidateSet('Status', 'Flow', 'Progress')]
+        [string]$Channel = 'Status',
+        [int]$TotalUnits = 0
+    )
+
+    if (-not (Test-SentinelVisualRhythmEnabled)) {
+        return
+    }
+
+    $targetDelayMs = Get-SentinelVisualRhythmTargetDelayMs -Channel $Channel -TotalUnits $TotalUnits
+    if ($targetDelayMs -le 0) {
+        return
+    }
+
+    $now = Get-Date
+    $lastEventAt = $script:SentinelVisualRhythmState[$Channel]
+
+    if ($lastEventAt -is [datetime]) {
+        $remainingMs = $targetDelayMs - ($now - $lastEventAt).TotalMilliseconds
+        if ($remainingMs -gt 0) {
+            Start-Sleep -Milliseconds ([int][Math]::Ceiling($remainingMs))
+            $now = Get-Date
+        }
+    }
+
+    $script:SentinelVisualRhythmState[$Channel] = $now
+}
 
 function Get-SentinelLogLeafName {
     param([AllowEmptyString()][string]$PathValue = '')
@@ -132,6 +220,8 @@ function Write-UILog {
     }
 
     $formattedMessage = Format-SentinelLogMessage -Message $Message
+    $visualChannel = if ($formattedMessage.StartsWith('[sentinel-flow]')) { 'Flow' } else { 'Status' }
+    Invoke-SentinelVisualRhythm -Channel $visualChannel
     $statusType = switch ($Color) {
         'Success' { 'Success' }
         'Warning' { 'Warning' }
@@ -913,7 +1003,6 @@ function Resolve-GeneratedArtifactsOutputDirectory {
     return $generatedDirectory
 }
 
-
 function Convert-ToSafeMarkdownCodeBlock {
     param(
         [AllowNull()][string]$Content,
@@ -1182,42 +1271,80 @@ function New-BlueprintContractsBlock {
     $block = "${StructureHeading}`n"
     $block += (Convert-ToSafeMarkdownCodeBlock -Content $projectStructureTree -Language 'text')
     $block += "`n`n"
-    $block += "${ContractsHeading}`n"
-    $block += "> Cobertura abrangente de superfícies estruturais. Todos os arquivos elegíveis do escopo visível que possuem assinaturas extraíveis (contratos, headers, exports, tipos) estão mapeados abaixo. O blueprint preserva contexto mantendo a economia ao focar exclusivamente na extração estrutural, omitindo implementação completa.`n`n"
-    
-    $hasContracts = $false
-    
+
+    $contextualReadmePaths = New-Object System.Collections.Generic.List[string]
+    $contractEntries = New-Object System.Collections.Generic.List[object]
+    $omittedPaths = New-Object System.Collections.Generic.List[string]
+
     $processedCount = 0
     foreach ($file in $Files) {
         $processedCount++
+        $relPath = Get-NormalizedRelativeProjectPath -File $file
+
+        if ($file.Name -ieq 'README.md') {
+            $contextualReadmePaths.Add($relPath) | Out-Null
+        }
+
         if ($script:SignatureExtensions -notcontains $file.Extension) {
+            $omittedPaths.Add($relPath) | Out-Null
             continue
         }
-        
-        $relPath = Get-NormalizedRelativeProjectPath -File $file
-        
+
         if ($LogExtraction) {
             Write-SentinelProgress -Activity 'Extraindo assinaturas estruturais' -Current $processedCount -Total $Files.Count -Tone 'Secondary' -Item $relPath
         }
-        
+
         $issueMessage = $null
         $signatures = @(Get-BundlerSignaturesForFile -File $file -IssueMessage ([ref]$issueMessage))
         if ($issueMessage) {
             if ($IssueCollector) {
                 $IssueCollector.Value += $issueMessage
             }
+
+            $omittedPaths.Add($relPath) | Out-Null
             continue
         }
-        
+
         if ($signatures.Count -le 0) {
+            $omittedPaths.Add($relPath) | Out-Null
             continue
         }
-        
-        $hasContracts = $true
-        $fenceLanguage = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
-        $signatureContent = ($signatures -join '')
-        $block += "#### File: $relPath`n"
-        $block += (Convert-ToSafeMarkdownCodeBlock -Content $signatureContent -Language $fenceLanguage)
+
+        $contractEntries.Add([pscustomobject]@{
+                RelativePath     = $relPath
+                FenceLanguage    = Get-CodeFenceLanguageFromExtension -Extension $file.Extension
+                SignatureContent = ($signatures -join '')
+            }) | Out-Null
+    }
+
+    $readmeList = @($contextualReadmePaths | Sort-Object -Unique)
+    if ($readmeList.Count -gt 0) {
+        $block += "### 2. CONTEXTUAL DOCUMENTATION`n"
+        $block += "> README.md permanece no blueprint como documentação contextual do recorte. Ele fica fora de CORE DOMAINS & CONTRACTS porque não é superfície contratual estrutural.`n`n"
+        foreach ($readmePath in $readmeList) {
+            $block += "* $readmePath`n"
+        }
+        $block += "`n"
+    }
+
+    $omittedList = @($omittedPaths | Sort-Object -Unique)
+    $listedCount = $contractEntries.Count
+    $omittedCount = $omittedList.Count
+
+    $block += "${ContractsHeading}`n"
+    $block += "> Nem todos os arquivos de PROJECT STRUCTURE entram neste bloco. Aqui aparecem apenas arquivos para os quais o pipeline conseguiu extrair assinaturas estruturais (contratos, headers, exports, tipos).`n"
+    $block += "> Arquivos listados em CORE DOMAINS & CONTRACTS: ${listedCount}. Arquivos omitidos deste bloco por não possuírem assinaturas estruturais extraíveis no pipeline atual: ${omittedCount}.`n`n"
+
+    if ($omittedCount -gt 0) {
+        $block += "##### OMITTED FROM CORE DOMAINS & CONTRACTS`n"
+        $block += (Convert-ToSafeMarkdownCodeBlock -Content ($omittedList -join "`n") -Language 'text')
+        $block += "`n`n"
+    }
+
+    $hasContracts = ($listedCount -gt 0)
+    foreach ($contractEntry in $contractEntries) {
+        $block += "#### File: $($contractEntry.RelativePath)`n"
+        $block += (Convert-ToSafeMarkdownCodeBlock -Content $contractEntry.SignatureContent -Language $contractEntry.FenceLanguage)
         $block += "`n`n"
     }
 
@@ -2509,6 +2636,7 @@ $script:SignatureExtensions = @(
 )
 
 $script:IgnoredDirs = @(
+    $script:GeneratedArtifactsFolderName,
     'node_modules', '.git', 'dist', 'build', '.next', '.cache', 'out',
     'coverage', '.venv', 'venv', 'env', '__pycache__', '.pytest_cache', '.tox',
     'bin', 'obj', 'target', 'vendor', '.agent', '.github', '.vite', 'android'

@@ -318,8 +318,6 @@ function Write-SentinelHeader {
     }
 
     $logo = @(
-        '   (`  ,_ |      |)   _   |  _                                    ',
-        '   _)(|||(||`()  |)|`(/_(||<(/_|`                                 ',
         '                                                                  ',
         '  ███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗     ',
         '  ██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║     ',
@@ -544,6 +542,14 @@ function Write-SentinelProgress {
         [string]$Tone = 'Primary',
         [string]$Item = ''
     )
+
+    try {
+        if (Get-Command -Name Invoke-SentinelVisualRhythm -ErrorAction SilentlyContinue) {
+            Invoke-SentinelVisualRhythm -Channel 'Progress' -TotalUnits $Total
+        }
+    }
+    catch {
+    }
 
     $windowWidth = 80
     try {

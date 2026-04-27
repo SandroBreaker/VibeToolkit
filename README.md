@@ -132,6 +132,7 @@ Melhor quando a outra ponta precisa de visão ampla: arquivos, estrutura, contex
 #### Blueprint
 
 Melhor quando o objetivo é entender arquitetura, contratos, entrypoints e integrações sem carregar contexto demais.
+Quando `README.md` estiver no recorte, ele entra como documentação contextual do blueprint e permanece fora de `CORE DOMAINS & CONTRACTS`.
 
 #### Sniper
 
@@ -242,18 +243,19 @@ Nesses casos, a execução segue pelo pipeline direto da CLI.
 ## Artefatos gerados
 
 A convenção atual usa rótulos determinísticos por modo, rota e projeto.
+Todos os artefatos locais são gravados em `.\_generated_artifacts\`, e não na raiz do projeto analisado.
 
 ### Exemplos reais de saída final
 
 ```text
-_meta-prompt_bundle_executor__MeuProjeto.md
-_meta-prompt_blueprint_diretor__MeuProjeto.md
-_manual_executor__MeuProjeto.md
-_meta-prompt_manual_diretor__MeuProjeto.md
-_txt_export_executor__MeuProjeto.zip
-_meta-prompt_bundle_executor__MeuProjeto.json
-_manual_executor__MeuProjeto.json
-_txt_export_executor__MeuProjeto.json
+_generated_artifacts\_meta-prompt_bundle_executor__MeuProjeto.md
+_generated_artifacts\_meta-prompt_blueprint_diretor__MeuProjeto.md
+_generated_artifacts\_manual_executor__MeuProjeto.md
+_generated_artifacts\_meta-prompt_manual_diretor__MeuProjeto.md
+_generated_artifacts\_txt_export_executor__MeuProjeto.zip
+_generated_artifacts\_meta-prompt_bundle_executor__MeuProjeto.json
+_generated_artifacts\_manual_executor__MeuProjeto.json
+_generated_artifacts\_txt_export_executor__MeuProjeto.json
 ```
 
 ### Leitura rápida dos prefixos

@@ -64,7 +64,7 @@ Se a estratégia envolver operação destrutiva, exposição de segredos, altera
 
 #### CHECAGEM FINAL OBRIGATÓRIA
 Antes de finalizar a resposta, verificar:
-1. As seis seções obrigatórias estão presentes **e na ordem exata**: [DIAGNÓSTICO E RISCO], [SIMULAÇÃO DE FALHA], [DECISÃO / ESTRATÉGIA], [INSTRUÇÕES PARA O EXECUTOR], [CRITÉRIOS DE ACEITAÇÃO], [LIMITES / UNKNOWNS].
+1. As seis seções obrigatórias estão presentes **e na ordem exata**: [DIAGNÓSTICO E RISCO], [DECISÃO / ESTRATÉGIA], [INSTRUÇÕES PARA O EXECUTOR], [LIMITES / UNKNOWNS].
 
 Se qualquer verificação falhar: resposta inválida. Recompor antes de entregar.
 
@@ -114,17 +114,11 @@ A resposta do Diretor deve seguir exatamente esta ordem:
 #### [DIAGNÓSTICO E RISCO]
 Problema observado.
 
-#### [SIMULAÇÃO DE FALHA]
-Falha plausível da estratégia proposta, mitigação adotada, motivo pelo qual a estratégia permanece a menor opção segura.
-
 #### [DECISÃO / ESTRATÉGIA]
 Abordagem recomendada.
 
 #### [INSTRUÇÕES PARA O EXECUTOR]
-Prompt operacional copiável. Deve exigir: relatório de impacto e risco, comandos para aplicar, rollback, verificação objetiva. 
-
-#### [CRITÉRIOS DE ACEITAÇÃO]
-Condições objetivas e verificáveis para considerar a tarefa concluída com sucesso.
+Prompt operacional copiável. Deve exigir: Comandos para aplicar e rollback. 
 
 #### [LIMITES / UNKNOWNS]
 Pontos não validáveis no recorte visível. Usar: **não visível no recorte enviado**. Bloqueio crítico: registrar `KILL SWITCH ACIONADO`.
@@ -177,7 +171,7 @@ Este bloqueio é absoluto. Não há exceção por "razoabilidade de contexto".
 
 #### CHECAGEM FINAL OBRIGATÓRIA
 Antes de entregar a resposta, verificar:
-1. As oito seções obrigatórias estão presentes e na ordem exata: [RELATÓRIO DE IMPACTO E RISCO], [PATCHES], [COMANDOS PARA APLICAR], [COMANDOS DE ROLLBACK], [PROTOCOLO DE VERIFICAÇÃO], [VERIFICAÇÃO DE SEGURANÇA], [RESULTADO ESPERADO], [LIMITES / UNKNOWNS].
+1. As oito seções obrigatórias estão presentes e na ordem exata: [PATCHES], [COMANDOS PARA APLICAR], [COMANDOS DE ROLLBACK], [LIMITES / UNKNOWNS].
 2. Nenhuma seção está vazia ou com conteúdo genérico não rastreável ao recorte.
 3. [COMANDOS DE ROLLBACK] contém procedimento exato — ou declaração explícita de impossibilidade com justificativa.
 4. [VERIFICAÇÃO DE SEGURANÇA] registra o resultado dos 5 vetores do checklist, não apenas confirma que foram verificados.
@@ -221,17 +215,12 @@ $extractionLine
 
 #### §4 — SAÍDA OBRIGATÓRIA
 A resposta deve seguir exatamente esta ordem:
-1. **[RELATÓRIO DE IMPACTO E RISCO]**
-2. **[PATCHES]**
-3. **[COMANDOS PARA APLICAR]**
-4. **[COMANDOS DE ROLLBACK]**
-5. **[PROTOCOLO DE VERIFICAÇÃO]**
-6. **[VERIFICAÇÃO DE SEGURANÇA]**
-7. **[RESULTADO ESPERADO]**
-8. **[LIMITES / UNKNOWNS]**
+1. **[PATCHES]**
+2. **[COMANDOS PARA APLICAR]**
+3. **[LIMITES / UNKNOWNS]**
 
 #### §5 — REGRA DE ENTREGA
-* Priorize entregar os arquivos em zip para download. Se não for possível, entregar o path diff para ser aplicado direto no powershell. Se também não for possível, entregar no bloco de código e copiável, indicando o nome que o usuário deverá salvar.
+* Priorize entregar os arquivos para download. Se não for possível, entregar o path diff para ser aplicado direto no powershell. Se também não for possível, entregar no bloco de código e copiável, indicando o nome que o usuário deverá salvar.
 * A resposta deve ser densa, técnica, objetiva e copiável.
 "@.Trim()
 }
@@ -312,14 +301,9 @@ function Get-VibeExecutorTaskInstructionTemplate {
 
 ### ENTREGA OBRIGATÓRIA DO EXECUTOR
 A resposta do Executor deve seguir exatamente esta ordem:
-1. [RELATÓRIO DE IMPACTO E RISCO]
-2. [PATCHES]
-3. [COMANDOS PARA APLICAR]
-4. [COMANDOS DE ROLLBACK]
-5. [PROTOCOLO DE VERIFICAÇÃO]
-6. [VERIFICAÇÃO DE SEGURANÇA]
-7. [RESULTADO ESPERADO]
-8. [LIMITES / UNKNOWNS]
+1. **[PATCHES]**
+2. **[COMANDOS PARA APLICAR]**
+3. **[LIMITES / UNKNOWNS]**
 
 ### CRITÉRIOS DE ACEITAÇÃO
 - Definir checks objetivos para considerar a tarefa concluída.

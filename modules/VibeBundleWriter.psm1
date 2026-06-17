@@ -23,14 +23,18 @@ function Remove-VibeAuthenticodeSignatureBlock {
         return $text
     }
 
-    $marker = '# SIG # Begin signature block'
-    $index = $text.IndexOf($marker, [System.StringComparison]::Ordinal)
+    $signatureBlockPattern = '(?m)^[ \t]*# SIG # Begin signature block[ \t]*\r?$'
+    $signatureMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $text,
+        $signatureBlockPattern,
+        [System.Text.RegularExpressions.RegexOptions]::Multiline
+    )
 
-    if ($index -lt 0) {
+    if (-not $signatureMatch.Success) {
         return $text
     }
 
-    return $text.Substring(0, $index).TrimEnd()
+    return $text.Substring(0, $signatureMatch.Index).TrimEnd()
 }
 
 function Read-VibeTextFile {
@@ -124,8 +128,14 @@ function Resolve-VibeLatestMomentumContext {
         return [pscustomobject]$result
     }
 
+    $searchPaths = @($SearchRoot)
+    $logsPath = Join-Path $SearchRoot '_generated_logs'
+    if (Test-Path $logsPath -PathType Container) {
+        $searchPaths += $logsPath
+    }
+
     $candidates = @(
-        Get-ChildItem -Path $SearchRoot -File -Filter "*.json" -ErrorAction SilentlyContinue |
+        Get-ChildItem -Path $searchPaths -File -Filter "*.json" -ErrorAction SilentlyContinue |
         Where-Object { Test-VibeMomentumResultFileName -FileName $_.Name } |
         Sort-Object LastWriteTime -Descending
     )
@@ -347,18 +357,18 @@ function Write-VibeProjectTreeNode {
 
     foreach ($directoryName in $directories) {
         $entries.Add([pscustomobject]@{
-            Name = $directoryName
-            Type = 'Directory'
-            Node = $Node.Directories[$directoryName]
-        }) | Out-Null
+                Name = $directoryName
+                Type = 'Directory'
+                Node = $Node.Directories[$directoryName]
+            }) | Out-Null
     }
 
     foreach ($fileName in $files) {
         $entries.Add([pscustomobject]@{
-            Name = $fileName
-            Type = 'File'
-            Node = $null
-        }) | Out-Null
+                Name = $fileName
+                Type = 'File'
+                Node = $null
+            }) | Out-Null
     }
 
     for ($index = 0; $index -lt $entries.Count; $index++) {

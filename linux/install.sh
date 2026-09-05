@@ -19,8 +19,9 @@ if [[ ! -f "$BIN_SOURCE" ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-cp "$BIN_SOURCE" "$BIN_TARGET"
-chmod 755 "$BIN_TARGET"
+rm -f "$BIN_TARGET"
+ln -s "$BIN_SOURCE" "$BIN_TARGET"
+chmod 755 "$BIN_SOURCE"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
@@ -31,4 +32,5 @@ case ":$PATH:" in
 esac
 
 echo "VibeToolkit instalado em: $BIN_TARGET"
+echo "Destino real: $BIN_SOURCE"
 echo "Teste com: vibe-toolkit --help"

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so the launcher keeps pointing at the repository even when
+# installed as ~/.local/bin/vibe-toolkit.
+SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 ENTRYPOINT="$REPO_ROOT/project-bundler-cli.ps1"
 
@@ -14,5 +17,29 @@ if [[ ! -f "$ENTRYPOINT" ]]; then
   echo "Erro: entrypoint não encontrado: $ENTRYPOINT" >&2
   exit 1
 fi
+
+case "${1:-}" in
+  --help|-h)
+    cat <<'EOF'
+VibeToolkit Linux CLI
+
+Uso:
+  vibe-toolkit [opções do project-bundler-cli.ps1]
+
+Exemplos:
+  vibe-toolkit
+  vibe-toolkit -Path .
+  vibe-toolkit -Path . -BundleMode full -RouteMode director
+
+O launcher encaminha os argumentos diretamente para o PowerShell 7.
+EOF
+    exit 0
+    ;;
+  --version|-v)
+    # Keep the CLI version independent from the PowerShell script's parameter binder.
+    echo "VibeToolkit Linux launcher · v1.0.0"
+    exit 0
+    ;;
+esac
 
 exec pwsh -NoLogo -NoProfile -File "$ENTRYPOINT" "$@"

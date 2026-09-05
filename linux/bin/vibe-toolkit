@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+ENTRYPOINT="$REPO_ROOT/project-bundler-cli.ps1"
+
+if ! command -v pwsh >/dev/null 2>&1; then
+  echo "Erro: PowerShell 7 (pwsh) não está instalado ou não está no PATH." >&2
+  exit 127
+fi
+
+if [[ ! -f "$ENTRYPOINT" ]]; then
+  echo "Erro: entrypoint não encontrado: $ENTRYPOINT" >&2
+  exit 1
+fi
+
+exec pwsh -NoLogo -NoProfile -File "$ENTRYPOINT" "$@"
